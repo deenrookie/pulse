@@ -62,6 +62,24 @@ export default function App() {
     })
   }, [])
 
+  // follow #/view links while the app is already open (hashchange fires on
+  // same-document navigation; our own go() uses replaceState so it never loops)
+  useEffect(() => {
+    const onHash = () => {
+      const h = window.location.hash.replace(/^#\/?/, '')
+      if (VIEWS.some((v) => v.id === h) && h !== tab) {
+        setTab(h as Tab)
+        try {
+          localStorage.setItem('pulse.view', h)
+        } catch {
+          /* ignore */
+        }
+      }
+    }
+    window.addEventListener('hashchange', onHash)
+    return () => window.removeEventListener('hashchange', onHash)
+  }, [tab])
+
   // global shortcuts: Ctrl/Cmd+1..5 switch views, Ctrl/Cmd+F jumps to the
   // traffic filter (switches to Live Traffic first if needed)
   useEffect(() => {
