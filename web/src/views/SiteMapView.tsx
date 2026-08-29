@@ -117,6 +117,14 @@ export default function SiteMapView({ pulse, goProxy }: { pulse: PulseState; goP
   const treeRange = windowRange(treeScroll, treeViewH, treeRows.length)
   const treeVisible = treeRows.slice(treeRange.start, treeRange.end)
 
+  // pinned host bar: while a host's children scroll under the top edge,
+  // keep that host visible (and collapsible) — the classic tree behavior
+  const pinnedHost = (() => {
+    const topIndex = Math.min(treeRows.length - 1, Math.max(0, Math.floor(treeScroll / ROW_H)))
+    const topRow = treeRows[topIndex]
+    return topRow && topRow.kind === 'path' ? topRow.host : null
+  })()
+
   // ---- request list for the selected tree node (windowed) ----
   const listWin = useRef<HTMLDivElement>(null)
   const [listScroll, setListScroll] = useState(0)
@@ -300,6 +308,25 @@ export default function SiteMapView({ pulse, goProxy }: { pulse: PulseState; goP
                 )}
               </div>
             </div>
+            <div className="tree-col">
+            {pinnedHost && (
+              <div
+                className="tree-row host pinned"
+                style={{ height: ROW_H }}
+                onClick={() => toggle(pinnedHost.host)}
+                title={`${pinnedHost.host} — click to collapse`}
+              >
+                <Icon name="chevronDown" size={12} />
+                <Icon name="globe" size={13} />
+                <span className="name" title={pinnedHost.host}>
+                  {pinnedHost.host}
+                </span>
+                <span className="grow" />
+                <span className="badge" title={`${pinnedHost.total} flows`}>
+                  {pinnedHost.total > 999 ? `${(pinnedHost.total / 1000).toFixed(1)}k` : pinnedHost.total}
+                </span>
+              </div>
+            )}
             <div
               className="tree-wrap"
               ref={treeWin}
@@ -368,6 +395,7 @@ export default function SiteMapView({ pulse, goProxy }: { pulse: PulseState; goP
                   {treeRange.end < treeRows.length && <div style={{ height: (treeRows.length - treeRange.end) * ROW_H }} />}
                 </>
               )}
+            </div>
             </div>
           </div>
         }

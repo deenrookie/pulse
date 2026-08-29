@@ -1034,6 +1034,15 @@ table.flows tbody tr.hl.selected td { background: var(--accent-bg); box-shadow: 
 
 /* ============ 22. Site map tree ============ */
 .tree-wrap { flex: 1; min-height: 0; overflow: auto; }
+/* column wrapper: pinned host bar sits above the scrolling tree */
+.tree-col { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+/* pinned current-host bar: fixed above the list while its children scroll */
+.tree-row.host.pinned {
+  flex: none;
+  background: var(--bg-raised);
+  border-bottom: 1px solid var(--border-strong);
+  box-shadow: 0 4px 10px rgb(var(--shadow-rgb) / 0.3);
+}
 .tree-row {
   display: flex; align-items: center; gap: 7px;
   padding: 0 10px; cursor: pointer;
