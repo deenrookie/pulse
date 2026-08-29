@@ -20,14 +20,20 @@ export function usePulse() {
   const [intercept, setIntercept] = useState<InterceptSummary>({ enabled: false, capacity: 50, pending: [] })
   const [repeaterTabs, setRepeaterTabs] = useState<RepeaterTab[]>([])
   const [toast, setToast] = useState<Toast | null>(null)
+  const [toastLeaving, setToastLeaving] = useState(false)
   const toastTimer = useRef<number | undefined>(undefined)
   const selectedIdRef = useRef<string | null>(null)
   selectedIdRef.current = selectedId
 
   const notify = useCallback((text: string, kind: Toast['kind'] = 'ok') => {
+    setToastLeaving(false)
     setToast({ text, kind })
     window.clearTimeout(toastTimer.current)
-    toastTimer.current = window.setTimeout(() => setToast(null), 2600)
+    // play the CSS exit transition before unmounting
+    toastTimer.current = window.setTimeout(() => {
+      setToastLeaving(true)
+      toastTimer.current = window.setTimeout(() => setToast(null), 200)
+    }, 2400)
   }, [])
 
   const metaOfFlow = (fl: Flow): FlowMeta => ({
@@ -232,6 +238,7 @@ export function usePulse() {
     repeaterSave,
     repeaterDelete,
     toast,
+    toastLeaving,
     notify,
   }
 }

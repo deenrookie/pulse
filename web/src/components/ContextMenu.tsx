@@ -16,9 +16,10 @@ interface Props {
 }
 
 // Lightweight right-click menu: closes on click-away / Escape / scroll.
+// Scales in from the corner nearest the cursor (origin-aware popover).
 export default function ContextMenu({ x, y, items, onClose }: Props) {
   const ref = useRef<HTMLDivElement>(null)
-  const [pos, setPos] = useState({ left: x, top: y })
+  const [pos, setPos] = useState({ left: x, top: y, origin: 'top left' })
 
   useEffect(() => {
     const el = ref.current
@@ -26,9 +27,14 @@ export default function ContextMenu({ x, y, items, onClose }: Props) {
     const rect = el.getBoundingClientRect()
     let left = x
     let top = y
-    if (left + rect.width > window.innerWidth - 8) left = window.innerWidth - rect.width - 8
-    if (top + rect.height > window.innerHeight - 8) top = window.innerHeight - rect.height - 8
-    setPos({ left, top })
+    const flippedX = left + rect.width > window.innerWidth - 8
+    const flippedY = top + rect.height > window.innerHeight - 8
+    if (flippedX) left = window.innerWidth - rect.width - 8
+    if (flippedY) top = window.innerHeight - rect.height - 8
+    // anchor the scale-in to the cursor's quadrant: when the menu had to be
+    // shifted left/up, the cursor sits near its right/bottom edge
+    const origin = `${flippedY ? 'bottom' : 'top'} ${flippedX ? 'right' : 'left'}`
+    setPos({ left, top, origin })
   }, [x, y])
 
   useEffect(() => {
@@ -53,7 +59,7 @@ export default function ContextMenu({ x, y, items, onClose }: Props) {
     <div
       ref={ref}
       className="ctx-menu"
-      style={{ left: pos.left, top: pos.top }}
+      style={{ left: pos.left, top: pos.top, transformOrigin: pos.origin }}
       onContextMenu={(e) => e.preventDefault()}
       onMouseDown={(e) => e.stopPropagation()}
       onMouseUp={(e) => e.stopPropagation()}

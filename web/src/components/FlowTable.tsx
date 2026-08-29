@@ -50,7 +50,7 @@ export default function FlowTable({ flows, selectedId, onSelect, onDelete, onSen
     }
     if (fresh.size > 0) {
       setNewIds(fresh)
-      const t = window.setTimeout(() => setNewIds(new Set()), 1300)
+      const t = window.setTimeout(() => setNewIds(new Set()), 600)
       return () => window.clearTimeout(t)
     }
   }, [flows])

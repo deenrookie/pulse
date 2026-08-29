@@ -62,7 +62,11 @@ export default function App() {
         {tab === 'extensions' && <ExtensionsView notify={pulse.notify} />}
         {tab === 'settings' && <SettingsView pulse={pulse} />}
       </main>
-      {pulse.toast && <div className={`toast ${pulse.toast.kind === 'err' ? 'err' : ''}`}>{pulse.toast.text}</div>}
+      {pulse.toast && (
+        <div className={`toast ${pulse.toast.kind === 'err' ? 'err' : ''} ${pulse.toastLeaving ? 'leaving' : ''}`}>
+          {pulse.toast.text}
+        </div>
+      )}
     </div>
   )
 }
