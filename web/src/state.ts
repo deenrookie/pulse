@@ -50,6 +50,7 @@ export function usePulse() {
     state: fl.state,
     timestamp: fl.request.timestamp,
     source: fl.request.source,
+    wsCount: fl.ws ? fl.ws.length : 0,
   })
 
   // Initial load + one long-lived SSE subscription.

@@ -271,11 +271,16 @@ func (e *Engine) process(conn net.Conn, br *bufio.Reader, req *store.Request) bo
 	}
 	if res.Upgraded {
 		_ = writeRawResponseHead(conn, respHeadOf(res.Resp))
-		tunnel(conn, br, res.Raw, res.RawBR)
 		fl.Resp = res.Resp
 		fl.State = store.StateComplete
 		_ = e.store.Update(fl)
 		e.publishFlow("flow_update", fl)
+		if isWebSocketUpgrade(req, res.Resp) {
+			// parse-and-forward relay: frames recorded into fl.WSMessages
+			e.relayWS(conn, br, res.Raw, res.RawBR, fl)
+		} else {
+			tunnel(conn, br, res.Raw, res.RawBR)
+		}
 		return false
 	}
 	if e.Plugins != nil && e.Plugins.ApplyResponse(req, res.Resp) {

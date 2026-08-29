@@ -371,7 +371,7 @@ export default function ProxyView({ pulse }: { pulse: PulseState }) {
                 storageKey="pulse.split.inspector"
                 initial={0.5}
                 a={<RequestInspector req={fl.request} />}
-                b={<ResponseInspector resp={fl.response} error={fl.error} flowId={fl.id} />}
+                b={<ResponseInspector resp={fl.response} error={fl.error} flowId={fl.id} ws={fl.ws} />}
               />
             ) : (
               <Empty icon="eye" title="Nothing selected">

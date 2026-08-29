@@ -1,8 +1,8 @@
 // Structured inspector for one side (request or response) of an HTTP message.
 // Sub-tabs: Headers / Params / Pretty (JSON, text or image) / Hex / Raw.
-import { useMemo, useState } from 'react'
-import { bodyToHex, bodyToText, copyToClipboard, formatSize, looksBinary, prettyJsonIfPossible } from '../api'
-import type { Header } from '../types'
+import { useEffect, useMemo, useState } from 'react'
+import { bodyToHex, bodyToText, bodyToTextDecoded, copyToClipboard, formatSize, looksBinary, prettyJsonIfPossible } from '../api'
+import type { Header, WSMessage } from '../types'
 import Icon from '../ui/Icon'
 
 interface RequestLike {
@@ -26,7 +26,7 @@ interface ResponseLike {
   durationMs: number
 }
 
-type Tab = 'headers' | 'params' | 'pretty' | 'hex' | 'raw'
+type Tab = 'headers' | 'params' | 'pretty' | 'hex' | 'raw' | 'ws'
 
 export function RequestInspector({ req }: { req: RequestLike }) {
   const [tab, setTab] = useState<Tab>('headers')
@@ -71,12 +71,29 @@ export function ResponseInspector({
   resp,
   error,
   flowId,
+  ws,
 }: {
   resp?: ResponseLike
   error?: string
   flowId?: string
+  ws?: WSMessage[]
 }) {
   const [tab, setTab] = useState<Tab>('headers')
+  // transparently decompress gzip/deflate/br response bodies for display
+  const contentEncoding = (resp?.headers ?? []).find((h) => h.name.toLowerCase() === 'content-encoding')?.value ?? ''
+  const [decoded, setDecoded] = useState<{ text: string; encoding: string; decodedBytes: number } | null>(null)
+  useEffect(() => {
+    let alive = true
+    setDecoded(null)
+    if (resp?.body) {
+      void bodyToTextDecoded(resp.body, contentEncoding).then((d) => alive && setDecoded(d))
+    }
+    return () => {
+      alive = false
+    }
+  }, [resp?.body, contentEncoding, resp])
+  const text = decoded?.text ?? ''
+  const wasDecompressed = !!decoded && decoded.decodedBytes > 0 && !!contentEncoding
   if (!resp) {
     return (
       <div className="panel" style={{ flex: 1 }}>
@@ -108,7 +125,6 @@ export function ResponseInspector({
   }
   const hasBody = (resp.body?.length ?? 0) > 0
   const params: [string, string, string][] = []
-  const text = bodyToText(resp.body ?? '')
   return (
     <div className="panel" style={{ flex: 1 }}>
       <div className="panel-head">
@@ -127,7 +143,7 @@ export function ResponseInspector({
             <Icon name="external" size={13} />
           </button>
         )}
-        <SubTabs tab={tab} setTab={setTab} hasBody={hasBody} hasParams={false} alwaysRaw />
+        <SubTabs tab={tab} setTab={setTab} hasBody={hasBody} hasParams={false} alwaysRaw wsCount={ws?.length ?? 0} />
       </div>
       <div className="summary-strip">
         <span>
@@ -143,9 +159,77 @@ export function ResponseInspector({
           size <b>{formatSize(Math.floor(((resp.body?.length ?? 0) * 3) / 4))}</b>
         </span>
         {resp.truncated && <span className="warn-inline">⚠ truncated</span>}
+        {wasDecompressed && (
+          <span className="warn-inline" title="Body was compressed in transit; shown decompressed">
+            ⇄ {decoded.encoding} → {formatSize(decoded.decodedBytes)}
+          </span>
+        )}
       </div>
       <div className="panel-body">
-        <TabBody tab={tab} headers={resp.headers} params={params} text={text} b64={resp.body} kind="response" />
+        {tab === 'ws' ? (
+          <WSPanel ws={ws ?? []} />
+        ) : (
+          <TabBody tab={tab} headers={resp.headers} params={params} text={text} b64={resp.body} kind="response" />
+        )}
+      </div>
+    </div>
+  )
+}
+
+/** WebSocket message list + one selected message's content */
+function WSPanel({ ws }: { ws: WSMessage[] }) {
+  const [sel, setSel] = useState<number | null>(null)
+  const current = sel !== null ? ws[sel] : null
+  if (ws.length === 0) {
+    return (
+      <div className="empty">
+        <div className="glyph">
+          <Icon name="bolt" size={22} />
+        </div>
+        <b>No WebSocket messages</b>
+        <div>The upgrade handshake was captured, but no frames have passed yet.</div>
+      </div>
+    )
+  }
+  return (
+    <div className="ws-pane">
+      <div className="ws-list">
+        {ws.map((m, i) => (
+          <div
+            key={i}
+            className={`ws-row ${sel === i ? 'selected' : ''}`}
+            onClick={() => setSel(i)}
+            title={`${m.dir === 'c2s' ? 'client → server' : 'server → client'} · ${m.opcode} · ${m.size} B — click to view`}
+          >
+            <span className={`ws-arrow ${m.dir}`}>{m.dir === 'c2s' ? '→' : '←'}</span>
+            <span className="ws-op">{m.opcode}</span>
+            <span className="grow" />
+            <span className="ws-size">{formatSize(m.size)}</span>
+            {m.truncated && <span className="ws-size" title="payload capped">…</span>}
+          </div>
+        ))}
+      </div>
+      <div className="ws-body">
+        {current ? (
+          current.opcode === 'text' ? (
+            <pre className="code-view">{bodyToText(current.data ?? '') || '(empty)'}</pre>
+          ) : current.opcode === 'binary' ? (
+            <pre className="code-view">{bodyToHex(current.data ?? '')}</pre>
+          ) : (
+            <div className="empty">
+              <b>{current.opcode} frame</b>
+              <div>{formatSize(current.size)} control frame — no payload to show.</div>
+            </div>
+          )
+        ) : (
+          <div className="empty">
+            <div className="glyph">
+              <Icon name="bolt" size={22} />
+            </div>
+            <b>{ws.length} message{ws.length > 1 ? 's' : ''}</b>
+            <div>Click one to view its payload.</div>
+          </div>
+        )}
       </div>
     </div>
   )
@@ -172,6 +256,7 @@ function SubTabs({
   hasBody,
   hasParams,
   alwaysRaw,
+  wsCount,
 }: {
   tab: Tab
   setTab: (t: Tab) => void
@@ -179,12 +264,14 @@ function SubTabs({
   hasParams: boolean
   /** show Raw (start line + headers + body) even when there is no body */
   alwaysRaw?: boolean
+  wsCount?: number
 }) {
   const tabs: [Tab, string][] = [
     ['headers', 'Headers'],
     ...(hasParams ? ([['params', 'Params']] as [Tab, string][]) : []),
     ...(alwaysRaw || hasBody ? ([['raw', 'Raw']] as [Tab, string][]) : []),
     ...(hasBody ? ([['pretty', 'Pretty'], ['hex', 'Hex']] as [Tab, string][]) : []),
+    ...(wsCount ? ([['ws', `WebSocket (${wsCount})`]] as [Tab, string][]) : []),
   ]
   return (
     <div className="subtabs">

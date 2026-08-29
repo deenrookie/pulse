@@ -30,12 +30,22 @@ export interface HttpResponse {
 
 export type FlowState = 'pending' | 'complete' | 'intercepted' | 'dropped' | 'error'
 
+export interface WSMessage {
+  dir: 'c2s' | 's2c'
+  opcode: 'text' | 'binary' | 'close' | 'ping' | 'pong' | 'unknown'
+  size: number
+  data?: string // base64 (capped by the engine)
+  truncated?: boolean
+  at: string
+}
+
 export interface Flow {
   id: string
   request: HttpRequest
   response?: HttpResponse
   state: FlowState
   error?: string
+  ws?: WSMessage[]
 }
 
 export interface FlowMeta {
@@ -52,6 +62,7 @@ export interface FlowMeta {
   state: FlowState
   timestamp: string
   source: string
+  wsCount: number
 }
 
 export interface PendingItem {
@@ -82,6 +93,7 @@ export interface Status {
   caFingerprint: string
   flows: { total: number; pending: number }
   intercept: { enabled: boolean; pending: number }
+  memory?: { sysMB: number; heapMB: number; goroutine: number }
 }
 
 export interface EditableRequest {

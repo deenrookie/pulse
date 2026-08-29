@@ -56,6 +56,19 @@ type Flow struct {
 	Resp  *Response `json:"response,omitempty"`
 	State FlowState `json:"state"`
 	Error string    `json:"error,omitempty"`
+	// WebSocket messages captured after a 101 upgrade (empty for plain HTTP).
+	WSMessages []WSMessage `json:"ws,omitempty"`
+}
+
+// WSMessage is one completed WebSocket message (assembled from fragments)
+// observed while relaying an upgraded connection. Payload is capped.
+type WSMessage struct {
+	Dir       string    `json:"dir"` // "c2s" | "s2c"
+	Opcode    string    `json:"opcode"` // "text" | "binary" | "close" | "ping" | "pong"
+	Size      int       `json:"size"`
+	Data      []byte    `json:"data,omitempty"`
+	Truncated bool      `json:"truncated,omitempty"`
+	At        time.Time `json:"at"`
 }
 
 // FlowMeta is the list-view projection of a flow (no bodies).
@@ -73,6 +86,7 @@ type FlowMeta struct {
 	State       FlowState `json:"state"`
 	Timestamp   time.Time `json:"timestamp"`
 	Source      string    `json:"source"`
+	WSCount     int       `json:"wsCount"`
 }
 
 // Store is safe for concurrent use. Flows are immutable once published
@@ -219,6 +233,7 @@ func metaOf(fl *Flow) FlowMeta {
 	m := FlowMeta{
 		ID: fl.ID, Method: fl.Req.Method, URL: fl.Req.URL,
 		StatusCode: 0, ReqSize: len(fl.Req.Body), State: fl.State,
+		WSCount:    len(fl.WSMessages),
 		Timestamp: fl.Req.Timestamp, Source: fl.Req.Source,
 		DurationMs: 0, RespSize: 0,
 	}

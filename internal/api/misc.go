@@ -2,6 +2,7 @@ package api
 
 import (
 	"net/http"
+	"runtime"
 )
 
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
@@ -9,7 +10,14 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
+	var ms runtime.MemStats
+	runtime.ReadMemStats(&ms)
 	writeJSON(w, http.StatusOK, map[string]any{
+		"memory": map[string]any{
+			"sysMB":     ms.Sys / 1048576,     // total obtained from the OS
+			"heapMB":    ms.HeapAlloc / 1048576,
+			"goroutine": runtime.NumGoroutine(),
+		},
 		"version":       s.Version,
 		"proxyAddr":     s.ProxyAddr,
 		"uiAddr":        s.UIAddr,

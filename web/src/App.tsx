@@ -6,6 +6,7 @@ import RepeaterView from './views/RepeaterView'
 import SiteMapView from './views/SiteMapView'
 import SettingsView from './views/SettingsView'
 import Icon, { type IconName } from './ui/Icon'
+import Decoder from './ui/Decoder'
 import { usePulse } from './state'
 
 type Tab = 'proxy' | 'intercept' | 'repeater' | 'sitemap' | 'extensions' | 'settings'
@@ -58,6 +59,7 @@ export default function App() {
     }
   })
   const [theme, setTheme] = useState<Theme>(readTheme)
+  const [decoderOpen, setDecoderOpen] = useState(false)
 
   // apply theme to <html>, persist it, and keep the favicon in sync
   useEffect(() => {
@@ -168,6 +170,20 @@ export default function App() {
           </button>
         ))}
         <div className="rail-footer">
+          <div className="rail-mem" title="Pulse process memory (sys) · JavaScript heap is separate">
+            <Icon name="bolt" size={12} />
+            <span className="txt">
+              {pulse.status?.memory ? `${pulse.status.memory.sysMB} MB` : '…'}
+            </span>
+          </div>
+          <button
+            className="rail-theme"
+            title="Decoder — encode/decode toolkit (draggable, pinnable)"
+            onClick={() => setDecoderOpen(true)}
+          >
+            <Icon name="terminal" size={14} />
+            <span className="txt">Decoder</span>
+          </button>
           <button
             className="rail-theme"
             onClick={() => setTheme((t) => (t === 'warm' ? 'midnight' : 'warm'))}
@@ -217,6 +233,8 @@ export default function App() {
           {tab === 'settings' && <SettingsView pulse={pulse} />}
         </div>
       </div>
+
+      {decoderOpen && <Decoder onClose={() => setDecoderOpen(false)} />}
 
       {pulse.toast && (
         <div className={`toast ${pulse.toast.kind === 'err' ? 'err' : ''} ${pulse.toastLeaving ? 'leaving' : ''}`}>

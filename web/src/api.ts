@@ -172,6 +172,44 @@ export function bodyToText(b64: string | null | undefined): string {
   return new TextDecoder('utf-8', { fatal: false }).decode(decodeBody(b64))
 }
 
+/**
+ * Decode a (possibly compressed) body to text. gzip/deflate bodies are
+ * transparently decompressed via DecompressionStream; br (brotli) is handled
+ * where supported. Returns the text plus how it was decoded.
+ */
+export async function bodyToTextDecoded(
+  b64: string | null | undefined,
+  contentEncoding: string,
+): Promise<{ text: string; encoding: string; decodedBytes: number }> {
+  const bytes = decodeBody(b64)
+  const enc = (contentEncoding || '').trim().toLowerCase()
+  const formats: Record<string, 'gzip' | 'deflate' | 'deflate-raw' | 'br'> = {
+    gzip: 'gzip',
+    xgzip: 'gzip',
+    deflate: 'deflate',
+    br: 'br',
+  }
+  const fmt = formats[enc.replace(/[^a-z]/g, '')]
+  if (bytes.length > 0 && fmt && (fmt === 'br' ? 'br' in DecompressionStream.prototype || true : true) && typeof DecompressionStream !== 'undefined') {
+    try {
+      const stream = new Response(new Blob([bytes as unknown as BlobPart]).stream().pipeThrough(new DecompressionStream(fmt as CompressionFormat)))
+      const out = new Uint8Array(await stream.arrayBuffer())
+      return {
+        text: new TextDecoder('utf-8', { fatal: false }).decode(out),
+        encoding: enc,
+        decodedBytes: out.length,
+      }
+    } catch {
+      // fall through: show raw bytes as text (already-lossy) — Hex remains exact
+    }
+  }
+  return {
+    text: new TextDecoder('utf-8', { fatal: false }).decode(bytes),
+    encoding: enc && fmt ? enc : '',
+    decodedBytes: bytes.length,
+  }
+}
+
 export function bodyToHex(b64: string | null | undefined, limit = 4096): string {
   const bytes = decodeBody(b64)
   const lines: string[] = []

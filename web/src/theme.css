@@ -222,6 +222,7 @@ kbd {
 }
 .rail-brand .word i { font-style: normal; color: var(--accent); }
 .rail.collapsed .rail-brand { justify-content: center; padding-left: 0; padding-right: 0; }
+.rail.collapsed .rail-brand .word { display: none; }
 
 .rail-item {
   position: relative;
@@ -1114,3 +1115,97 @@ table.flows tbody tr.hl.selected td { background: var(--accent-bg); box-shadow: 
 }
 .fsec-ext-item:hover { background: var(--bg-hover); color: var(--text); }
 .fsec-ext-item input { accent-color: var(--accent); }
+
+/* ============ 25. WebSocket panel ============ */
+.ws-pane { display: flex; height: 100%; min-height: 0; }
+.ws-list {
+  width: 42%; flex: none; overflow: auto;
+  border-right: 1px solid var(--border);
+}
+.ws-row {
+  display: flex; align-items: center; gap: 8px;
+  height: 26px; padding: 0 10px; cursor: pointer;
+  font-family: var(--mono); font-size: 11.5px;
+  border-bottom: 1px solid var(--border);
+  transition: background var(--t-fast) ease;
+}
+.ws-row:hover { background: var(--bg-hover); }
+.ws-row.selected { background: var(--accent-bg); box-shadow: inset 2px 0 0 var(--accent); }
+.ws-arrow { font-weight: 700; flex: none; }
+.ws-arrow.c2s { color: var(--info); }
+.ws-arrow.s2c { color: var(--ok); }
+.ws-op { color: var(--purple); }
+.ws-row .grow { flex: 1; }
+.ws-size { color: var(--text-faint); font-size: 10.5px; }
+.ws-body { flex: 1; min-width: 0; overflow: auto; }
+
+/* ============ 26. Decoder widget ============ */
+.decoder {
+  position: fixed; z-index: 400;
+  width: 470px; height: 440px;
+  background: var(--bg-raised);
+  border: 1px solid var(--border-strong);
+  border-radius: 10px;
+  box-shadow: var(--shadow);
+  display: flex; flex-direction: column;
+  overflow: hidden;
+  opacity: 1;
+  transition: opacity 160ms var(--ease-out);
+}
+.decoder.ghost {
+  opacity: 0.38; z-index: 5;
+}
+.decoder.ghost:hover { opacity: 1; z-index: 400; }
+.decoder-head {
+  flex: none; height: 36px;
+  display: flex; align-items: center; gap: 8px;
+  padding: 0 8px 0 12px;
+  background: var(--bg-panel);
+  border-bottom: 1px solid var(--border);
+  cursor: grab; user-select: none;
+}
+.decoder-head:active { cursor: grabbing; }
+.decoder-head .title { font-size: 12.5px; font-weight: 600; display: inline-flex; gap: 7px; align-items: center; }
+.decoder-head .spacer { flex: 1; }
+.decoder-body { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 8px; padding: 10px; }
+.decoder-body textarea {
+  flex: 1; min-height: 70px; resize: none;
+  background: var(--bg-input); color: var(--text);
+  border: 1px solid var(--border); border-radius: var(--radius-sm);
+  padding: 8px 10px; font-family: var(--mono); font-size: 12px; line-height: 1.5;
+  outline: none;
+}
+.decoder-body textarea:focus { border-color: var(--accent-dim); }
+.decoder-actions { display: flex; gap: 6px; flex-wrap: wrap; flex: none; }
+.decoder-actions .mini {
+  background: var(--bg-input); color: var(--text);
+  border: 1px solid var(--border); border-radius: var(--radius-xs);
+  font: inherit; font-size: 11.5px; padding: 4px 8px; cursor: pointer;
+  font-family: var(--mono);
+}
+.decoder-actions .mini:hover { border-color: var(--accent-dim); color: var(--accent); }
+.decoder-history {
+  flex: none; max-height: 74px; overflow: auto;
+  display: flex; flex-direction: column; gap: 2px;
+}
+.decoder-step {
+  display: flex; gap: 8px; align-items: center;
+  font-family: var(--mono); font-size: 11px;
+  padding: 3px 8px; border-radius: var(--radius-xs); cursor: pointer;
+  color: var(--text-muted); border: 1px solid transparent;
+}
+.decoder-step:hover { background: var(--bg-hover); }
+.decoder-step.on { border-color: var(--accent-line); color: var(--accent); background: var(--accent-bg); }
+.decoder-step .n { color: var(--text-faint); }
+.decoder-label { font-size: 10.5px; font-weight: 600; letter-spacing: 0.4px; text-transform: uppercase; color: var(--text-faint); flex: none; }
+
+/* rail footer memory chip */
+.rail-mem {
+  display: flex; align-items: center; gap: 8px;
+  padding: 6px 10px; border-radius: var(--radius-sm);
+  color: var(--text-faint); font-family: var(--mono); font-size: 11px;
+  white-space: nowrap; user-select: none;
+}
+.rail-mem .icon { flex: none; }
+.rail.collapsed .rail-mem { justify-content: center; padding: 6px 0; }
+.rail.collapsed .rail-mem .txt { display: none; }
