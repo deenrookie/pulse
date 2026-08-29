@@ -44,6 +44,7 @@ const PATHS: Record<string, string> = {
   eye: '<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z" /><circle cx="12" cy="12" r="3" />',
   minus: '<path d="M5 12h14" />',
   shield: '<path d="M12 22s8-3.5 8-10V5l-8-3-8 3v7c0 6.5 8 10 8 10Z" />',
+  contrast: '<circle cx="12" cy="12" r="9" /><path d="M12 3a9 9 0 0 1 0 18Z" fill="currentColor" stroke="none" />',
 }
 
 export type IconName = keyof typeof PATHS | (string & {})

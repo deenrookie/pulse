@@ -8,6 +8,20 @@ import Icon, { type IconName } from './ui/Icon'
 import { usePulse } from './state'
 
 type Tab = 'proxy' | 'intercept' | 'repeater' | 'extensions' | 'settings'
+type Theme = 'warm' | 'midnight'
+
+const THEMES: { id: Theme; label: string; hint: string }[] = [
+  { id: 'warm', label: 'Warm', hint: 'Warm charcoal + cream (Warp)' },
+  { id: 'midnight', label: 'Midnight', hint: 'Violet midnight + lime (Sentry)' },
+]
+
+function readTheme(): Theme {
+  try {
+    return localStorage.getItem('pulse.theme') === 'midnight' ? 'midnight' : 'warm'
+  } catch {
+    return 'warm'
+  }
+}
 
 const VIEWS: { id: Tab; icon: IconName; label: string; title: string; subtitle: string }[] = [
   { id: 'proxy', icon: 'waves', label: 'Live Traffic', title: 'Live Traffic', subtitle: 'Everything passing through the proxy, in real time' },
@@ -40,6 +54,30 @@ export default function App() {
       return false
     }
   })
+  const [theme, setTheme] = useState<Theme>(readTheme)
+
+  // apply theme to <html>, persist it, and keep the favicon in sync
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme
+    try {
+      localStorage.setItem('pulse.theme', theme)
+    } catch {
+      /* ignore */
+    }
+    const bg = theme === 'midnight' ? '#150f23' : '#2b2622'
+    const fg = theme === 'midnight' ? '#c2ef4e' : '#f7f5f0'
+    const svg =
+      `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'>` +
+      `<rect width='24' height='24' rx='5' fill='${bg}'/>` +
+      `<path d='M3 12h4l2.5-7 4 14 2.5-7h5' fill='none' stroke='${fg}' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/></svg>`
+    let link = document.querySelector<HTMLLinkElement>("link[rel='icon']")
+    if (!link) {
+      link = document.createElement('link')
+      link.rel = 'icon'
+      document.head.appendChild(link)
+    }
+    link.href = 'data:image/svg+xml,' + encodeURIComponent(svg)
+  }, [theme])
 
   const go = useCallback((t: Tab) => {
     setTab(t)
@@ -127,6 +165,14 @@ export default function App() {
           </button>
         ))}
         <div className="rail-footer">
+          <button
+            className="rail-theme"
+            onClick={() => setTheme((t) => (t === 'warm' ? 'midnight' : 'warm'))}
+            title={`Theme: ${THEMES.find((t) => t.id === theme)!.hint} — click to switch`}
+          >
+            <span className="swatch" />
+            <span className="txt">{THEMES.find((t) => t.id === theme)!.label}</span>
+          </button>
           <div className={`rail-status ${pulse.connected ? '' : 'off'}`} title="Event stream / proxy listener">
             <span className="dot" />
             <span className="txt">{pulse.connected ? proxyShort : 'offline'}</span>

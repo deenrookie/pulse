@@ -10,6 +10,13 @@
       href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' rx='5' fill='%232b2622'/%3E%3Cpath d='M3 12h4l2.5-7 4 14 2.5-7h5' fill='none' stroke='%23f7f5f0' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E"
     />
     <title>Pulse — Web Security Testing</title>
+    <script>
+      // apply the saved theme before first paint (no flash of wrong theme)
+      try {
+        document.documentElement.dataset.theme =
+          localStorage.getItem('pulse.theme') === 'midnight' ? 'midnight' : 'warm'
+      } catch (e) {}
+    </script>
   </head>
   <body>
     <div id="root"></div>

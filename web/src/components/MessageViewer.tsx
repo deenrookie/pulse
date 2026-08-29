@@ -84,7 +84,7 @@ export function ResponseInspector({
         <div className="empty-wrap" style={{ flex: 1, display: 'flex' }}>
           {error ? (
             <div className="empty" style={{ color: 'var(--danger)' }}>
-              <div className="glyph" style={{ borderColor: 'rgba(229,138,138,.35)', color: 'var(--danger)' }}>
+              <div className="glyph" style={{ borderColor: 'rgb(var(--danger-rgb) / .35)', color: 'var(--danger)' }}>
                 <Icon name="alert" size={22} />
               </div>
               <div style={{ wordBreak: 'break-all', color: 'var(--danger)' }}>{error}</div>
