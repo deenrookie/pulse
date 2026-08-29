@@ -1,78 +1,246 @@
-import { useMemo, useState } from 'react'
-import FlowTable from '../components/FlowTable'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import FlowTable, { type SortSpec } from '../components/FlowTable'
 import { RequestInspector, ResponseInspector } from '../components/MessageViewer'
+import Split from '../ui/Split'
+import Empty from '../ui/Empty'
+import Icon from '../ui/Icon'
+import { confirm } from '../ui/Confirm'
 import type { PulseState } from '../state'
+import type { FlowMeta } from '../types'
+
+const METHODS = ['ANY', 'GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'HEAD', 'OPTIONS']
+const STATUS_FILTERS: [string, string][] = [
+  ['2', '2xx'],
+  ['3', '3xx'],
+  ['4', '4xx'],
+  ['5', '5xx'],
+  ['pending', 'pending'],
+]
+const STATIC_EXT = /\.(css|js|mjs|map|png|jpe?g|gif|svg|ico|webp|avif|woff2?|ttf|otf|eot|mp4|webm)(\?|$)/i
+const STATIC_TYPE = /^(image\/|font\/|text\/css|text\/javascript|application\/javascript|application\/x-font)/i
+
+function isStatic(m: FlowMeta): boolean {
+  if (m.contentType && STATIC_TYPE.test(m.contentType)) return true
+  return STATIC_EXT.test(m.path)
+}
+
+function cmp(a: FlowMeta, b: FlowMeta, key: keyof FlowMeta, dir: 1 | -1): number {
+  const va = a[key]
+  const vb = b[key]
+  let r = 0
+  if (typeof va === 'number' && typeof vb === 'number') r = va - vb
+  else r = String(va).localeCompare(String(vb))
+  if (r === 0 && a.id !== b.id) r = a.id.localeCompare(b.id)
+  return r * dir
+}
 
 export default function ProxyView({ pulse }: { pulse: PulseState }) {
   const [q, setQ] = useState('')
+  const [statuses, setStatuses] = useState<Set<string>>(new Set())
+  const [method, setMethod] = useState('ANY')
+  const [hideStatic, setHideStatic] = useState(false)
+  const [sort, setSort] = useState<SortSpec>({ key: null, dir: 1 })
+  const [follow, setFollow] = useState(true)
+  const searchRef = useRef<HTMLInputElement>(null)
+
+  // Ctrl+F lands here (App dispatches after switching views)
+  useEffect(() => {
+    const focus = () => searchRef.current?.focus()
+    window.addEventListener('pulse:focus-filter', focus)
+    return () => window.removeEventListener('pulse:focus-filter', focus)
+  }, [])
+
   const filtered = useMemo(() => {
-    if (!q.trim()) return pulse.flows
     const needle = q.trim().toLowerCase()
-    return pulse.flows.filter((m) =>
-      `${m.method} ${m.host} ${m.path} ${m.statusCode} ${m.state}`.toLowerCase().includes(needle),
-    )
-  }, [pulse.flows, q])
+    let out = pulse.flows
+    if (needle) {
+      out = out.filter((m) => `${m.method} ${m.host} ${m.path} ${m.statusCode} ${m.state}`.toLowerCase().includes(needle))
+    }
+    if (method !== 'ANY') out = out.filter((m) => m.method === method)
+    if (statuses.size > 0) {
+      out = out.filter((m) => {
+        if (m.state === 'pending' || m.state === 'intercepted') return statuses.has('pending')
+        if (m.statusCode === 0) return statuses.has('pending')
+        return statuses.has(String(Math.floor(m.statusCode / 100)))
+      })
+    }
+    if (hideStatic) out = out.filter((m) => !isStatic(m))
+    if (sort.key) {
+      const key: keyof FlowMeta =
+        sort.key === 'status'
+          ? 'statusCode'
+          : sort.key === 'size'
+            ? 'respSize'
+            : sort.key === 'dur'
+              ? 'durationMs'
+              : sort.key === 'time'
+                ? 'timestamp'
+                : sort.key === 'type'
+                  ? 'contentType'
+                  : sort.key
+      out = [...out].sort((a, b) => cmp(a, b, key, sort.dir))
+    }
+    return out
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pulse.flows, q, method, statuses, hideStatic, sort])
+
+  const toggleStatus = (s: string) => {
+    setStatuses((prev) => {
+      const next = new Set(prev)
+      if (next.has(s)) next.delete(s)
+      else next.add(s)
+      return next
+    })
+  }
+
+  const clearHistory = async () => {
+    const ok = await confirm({
+      title: 'Clear captured traffic?',
+      message: `Deletes all ${pulse.total} recorded flows from local storage. This cannot be undone.`,
+      confirmLabel: 'Clear history',
+      danger: true,
+    })
+    if (ok) pulse.clearAllFlows()
+  }
 
   const fl = pulse.selectedFlow
+  const filtersActive = q.trim() !== '' || method !== 'ANY' || statuses.size > 0 || hideStatic
 
   return (
-    <div className="split-v" style={{ padding: 10, gap: 10 }}>
-      <div style={{ flex: '1 1 55%', minHeight: 0, display: 'flex' }}>
-        <div className="panel" style={{ flex: 1 }}>
-          <div className="toolbar">
-            <input
-              className="input search"
-              placeholder="Filter (method, host, path, status…)"
-              value={q}
-              spellCheck={false}
-              onChange={(e) => setQ(e.target.value)}
-            />
-            <div style={{ flex: 1 }} />
-            <button className="btn danger" onClick={pulse.clearAllFlows}>
-              Clear history
-            </button>
-          </div>
-          <FlowTable
-            flows={filtered}
-            selectedId={pulse.selectedId}
-            onSelect={pulse.selectFlow}
-            onDelete={pulse.removeFlow}
-            onSendToRepeater={pulse.sendToRepeater}
-            notify={pulse.notify}
-          />
-        </div>
-      </div>
-      <div style={{ flex: '1 1 45%', minHeight: 0, display: 'flex', flexDirection: 'column' }}>
-        <div className="toolbar" style={{ borderRadius: '8px 8px 0 0' }}>
-          <span style={{ fontFamily: 'var(--mono)', color: 'var(--text-muted)' }}>
-            {fl ? `${fl.id} · ${fl.request.method} ${fl.request.url}` : 'No flow selected'}
-          </span>
-          <div style={{ flex: 1 }} />
-          <button
-            className="btn sm"
-            disabled={!fl}
-            title="Copy this request into a new Repeater tab"
-            onClick={() => fl && pulse.sendToRepeater(fl.id)}
-          >
-            ⟳ Send to Repeater
-          </button>
-        </div>
-        <div className="inspector" style={{ flex: 1, padding: 0, gap: 10 }}>
-          {fl ? (
-            <>
-              <RequestInspector req={fl.request} />
-              <ResponseInspector resp={fl.response} error={fl.error} />
-            </>
-          ) : (
-            <div className="panel" style={{ flex: 1 }}>
-              <div className="empty">
-                <div className="big">🔎</div>
-                <div>Select a row to inspect the request and response.</div>
+    <div className="view padded">
+      <Split
+        dir="v"
+        storageKey="pulse.split.proxy"
+        initial={0.52}
+        a={
+          <div className="panel" style={{ flex: 1 }}>
+            <div className="toolbar">
+              <div className="search-box">
+                <Icon name="search" size={13} />
+                <input
+                  ref={searchRef}
+                  className="input"
+                  placeholder="Filter traffic…"
+                  value={q}
+                  spellCheck={false}
+                  onChange={(e) => setQ(e.target.value)}
+                />
+                <kbd className="hint">Ctrl F</kbd>
               </div>
+              {STATUS_FILTERS.map(([id, label]) => (
+                <button
+                  key={id}
+                  className={`tchip ${statuses.has(id) ? 'on' : ''}`}
+                  onClick={() => toggleStatus(id)}
+                >
+                  {label}
+                </button>
+              ))}
+              <select className="select" style={{ width: 92 }} value={method} onChange={(e) => setMethod(e.target.value)}>
+                {METHODS.map((m) => (
+                  <option key={m} value={m}>
+                    {m === 'ANY' ? 'All methods' : m}
+                  </option>
+                ))}
+              </select>
+              <button
+                className={`tchip ${hideStatic ? 'on' : ''}`}
+                onClick={() => setHideStatic((v) => !v)}
+                title="Hide images, styles, scripts and fonts"
+              >
+                <Icon name="filter" size={11} />
+                Hide static
+              </button>
+              {filtersActive && (
+                <button
+                  className="tchip"
+                  onClick={() => {
+                    setQ('')
+                    setMethod('ANY')
+                    setStatuses(new Set())
+                    setHideStatic(false)
+                  }}
+                >
+                  <Icon name="x" size={11} />
+                  Reset
+                </button>
+              )}
+              <div className="spacer" style={{ flex: 1 }} />
+              <span className="faint mono" style={{ fontSize: 11, fontVariantNumeric: 'tabular-nums' }} title="Total recorded flows (including filtered-out)">
+                {pulse.total.toLocaleString()} total
+              </span>
+              <button className="btn danger sm" onClick={clearHistory} disabled={pulse.total === 0}>
+                <Icon name="trash" size={13} />
+                Clear
+              </button>
             </div>
-          )}
-        </div>
-      </div>
+            <FlowTable
+              flows={filtered}
+              selectedId={pulse.selectedId}
+              sort={sort}
+              onSort={setSort}
+              follow={follow}
+              onFollowChange={setFollow}
+              onSelect={pulse.selectFlow}
+              onDelete={pulse.removeFlow}
+              onSendToRepeater={pulse.sendToRepeater}
+              notify={pulse.notify}
+              proxyAddr={pulse.status?.proxyAddr}
+              filtered={filtersActive}
+            />
+          </div>
+        }
+        b={
+          <div className="panel" style={{ flex: 1 }}>
+            <div className="panel-head">
+              {fl ? (
+                <>
+                  <span className={`method-${fl.request.method} mono`} style={{ fontWeight: 700, fontSize: 12 }}>
+                    {fl.request.method}
+                  </span>
+                  <span className="meta" title={fl.request.url}>
+                    {fl.request.url}
+                  </span>
+                </>
+              ) : (
+                <span className="title">Inspector</span>
+              )}
+              <div className="spacer" />
+              {fl?.response && (
+                <button
+                  className="btn ghost sm icon-btn"
+                  title="Open the response in a browser tab"
+                  onClick={() => window.open(`/api/flows/${fl.id}/render`, '_blank')}
+                >
+                  <Icon name="external" size={13} />
+                </button>
+              )}
+              <button
+                className="btn sm"
+                disabled={!fl}
+                title="Copy this request into a new Repeater tab"
+                onClick={() => fl && pulse.sendToRepeater(fl.id)}
+              >
+                <Icon name="send" size={13} />
+                Send to Repeater
+              </button>
+            </div>
+            {fl ? (
+              <Split
+                dir="h"
+                storageKey="pulse.split.inspector"
+                initial={0.5}
+                a={<RequestInspector req={fl.request} />}
+                b={<ResponseInspector resp={fl.response} error={fl.error} flowId={fl.id} />}
+              />
+            ) : (
+              <Empty icon="eye" title="Nothing selected">
+                Click a row to inspect its request and response.
+              </Empty>
+            )}
+          </div>
+        }
+      />
     </div>
   )
 }

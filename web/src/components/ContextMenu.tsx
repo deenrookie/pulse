@@ -1,11 +1,14 @@
 import { useEffect, useRef, useState } from 'react'
+import Icon, { type IconName } from '../ui/Icon'
 
 export interface MenuItem {
   label: string
   onClick: () => void | Promise<void>
+  icon?: IconName
   danger?: boolean
   disabled?: boolean
   separatorAfter?: boolean
+  hint?: string
 }
 
 interface Props {
@@ -15,7 +18,7 @@ interface Props {
   onClose: () => void
 }
 
-// Lightweight right-click menu: closes on click-away / Escape / scroll.
+// Right-click menu: closes on click-away / Escape / scroll.
 // Scales in from the corner nearest the cursor (origin-aware popover).
 export default function ContextMenu({ x, y, items, onClose }: Props) {
   const ref = useRef<HTMLDivElement>(null)
@@ -65,7 +68,7 @@ export default function ContextMenu({ x, y, items, onClose }: Props) {
       onMouseUp={(e) => e.stopPropagation()}
     >
       {items.map((item, i) => (
-        <div key={i} className="ctx-sep-wrap">
+        <div key={i}>
           <button
             className={`ctx-item ${item.danger ? 'danger' : ''}`}
             disabled={item.disabled}
@@ -76,7 +79,9 @@ export default function ContextMenu({ x, y, items, onClose }: Props) {
               void item.onClick()
             }}
           >
+            {item.icon && <Icon name={item.icon} size={14} />}
             {item.label}
+            {item.hint && <kbd className="ctx-hint">{item.hint}</kbd>}
           </button>
           {item.separatorAfter && <div className="ctx-sep" />}
         </div>

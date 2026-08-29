@@ -123,7 +123,6 @@ export function usePulse() {
   const selectFlow = useCallback((id: string | null) => setSelectedId(id), [])
 
   const clearAllFlows = useCallback(async () => {
-    if (!window.confirm('Clear all captured traffic?')) return
     try {
       await api.clearFlows()
       setFlows([])
@@ -200,6 +199,27 @@ export function usePulse() {
     [notify],
   )
 
+  // blank tab with a sensible default request (API needs flowId or request)
+  const newRepeaterTab = useCallback(async () => {
+    try {
+      const tab = await api.createRepeaterTab({
+        request: {
+          method: 'GET',
+          url: 'https://example.com/',
+          httpVersion: 'HTTP/1.1',
+          headers: [{ name: 'Host', value: 'example.com' }, { name: 'User-Agent', value: 'Pulse' }, { name: 'Accept', value: '*/*' }, { name: 'Connection', value: 'close' }],
+          body: '',
+        },
+      })
+      const r = await api.listRepeater()
+      setRepeaterTabs(r.tabs)
+      return tab.id
+    } catch (e) {
+      notify(`New tab failed: ${(e as Error).message}`, 'err')
+      return null
+    }
+  }, [notify])
+
   const repeaterSend = useCallback(async (id: string, request?: EditableRequest) => {
     await api.sendRepeaterTab(id, request)
     const r = await api.listRepeater()
@@ -234,6 +254,7 @@ export function usePulse() {
     dropPending,
     repeaterTabs,
     sendToRepeater,
+    newRepeaterTab,
     repeaterSend,
     repeaterSave,
     repeaterDelete,

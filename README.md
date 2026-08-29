@@ -14,15 +14,18 @@
 └────────────┘                        └─────────────┘
 ```
 
-## 功能（v0.2）
+## 功能（v0.3）
+
+v0.3 对控制台做了整体重设计（对标 Caido 的工作台形态）并强化了流量表格，后端引擎与 API 不变。截图见 `gui-test-screenshots/redesign/`。
 
 | 模块 | 能力 |
 | --- | --- |
-| **Proxy** | HTTP/HTTPS MITM 抓包，实时（SSE）流量表格，关键字过滤，正文完整检查（Headers/Params/Pretty/Hex），JSONL 持久化重启恢复，**右键菜单**（Send to Repeater / Copy as cURL / 浏览器查看响应 / 复制 URL 与正文 / 删除） |
-| **Intercept** | 请求挂起队列，改方法/URL/头/体后放行或丢弃（502） |
-| **Repeater** | 历史流量一键送入重放标签（持久化），改包重发，响应即查 |
+| **Shell** | 左侧图标导航栏（可折叠、徽章计数、连接状态），顶栏全局 Intercept 开关与监听地址，`#/view` 直达路由，`Ctrl+1..5` 切换视图、`Ctrl+F` 聚焦过滤 |
+| **Proxy** | HTTP/HTTPS MITM 抓包，实时（SSE）**虚拟化**流量表格（5000 行流畅滚动、点击列头排序），多维过滤（关键字、状态码分类、HTTP 方法、隐藏静态资源），正文完整检查（Headers/Params/Pretty/Hex/Raw、图片预览、JSON 美化），JSONL 持久化重启恢复，**右键菜单**（Send to Repeater / Copy as cURL / 浏览器查看响应 / 复制 URL 与正文 / 删除），表格/检查器分割可拖拽调整 |
+| **Intercept** | 请求挂起队列，改方法/URL/头/体后放行或丢弃（502），键盘 `F`/`D` 快捷操作 |
+| **Repeater** | 历史流量一键送入重放标签（持久化），空白标签一键新建，改包重发（`Ctrl+Enter`），响应即查 |
 | **Extensions** | **Match & Replace**（5 作用域、正则/字面量、命中计数、持久化）；**JS 插件**（onRequest/onResponse 钩子，隔离 VM + 超时保护，热重载，日志面板） |
-| **Settings** | CA 证书下载与各平台安装指引、运行状态与指纹 |
+| **Settings** | CA 证书下载与各平台安装指引、运行状态与指纹、快捷键速查 |
 
 WebSocket 等升级流量以透明隧道转发（握手后逐字节双向透传）。
 请求管线顺序：`插件 → 重写规则 → 拦截 → 上游`；存储的流量始终是实际发送/接收的最终形态。

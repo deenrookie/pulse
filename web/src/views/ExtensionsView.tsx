@@ -1,5 +1,8 @@
 import { useEffect, useState } from 'react'
 import * as api from '../api'
+import Icon from '../ui/Icon'
+import Empty from '../ui/Empty'
+import { confirm } from '../ui/Confirm'
 import type { PluginInfo, RewriteRule, RewriteZone } from '../types'
 
 const ZONES: [RewriteZone, string][] = [
@@ -15,16 +18,18 @@ type ExtTab = 'rewrite' | 'plugins'
 export default function ExtensionsView({ notify }: { notify: (text: string, kind?: 'ok' | 'err') => void }) {
   const [tab, setTab] = useState<ExtTab>('rewrite')
   return (
-    <div className="split-v">
+    <div className="view">
       <div className="ext-tabs">
         <button className={`ext-tab ${tab === 'rewrite' ? 'active' : ''}`} onClick={() => setTab('rewrite')}>
+          <Icon name="arrowDownUp" size={14} />
           Match &amp; Replace
         </button>
         <button className={`ext-tab ${tab === 'plugins' ? 'active' : ''}`} onClick={() => setTab('plugins')}>
+          <Icon name="puzzle" size={14} />
           Plugins
         </button>
       </div>
-      <div className="view" style={{ padding: 10, minHeight: 0 }}>
+      <div className="view padded" style={{ position: 'relative' }}>
         {tab === 'rewrite' ? <RewritePanel notify={notify} /> : <PluginsPanel notify={notify} />}
       </div>
     </div>
@@ -96,6 +101,13 @@ function RewritePanel({ notify }: { notify: (text: string, kind?: 'ok' | 'err') 
   }
 
   const remove = async (r: RewriteRule) => {
+    const ok = await confirm({
+      title: 'Delete rule?',
+      message: `«${r.match}» will no longer rewrite traffic.`,
+      confirmLabel: 'Delete rule',
+      danger: true,
+    })
+    if (!ok) return
     try {
       await api.deleteRewriteRule(r.id)
       if (editingId === r.id) {
@@ -120,13 +132,13 @@ function RewritePanel({ notify }: { notify: (text: string, kind?: 'ok' | 'err') 
     })
   }
 
+  const totalHits = rules.reduce((n, r) => n + r.hits, 0)
+
   return (
     <div className="panel" style={{ flex: 1 }}>
       <div className="panel-head">
         <span className="title">{editingId ? 'Edit rule' : 'Add rule'}</span>
-        <span style={{ color: 'var(--text-faint)' }}>
-          rules run on proxy traffic after plugins, before interception
-        </span>
+        <span className="meta">rules run on proxy traffic after plugins, before interception</span>
         <div className="spacer" />
         {editingId && (
           <button
@@ -140,7 +152,8 @@ function RewritePanel({ notify }: { notify: (text: string, kind?: 'ok' | 'err') 
           </button>
         )}
         <button className="btn primary" disabled={busy} onClick={submit}>
-          {editingId ? 'Save' : 'Add'}
+          {busy ? <span className="spinner" /> : <Icon name="plus" size={13} />}
+          {editingId ? 'Save' : 'Add rule'}
         </button>
       </div>
       <div className="rule-form">
@@ -157,6 +170,7 @@ function RewritePanel({ notify }: { notify: (text: string, kind?: 'ok' | 'err') 
           value={draft.match}
           spellCheck={false}
           onChange={(e) => setDraft({ ...draft, match: e.target.value })}
+          onKeyDown={(e) => e.key === 'Enter' && submit()}
         />
         <input
           className="input"
@@ -164,6 +178,7 @@ function RewritePanel({ notify }: { notify: (text: string, kind?: 'ok' | 'err') 
           value={draft.replace}
           spellCheck={false}
           onChange={(e) => setDraft({ ...draft, replace: e.target.value })}
+          onKeyDown={(e) => e.key === 'Enter' && submit()}
         />
         <label className="switch" title="Treat Match as a regular expression">
           <input type="checkbox" checked={draft.regex} onChange={(e) => setDraft({ ...draft, regex: e.target.checked })} />
@@ -174,51 +189,59 @@ function RewritePanel({ notify }: { notify: (text: string, kind?: 'ok' | 'err') 
           className="input"
           placeholder="Comment (optional)"
           value={draft.comment}
+          spellCheck={false}
           onChange={(e) => setDraft({ ...draft, comment: e.target.value })}
+          onKeyDown={(e) => e.key === 'Enter' && submit()}
         />
       </div>
       <div className="panel-body">
         {rules.length === 0 ? (
-          <div className="empty">
-            <div className="big">⇄</div>
-            <div>
-              No rules yet.
-              <br />
-              Example: strip a cookie, rewrite an API version, redact tokens in responses.
-            </div>
-          </div>
+          <Empty icon="arrowDownUp" title="No rules yet">
+            Rewrite headers, bodies or URLs on the fly — e.g. strip a cookie,
+            <br />
+            rewrite an API version, redact tokens in responses.
+          </Empty>
         ) : (
           <table className="rules-table">
             <thead>
               <tr>
-                <th style={{ width: 40 }}>On</th>
-                <th style={{ width: 150 }}>Applies to</th>
+                <th style={{ width: 44 }}>On</th>
+                <th style={{ width: 160 }}>Applies to</th>
                 <th>Match</th>
                 <th>Replace</th>
-                <th style={{ width: 50 }}>Regex</th>
+                <th style={{ width: 56 }}>Regex</th>
                 <th>Comment</th>
                 <th style={{ width: 60, textAlign: 'right' }}>Hits</th>
-                <th style={{ width: 110 }} />
+                <th style={{ width: 106 }} />
               </tr>
             </thead>
             <tbody>
               {rules.map((r) => (
                 <tr key={r.id} onDoubleClick={() => edit(r)} title="Double-click to edit">
                   <td>
-                    <input type="checkbox" checked={r.enabled} onChange={() => toggle(r)} />
+                    <label className="switch">
+                      <input type="checkbox" checked={r.enabled} onChange={() => toggle(r)} />
+                      <span className="track" />
+                    </label>
                   </td>
                   <td>
-                    <span className="zone-chip">{zoneLabel(r.zone)}</span>
+                    <span className={`zone-chip ${r.zone.startsWith('request') ? 'z-req' : 'z-resp'}`}>
+                      {zoneLabel(r.zone)}
+                    </span>
                   </td>
-                  <td title={r.match} style={{ maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                    {r.match}
+                  <td className="cell-clip" title={r.match}>
+                    <span className="mono">{r.match}</span>
                   </td>
-                  <td title={r.replace} style={{ maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                    {r.replace || <span style={{ color: 'var(--text-faint)' }}>(empty)</span>}
+                  <td className="cell-clip" title={r.replace}>
+                    {r.replace ? <span className="mono">{r.replace}</span> : <span className="faint">(empty)</span>}
                   </td>
-                  <td>{r.regex ? '.*' : 'abc'}</td>
-                  <td style={{ color: 'var(--text-muted)' }}>{r.comment}</td>
-                  <td style={{ textAlign: 'right', color: 'var(--text-faint)' }}>{r.hits}</td>
+                  <td className="muted">{r.regex ? '.*' : 'abc'}</td>
+                  <td className="muted cell-clip" title={r.comment}>
+                    {r.comment}
+                  </td>
+                  <td style={{ textAlign: 'right' }} className="faint">
+                    {r.hits}
+                  </td>
                   <td>
                     <button className="btn ghost sm" onClick={() => edit(r)}>
                       Edit
@@ -233,6 +256,13 @@ function RewritePanel({ notify }: { notify: (text: string, kind?: 'ok' | 'err') 
           </table>
         )}
       </div>
+      {rules.length > 0 && (
+        <div className="panel-head" style={{ borderTop: '1px solid var(--border)', borderBottom: 'none', height: 34 }}>
+          <span className="meta">
+            {rules.length} rules · {totalHits.toLocaleString()} total hits
+          </span>
+        </div>
+      )}
     </div>
   )
 }
@@ -283,26 +313,29 @@ function PluginsPanel({ notify }: { notify: (text: string, kind?: 'ok' | 'err') 
     <div className="panel" style={{ flex: 1 }}>
       <div className="panel-head">
         <span className="title">Plugins</span>
-        <span style={{ fontFamily: 'var(--mono)', color: 'var(--text-faint)' }}>{dir}</span>
+        <span className="meta" title={dir}>
+          {dir}
+        </span>
         <div className="spacer" />
         <button className="btn primary" disabled={busy} onClick={reload}>
-          {busy ? <span className="spinner" /> : '⟳'} Reload
+          {busy ? <span className="spinner" /> : <Icon name="refresh" size={13} />}
+          Reload
         </button>
       </div>
-      <div className="banner" style={{ borderRadius: 0 }}>
-        Drop <code>*.js</code> files into the directory above, then Reload. Hooks run on every proxied request
-        and response — see docs/Plugins.md.
+      <div className="banner">
+        <Icon name="terminal" size={14} />
+        <span>
+          Drop <code>*.js</code> files into the directory above, then Reload. Hooks run on every proxied request
+          and response — see <code>docs/Plugins.md</code>.
+        </span>
       </div>
       <div className="panel-body">
         {plugins.length === 0 ? (
-          <div className="empty">
-            <div className="big">🧩</div>
-            <div>
-              No plugins installed.
-              <br />
-              Copy an example from <code>examples/plugins/</code> to get started.
-            </div>
-          </div>
+          <Empty icon="puzzle" title="No plugins installed">
+            Copy an example from <b>examples/plugins/</b> into the plugin
+            <br />
+            directory to get started.
+          </Empty>
         ) : (
           plugins.map((p) => (
             <div key={p.file} className="plugin-card">
@@ -312,13 +345,15 @@ function PluginsPanel({ notify }: { notify: (text: string, kind?: 'ok' | 'err') 
                   <span className="track" />
                 </label>
                 <span className="name">{p.name}</span>
-                {p.version && <span style={{ color: 'var(--text-faint)', fontSize: 11 }}>v{p.version}</span>}
+                {p.version && <span className="faint" style={{ fontSize: 11 }}>v{p.version}</span>}
                 <span className="file">{p.file}</span>
-                <span style={{ fontFamily: 'var(--mono)', fontSize: 11, color: 'var(--text-muted)' }}>
-                  {p.hooks.join(' + ') || 'no hooks'}
-                </span>
-                <div style={{ flex: 1 }} />
-                <span style={{ fontFamily: 'var(--mono)', fontSize: 11, color: 'var(--text-faint)' }}>
+                {p.hooks.map((h) => (
+                  <span key={h} className="hook-tag">
+                    {h}()
+                  </span>
+                ))}
+                <div className="grow" />
+                <span className="faint mono" style={{ fontSize: 11 }}>
                   {p.hits} calls
                 </span>
               </div>

@@ -1,8 +1,9 @@
 // Structured inspector for one side (request or response) of an HTTP message.
-// Sub-tabs: Headers / Params / Pretty / Hex / Raw.
+// Sub-tabs: Headers / Params / Pretty (JSON, text or image) / Hex / Raw.
 import { useMemo, useState } from 'react'
-import { bodyToHex, bodyToText, formatSize, looksBinary, prettyJsonIfPossible } from '../api'
+import { bodyToHex, bodyToText, copyToClipboard, formatSize, looksBinary, prettyJsonIfPossible } from '../api'
 import type { Header } from '../types'
+import Icon from '../ui/Icon'
 
 interface RequestLike {
   method: string
@@ -36,10 +37,11 @@ export function RequestInspector({ req }: { req: RequestLike }) {
     <div className="panel" style={{ flex: 1 }}>
       <div className="panel-head">
         <span className="title">Request</span>
-        <span style={{ fontFamily: 'var(--mono)' }}>
+        <span className="meta" title={req.url}>
           {req.method} {pathOf(req.url)}
         </span>
         <div className="spacer" />
+        <CopyBody b64={req.body} />
         <SubTabs tab={tab} setTab={setTab} hasBody={hasBody} hasParams={params.length > 0} />
       </div>
       <div className="summary-strip">
@@ -50,11 +52,11 @@ export function RequestInspector({ req }: { req: RequestLike }) {
           host <b>{hostOf(req.url)}</b>
         </span>
         {hasBody && (
-        <span>
-          body <b>{formatSize(Math.floor(((req.body?.length ?? 0) * 3) / 4))}</b>
-        </span>
+          <span>
+            body <b>{formatSize(Math.floor(((req.body?.length ?? 0) * 3) / 4))}</b>
+          </span>
         )}
-        {req.truncated && <span style={{ color: 'var(--warn)' }}>⚠ truncated</span>}
+        {req.truncated && <span className="warn-inline">⚠ truncated</span>}
       </div>
       <div className="panel-body">
         <TabBody tab={tab} headers={req.headers} params={params} text={text} b64={req.body} kind="request" req={req} />
@@ -63,7 +65,15 @@ export function RequestInspector({ req }: { req: RequestLike }) {
   )
 }
 
-export function ResponseInspector({ resp, error }: { resp?: ResponseLike; error?: string }) {
+export function ResponseInspector({
+  resp,
+  error,
+  flowId,
+}: {
+  resp?: ResponseLike
+  error?: string
+  flowId?: string
+}) {
   const [tab, setTab] = useState<Tab>('headers')
   if (!resp) {
     return (
@@ -71,17 +81,21 @@ export function ResponseInspector({ resp, error }: { resp?: ResponseLike; error?
         <div className="panel-head">
           <span className="title">Response</span>
         </div>
-        <div className="empty">
+        <div className="empty-wrap" style={{ flex: 1, display: 'flex' }}>
           {error ? (
-            <>
-              <div className="big">⚠️</div>
-              <div style={{ color: 'var(--danger)', wordBreak: 'break-all' }}>{error}</div>
-            </>
+            <div className="empty" style={{ color: 'var(--danger)' }}>
+              <div className="glyph" style={{ borderColor: 'rgba(239,112,112,.35)', color: 'var(--danger)' }}>
+                <Icon name="alert" size={22} />
+              </div>
+              <div style={{ wordBreak: 'break-all', color: 'var(--danger)' }}>{error}</div>
+            </div>
           ) : (
-            <>
-              <div className="big">⏳</div>
-              <div>Waiting for response…</div>
-            </>
+            <div className="empty">
+              <div className="glyph">
+                <Icon name="clock" size={22} />
+              </div>
+              <b>Waiting for response…</b>
+            </div>
           )}
         </div>
       </div>
@@ -94,13 +108,20 @@ export function ResponseInspector({ resp, error }: { resp?: ResponseLike; error?
     <div className="panel" style={{ flex: 1 }}>
       <div className="panel-head">
         <span className="title">Response</span>
-        <span
-          className={`status${Math.floor(resp.statusCode / 100)}`}
-          style={{ fontFamily: 'var(--mono)', fontWeight: 700 }}
-        >
+        <span className={`status${Math.floor(resp.statusCode / 100)} mono`} style={{ fontWeight: 700 }}>
           {resp.statusCode} {resp.reason}
         </span>
         <div className="spacer" />
+        <CopyBody b64={resp.body} />
+        {flowId && resp.statusCode > 0 && (
+          <button
+            className="btn ghost sm icon-btn"
+            title="Open this response in a browser tab"
+            onClick={() => window.open(`/api/flows/${flowId}/render`, '_blank')}
+          >
+            <Icon name="external" size={13} />
+          </button>
+        )}
         <SubTabs tab={tab} setTab={setTab} hasBody={hasBody} hasParams={false} />
       </div>
       <div className="summary-strip">
@@ -116,12 +137,27 @@ export function ResponseInspector({ resp, error }: { resp?: ResponseLike; error?
         <span>
           size <b>{formatSize(Math.floor(((resp.body?.length ?? 0) * 3) / 4))}</b>
         </span>
-        {resp.truncated && <span style={{ color: 'var(--warn)' }}>⚠ truncated</span>}
+        {resp.truncated && <span className="warn-inline">⚠ truncated</span>}
       </div>
       <div className="panel-body">
         <TabBody tab={tab} headers={resp.headers} params={params} text={text} b64={resp.body} kind="response" />
       </div>
     </div>
+  )
+}
+
+function CopyBody({ b64 }: { b64: string | null }) {
+  if (!b64) return null
+  return (
+    <button
+      className="btn ghost sm icon-btn"
+      title="Copy body to clipboard"
+      onClick={async () => {
+        await copyToClipboard(bodyToText(b64))
+      }}
+    >
+      <Icon name="copy" size={13} />
+    </button>
   )
 }
 
@@ -191,7 +227,7 @@ function TabBody({
               <tr key={i}>
                 <td>{k}</td>
                 <td>
-                  <span style={{ color: 'var(--text-faint)', fontSize: 10, marginRight: 8 }}>[{where}]</span>
+                  <span className="src-tag">[{where}]</span>
                   {v}
                 </td>
               </tr>
@@ -202,6 +238,8 @@ function TabBody({
     case 'pretty': {
       const json = prettyJsonIfPossible(text)
       if (json) return <pre className="code-view">{json}</pre>
+      const ct = headers.find((h) => h.name.toLowerCase() === 'content-type')?.value ?? ''
+      if (ct.startsWith('image/') && b64) return <ImagePreview b64={b64} contentType={ct} />
       if (looksBinary(b64)) return <BinaryNotice b64={b64} />
       return <pre className="code-view">{text || '(empty)'}</pre>
     }
@@ -223,13 +261,28 @@ function TabBody({
   }
 }
 
+function ImagePreview({ b64, contentType }: { b64: string; contentType: string }) {
+  const bytes = Math.floor((b64.length * 3) / 4)
+  return (
+    <div className="img-preview">
+      <img src={`data:${contentType.split(';')[0]};base64,${b64}`} alt="response body" />
+      <span className="caption">
+        {contentType} · {formatSize(bytes)}
+      </span>
+    </div>
+  )
+}
+
 function BinaryNotice({ b64 }: { b64: string | null }) {
   const bytes = Math.floor(((b64?.length ?? 0) * 3) / 4)
   return (
     <div className="empty">
-      <div className="big">🗂️</div>
+      <div className="glyph">
+        <Icon name="file" size={22} />
+      </div>
+      <b>Binary body</b>
       <div>
-        Binary body ({formatSize(bytes)}). Use the Hex tab to inspect bytes.
+        {formatSize(bytes)} — switch to the Hex tab to inspect the bytes.
       </div>
     </div>
   )

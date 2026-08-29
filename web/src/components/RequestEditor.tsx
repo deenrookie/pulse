@@ -75,14 +75,17 @@ export default function RequestEditor({ state, onChange, note }: Props) {
           onChange={(e) => onChange({ ...state, url: e.target.value })}
         />
       </div>
-      <div className="editor-label">Headers (one per line, Name: Value)</div>
+      <div className="editor-label">Headers</div>
       <textarea
         className="editor headers"
         value={state.headersText}
         spellCheck={false}
         onChange={(e) => onChange({ ...state, headersText: e.target.value })}
+        placeholder={'One per line — Name: Value'}
       />
-      <div className="editor-label">Body {bodyIsBinary ? '(binary content shown as text)' : ''}</div>
+      <div className="editor-label">
+        Body {bodyIsBinary && <span className="hint">binary content shown as text</span>}
+      </div>
       <textarea
         className="editor"
         value={state.bodyText}
@@ -90,7 +93,7 @@ export default function RequestEditor({ state, onChange, note }: Props) {
         onChange={(e) => onChange({ ...state, bodyText: e.target.value })}
         placeholder="(request body)"
       />
-      {note && <div style={{ color: 'var(--text-faint)', fontSize: 12 }}>{note}</div>}
+      {note && <div className="faint" style={{ fontSize: 12 }}>{note}</div>}
     </div>
   )
 }

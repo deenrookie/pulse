@@ -296,7 +296,7 @@ func (r *Runtime) runHook(p *Plugin, hook string, req *store.Request, resp *stor
 	}
 	var logs []string
 	pulseObj := vm.NewObject()
-	_ = pulseObj.Set("version", "0.2.0")
+	_ = pulseObj.Set("version", "0.3.0")
 	_ = pulseObj.Set("log", func(call goja.FunctionCall) goja.Value {
 		if len(call.Arguments) > 0 {
 			logs = append(logs, call.Arguments[0].String())
