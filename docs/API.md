@@ -40,6 +40,9 @@
 ### `GET /api/flows/{id}`
 完整 Flow（含请求/响应头与 base64 正文）。404 若不存在。
 
+### `GET /api/flows/{id}/render`
+以原始 Content-Type 直接渲染响应正文（"在浏览器中查看响应"）。带 `Content-Security-Policy: sandbox` 等安全头。
+
 ### `DELETE /api/flows` / `DELETE /api/flows/{id}`
 清空全部 / 删除单条。
 
@@ -81,6 +84,23 @@
 
 ### `GET /api/cert`
 `application/x-pem-file` 附件下载 CA（`pulse-ca.pem`）。
+
+## 重写规则（Match & Replace）
+
+### `GET /api/rewrite` → `{"rules":[{...}]}`
+规则字段：`id`（rule-N）、`enabled`、`zone`（`request_line`|`request_header`|`request_body`|`response_header`|`response_body`）、`match`、`replace`、`regex`、`comment`、`hits`（本次会话命中数）。
+
+### `POST /api/rewrite` `{zone,match,replace,regex,comment,enabled}` → 201 新规则
+非法 zone / 空 match / 非法正则返回 400。
+### `PUT /api/rewrite/{id}` → 更新（同上字段）
+### `DELETE /api/rewrite/{id}` → 删除
+
+## 插件（Plugins）
+
+### `GET /api/plugins` → `{"plugins":[...],"dir":"<plugins 目录>"}`
+插件字段：`name`、`version`、`file`、`enabled`、`hooks`（`["request","response"]`）、`hits`、`error?`、`log?`（最近 60 行）。
+### `POST /api/plugins/reload` → 重扫插件目录并返回新列表
+### `PUT /api/plugins/{file}` `{"enabled":bool}` → 启停单个插件
 
 ## Request 对象结构（提交类接口通用）
 ```json

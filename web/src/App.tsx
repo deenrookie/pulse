@@ -1,16 +1,18 @@
 import { useState } from 'react'
+import ExtensionsView from './views/ExtensionsView'
 import InterceptView from './views/InterceptView'
 import ProxyView from './views/ProxyView'
 import RepeaterView from './views/RepeaterView'
 import SettingsView from './views/SettingsView'
 import { usePulse } from './state'
 
-type Tab = 'proxy' | 'intercept' | 'repeater' | 'settings'
+type Tab = 'proxy' | 'intercept' | 'repeater' | 'extensions' | 'settings'
 
 const TABS: [Tab, string][] = [
   ['proxy', 'Proxy'],
   ['intercept', 'Intercept'],
   ['repeater', 'Repeater'],
+  ['extensions', 'Extensions'],
   ['settings', 'Settings'],
 ]
 
@@ -57,6 +59,7 @@ export default function App() {
         {tab === 'proxy' && <ProxyView pulse={pulse} />}
         {tab === 'intercept' && <InterceptView pulse={pulse} />}
         {tab === 'repeater' && <RepeaterView pulse={pulse} goProxy={() => setTab('proxy')} />}
+        {tab === 'extensions' && <ExtensionsView notify={pulse.notify} />}
         {tab === 'settings' && <SettingsView pulse={pulse} />}
       </main>
       {pulse.toast && <div className={`toast ${pulse.toast.kind === 'err' ? 'err' : ''}`}>{pulse.toast.text}</div>}

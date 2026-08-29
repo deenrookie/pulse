@@ -17,12 +17,15 @@ import (
 
 	"pulse/internal/certs"
 	"pulse/internal/events"
+	"pulse/internal/plugins"
+	"pulse/internal/rewrite"
 	"pulse/internal/store"
 )
 
 // newTestEngine starts an engine on an ephemeral port and returns it with its
-// store and proxy address.
-func newTestEngine(t *testing.T) (*Engine, *store.Store, string) {
+// store and proxy address. The optional plugins/rewrite arguments wire the
+// extension pipeline; nil disables both stages.
+func newTestEngine(t *testing.T, plug *plugins.Runtime, rw *rewrite.Engine) (*Engine, *store.Store, string) {
 	t.Helper()
 	dir := t.TempDir()
 	auth, err := certs.LoadOrCreate(dir)
@@ -34,7 +37,7 @@ func newTestEngine(t *testing.T) (*Engine, *store.Store, string) {
 		t.Fatalf("store: %v", err)
 	}
 	bus := events.NewBus()
-	eng := New(auth, st, bus, "test")
+	eng := New(auth, st, bus, plug, rw, "test")
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("listen: %v", err)
@@ -92,7 +95,7 @@ func TestProxyPlainHTTPGetPost(t *testing.T) {
 	}))
 	defer up.Close()
 
-	eng, st, addr := newTestEngine(t)
+	eng, st, addr := newTestEngine(t, nil, nil)
 	_ = eng
 	client := proxiedClient(addr, nil)
 
@@ -147,7 +150,7 @@ func TestProxyHTTPSIntercepted(t *testing.T) {
 	}))
 	defer up.Close()
 
-	eng, st, addr := newTestEngine(t)
+	eng, st, addr := newTestEngine(t, nil, nil)
 	// trust the self-signed upstream cert
 	upPool := x509.NewCertPool()
 	upPool.AddCert(up.Certificate())
@@ -189,7 +192,7 @@ func TestInterceptForwardModified(t *testing.T) {
 	}))
 	defer up.Close()
 
-	eng, st, addr := newTestEngine(t)
+	eng, st, addr := newTestEngine(t, nil, nil)
 	eng.Inter.SetEnabled(true)
 	client := proxiedClient(addr, nil)
 
@@ -244,7 +247,7 @@ func TestInterceptDrop(t *testing.T) {
 	}))
 	defer up.Close()
 
-	eng, _, addr := newTestEngine(t)
+	eng, _, addr := newTestEngine(t, nil, nil)
 	eng.Inter.SetEnabled(true)
 	client := proxiedClient(addr, nil)
 
@@ -319,7 +322,7 @@ func TestUpgradeTunnelBidirectional(t *testing.T) {
 	}()
 	defer upLn.Close()
 
-	_, st, addr := newTestEngine(t)
+	_, st, addr := newTestEngine(t, nil, nil)
 
 	conn, err := net.DialTimeout("tcp", addr, 5*time.Second)
 	if err != nil {
@@ -383,7 +386,7 @@ func TestEngineRoundTripForRepeater(t *testing.T) {
 	}))
 	defer up.Close()
 
-	eng, st, _ := newTestEngine(t)
+	eng, st, _ := newTestEngine(t, nil, nil)
 	req := &store.Request{
 		Method: "GET", URL: up.URL + "/rt", HTTPVersion: "HTTP/1.1",
 		Headers: []store.Header{{Name: "Host", Value: hostOf(up.URL)}},

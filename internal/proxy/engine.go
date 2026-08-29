@@ -18,6 +18,8 @@ import (
 
 	"pulse/internal/certs"
 	"pulse/internal/events"
+	"pulse/internal/plugins"
+	"pulse/internal/rewrite"
 	"pulse/internal/store"
 )
 
@@ -28,6 +30,8 @@ type Engine struct {
 	bus     *events.Bus
 	Inter   *Intercept
 	client  *Client
+	Plugins *plugins.Runtime
+	Rewrite *rewrite.Engine
 	mu      sync.Mutex
 	ln      net.Listener
 	ctx     context.Context
@@ -35,7 +39,7 @@ type Engine struct {
 	version string
 }
 
-func New(auth *certs.Authority, st *store.Store, bus *events.Bus, version string) *Engine {
+func New(auth *certs.Authority, st *store.Store, bus *events.Bus, rt *plugins.Runtime, rw *rewrite.Engine, version string) *Engine {
 	ctx, cancel := context.WithCancel(context.Background())
 	e := &Engine{
 		auth:    auth,
@@ -43,6 +47,8 @@ func New(auth *certs.Authority, st *store.Store, bus *events.Bus, version string
 		bus:     bus,
 		Inter:   NewIntercept(),
 		client:  NewClient(),
+		Plugins: rt,
+		Rewrite: rw,
 		ctx:     ctx,
 		cancel:  cancel,
 		version: version,
@@ -203,7 +209,10 @@ func (e *Engine) handleConnect(conn net.Conn, br *bufio.Reader, target string) {
 }
 
 // process runs the pipeline for one request on a client connection and
-// returns whether the connection may serve another request.
+// returns whether the connection may serve another request. Pipeline order:
+// record → plugins → match&replace → intercept → upstream; the response runs
+// plugins → match&replace before reaching the client. The stored flow always
+// reflects what was actually sent and received.
 func (e *Engine) process(conn net.Conn, br *bufio.Reader, req *store.Request) bool {
 	req.ID = e.store.NewID()
 	fl := &store.Flow{ID: req.ID, Req: *req, State: store.StatePending}
@@ -213,6 +222,17 @@ func (e *Engine) process(conn net.Conn, br *bufio.Reader, req *store.Request) bo
 	e.publishFlow("flow", fl)
 
 	keepAlive := wantsKeepAlive(req)
+
+	if e.Plugins != nil && e.Plugins.ApplyRequest(req) {
+		fl.Req = *req
+		_ = e.store.Update(fl)
+		e.publishFlow("flow_update", fl)
+	}
+	if e.Rewrite != nil && e.Rewrite.ApplyRequest(req) {
+		fl.Req = *req
+		_ = e.store.Update(fl)
+		e.publishFlow("flow_update", fl)
+	}
 
 	// interception
 	if e.Inter.Enabled() {
@@ -257,6 +277,12 @@ func (e *Engine) process(conn net.Conn, br *bufio.Reader, req *store.Request) bo
 		_ = e.store.Update(fl)
 		e.publishFlow("flow_update", fl)
 		return false
+	}
+	if e.Plugins != nil && e.Plugins.ApplyResponse(req, res.Resp) {
+		fl.Resp = res.Resp
+	}
+	if e.Rewrite != nil && e.Rewrite.ApplyResponse(res.Resp) {
+		fl.Resp = res.Resp
 	}
 	if err := writeResponseToClient(conn, res.Resp, keepAlive); err != nil {
 		log.Printf("write response to client: %v", err)

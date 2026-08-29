@@ -1,6 +1,6 @@
 # Pulse 技术架构文档
 
-> 版本：v0.1.0 · 后端 Go 1.21+（纯标准库，零第三方依赖） · 前端 React 18 + TypeScript + Vite
+> 版本：v0.2.0 · 后端 Go（标准库 + goja JS 运行时） · 前端 React 18 + TypeScript + Vite
 
 ## 1. 系统总览
 
@@ -41,22 +41,29 @@ pulse/
 ├── internal/
 │   ├── certs/certs.go       # CA 生成/加载、按主机叶子证书签发与缓存
 │   ├── proxy/               # MITM 代理引擎
-│   │   ├── engine.go        # 监听器、连接生命周期、HTTP/CONNECT 处理
-│   │   ├── mitm.go          # TLS 拦截、逐请求解析与转发
+│   │   ├── engine.go        # 监听器、连接生命周期、请求管线编排
+│   │   ├── wire.go          # HTTP/1.1 手工读写（保序保重复、分帧、隧道）
 │   │   ├── forward.go       # 上游拨号（TLS/明文）、逐字节往返、101 隧道
-│   │   └── intercept.go     # 拦截队列：Hold/Forward/Drop，容量与降级
+│   │   ├── intercept.go     # 拦截队列：Hold/Forward/Drop，容量与降级
+│   │   ├── engine_test.go   # MITM/拦截/隧道/重放集成测试
+│   │   └── extensions_test.go # plugins→rewrite 管线顺序集成测试
 │   ├── store/store.go       # Flow 内存索引 + JSONL 追加日志，重启重放
 │   ├── repeater/repeater.go # 重放标签持久化与执行
+│   ├── rewrite/rewrite.go   # Match & Replace 规则引擎（5 个作用域，正则缓存）
+│   ├── plugins/plugins.go   # JS 插件运行时（goja，每请求隔离 VM + 超时中断）
 │   └── api/
-│       ├── server.go        # 路由装配、静态资源、中间件
-│       ├── flows.go         # /api/flows*
+│       ├── server.go        # 路由装配、静态资源、Host 校验中间件
+│       ├── flows.go         # /api/flows*（含 /render 浏览器渲染）
 │       ├── intercept.go     # /api/intercept*
 │       ├── repeater.go      # /api/repeater*
+│       ├── rewrite.go       # /api/rewrite* CRUD
+│       ├── plugins.go       # /api/plugins*（列表/重载/启停）
 │       ├── events.go        # /api/events（SSE hub）
-│       └── misc.go          # health/status/cert/settings
+│       └── misc.go          # health/status/cert
+├── examples/plugins/        # 示例插件（add-header / redact-tokens）
 ├── web/                     # React SPA（详见 §8）
-├── docs/                    # 本文档集
-└── go.mod                   # 无第三方依赖
+├── docs/                    # 本文档集（含 Plugins.md 插件开发指南）
+└── go.mod                   # 依赖：github.com/dop251/goja（JS 运行时）
 ```
 
 ## 3. 核心数据模型（internal/store）
@@ -142,6 +149,20 @@ client conn
 - `Hold(ctx, req) (forwardReq, ok)`：生成队列项，`select` 等待 `action chan` 或连接断开。
 - `Forward(id, modifiedReq)` / `Drop(id)` 由 API 调用；Drop 向客户端回 502。
 - 队列容量 50：满时自动放行最旧项（可用性优先，绝不丢连接不响应）。
+
+### 4.5 扩展管线（internal/plugins + internal/rewrite）
+
+请求方向（响应方向相反）：
+
+```
+capture → plugins.onRequest → Match&Replace(请求) → Intercept(手动) → 上游
+上游响应 → plugins.onResponse → Match&Replace(响应) → 客户端
+```
+
+- **记录语义**：存储与界面展示的 Flow 始终是**实际发送/接收**的最终形态（插件与规则改写后）。
+- **插件运行时**（goja）：每个 `*.js` 预编译为 `goja.Program`；每次钩子调用在全新 `Runtime` 中执行（请求间零共享），2 秒看门狗 `vm.Interrupt` 阻断死循环；语法/运行时错误记录在插件状态，绝不影响代理。启停状态持久化于 `plugins.json`。
+- **重写引擎**：规则按序应用；5 个作用域（请求行/请求头/请求体/响应头/响应体）；正则预编译缓存；请求行改写若变更 host 会自动同步 Host 头；命中计数（会话内）。规则持久化于 `match-replace.json`。
+- **Repeater 不经过扩展管线**（与 Burp 默认一致），文档明示。
 
 ## 5. API 与实时事件
 

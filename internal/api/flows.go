@@ -36,11 +36,20 @@ func (s *Server) handleFlows(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// handleFlow: GET/DELETE /api/flows/{id}.
+// handleFlow: GET/DELETE /api/flows/{id}, GET /api/flows/{id}/render.
 func (s *Server) handleFlow(w http.ResponseWriter, r *http.Request) {
-	id := strings.TrimPrefix(r.URL.Path, "/api/flows/")
-	if id == "" || strings.Contains(id, "/") {
+	rest := strings.TrimPrefix(r.URL.Path, "/api/flows/")
+	id, action, hasAction := strings.Cut(rest, "/")
+	if id == "" || (hasAction && action != "render") {
 		http.NotFound(w, r)
+		return
+	}
+	if hasAction && action == "render" {
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		s.handleFlowRender(w, r, id)
 		return
 	}
 	switch r.Method {
@@ -60,6 +69,32 @@ func (s *Server) handleFlow(w http.ResponseWriter, r *http.Request) {
 	default:
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 	}
+}
+
+// handleFlowRender serves the captured response body in the browser with its
+// original content type ("show response in browser").
+func (s *Server) handleFlowRender(w http.ResponseWriter, r *http.Request, id string) {
+	fl, ok := s.st.Get(id)
+	if !ok {
+		writeErr(w, http.StatusNotFound, "no such flow: "+id)
+		return
+	}
+	if fl.Resp == nil {
+		http.Error(w, "response not captured yet", http.StatusNoContent)
+		return
+	}
+	ct := "text/plain; charset=utf-8"
+	for _, h := range fl.Resp.Headers {
+		if strings.EqualFold(h.Name, "Content-Type") {
+			ct = h.Value
+			break
+		}
+	}
+	w.Header().Set("Content-Type", ct)
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	w.Header().Set("Content-Security-Policy", "sandbox")
+	w.Header().Set("Referrer-Policy", "no-referrer")
+	w.Write(fl.Resp.Body)
 }
 
 func queryInt(r *http.Request, name string, def int) int {

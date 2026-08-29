@@ -1,8 +1,8 @@
 # Pulse
 
-**通过浏览器操控的本地 Web 安全测试平台** —— 对标 Burp Suite / Caido 核心工作流的 MITM 抓包、拦截改包、重放工具。
+**通过浏览器操控的本地 Web 安全测试平台** —— 对标 Burp Suite / Caido 核心工作流的 MITM 抓包、拦截改包、重放、重写与插件扩展工具。
 
-- 后端：Go（纯标准库，零第三方依赖，单二进制）
+- 后端：Go（标准库 + goja JS 运行时，单二进制）
 - 前端：React + TypeScript（构建产物内嵌进二进制）
 
 ```
@@ -14,16 +14,18 @@
 └────────────┘                        └─────────────┘
 ```
 
-## 功能（v0.1 MVP）
+## 功能（v0.2）
 
 | 模块 | 能力 |
 | --- | --- |
-| **Proxy** | HTTP/HTTPS MITM 抓包，实时（SSE）流量表格，关键字过滤，正文完整检查（Headers/Params/Pretty/Hex），JSONL 持久化重启恢复 |
+| **Proxy** | HTTP/HTTPS MITM 抓包，实时（SSE）流量表格，关键字过滤，正文完整检查（Headers/Params/Pretty/Hex），JSONL 持久化重启恢复，**右键菜单**（Send to Repeater / Copy as cURL / 浏览器查看响应 / 复制 URL 与正文 / 删除） |
 | **Intercept** | 请求挂起队列，改方法/URL/头/体后放行或丢弃（502） |
 | **Repeater** | 历史流量一键送入重放标签（持久化），改包重发，响应即查 |
+| **Extensions** | **Match & Replace**（5 作用域、正则/字面量、命中计数、持久化）；**JS 插件**（onRequest/onResponse 钩子，隔离 VM + 超时保护，热重载，日志面板） |
 | **Settings** | CA 证书下载与各平台安装指引、运行状态与指纹 |
 
 WebSocket 等升级流量以透明隧道转发（握手后逐字节双向透传）。
+请求管线顺序：`插件 → 重写规则 → 拦截 → 上游`；存储的流量始终是实际发送/接收的最终形态。
 
 ## 快速开始
 
@@ -78,16 +80,18 @@ cd web && npx tsc --noEmit && npm run build
 ## 文档
 
 - [产品文档](docs/Product.md)：定位、竞品对比、范围、路线图
-- [技术架构](docs/Architecture.md)：模块、数据流、安全模型、测试策略
+- [技术架构](docs/Architecture.md)：模块、数据流、管线顺序、安全模型、测试策略
 - [API 参考](docs/API.md)：REST + SSE 接口规范
+- [插件开发指南](docs/Plugins.md)：JS 插件 API、示例、安全模型
 
 ## 目录
 
 ```
-cmd/pulse     入口
-internal/     certs | proxy | store | repeater | api
-web/          React SPA
-docs/         文档
+cmd/pulse          入口
+internal/          certs | proxy | store | repeater | rewrite | plugins | api
+web/               React SPA
+examples/plugins/  示例插件（复制到 <数据目录>/plugins/ 即可用）
+docs/              文档
 ```
 
 ## 许可

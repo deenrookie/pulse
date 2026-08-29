@@ -12,8 +12,10 @@ import (
 
 	"pulse/internal/certs"
 	"pulse/internal/events"
+	"pulse/internal/plugins"
 	"pulse/internal/proxy"
 	"pulse/internal/repeater"
+	"pulse/internal/rewrite"
 	"pulse/internal/store"
 	"pulse/web"
 )
@@ -24,17 +26,20 @@ type Server struct {
 	UIAddr    string
 	DataDir   string
 
-	st  *store.Store
-	eng *proxy.Engine
-	rep *repeater.Manager
+	st   *store.Store
+	eng  *proxy.Engine
+	rep  *repeater.Manager
 	auth *certs.Authority
-	bus *events.Bus
+	bus  *events.Bus
+	rw   *rewrite.Engine
+	plug *plugins.Runtime
 }
 
-func New(st *store.Store, eng *proxy.Engine, rep *repeater.Manager, auth *certs.Authority, bus *events.Bus, version, proxyAddr, uiAddr, dataDir string) *Server {
+func New(st *store.Store, eng *proxy.Engine, rep *repeater.Manager, auth *certs.Authority, bus *events.Bus,
+	rw *rewrite.Engine, plug *plugins.Runtime, version, proxyAddr, uiAddr, dataDir string) *Server {
 	return &Server{
 		Version: version, ProxyAddr: proxyAddr, UIAddr: uiAddr, DataDir: dataDir,
-		st: st, eng: eng, rep: rep, auth: auth, bus: bus,
+		st: st, eng: eng, rep: rep, auth: auth, bus: bus, rw: rw, plug: plug,
 	}
 }
 
@@ -51,6 +56,11 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/api/intercept/", s.handleInterceptID)
 	mux.HandleFunc("/api/repeater", s.handleRepeater)
 	mux.HandleFunc("/api/repeater/", s.handleRepeaterID)
+	mux.HandleFunc("/api/rewrite", s.handleRewrite)
+	mux.HandleFunc("/api/rewrite/", s.handleRewriteID)
+	mux.HandleFunc("/api/plugins", s.handlePlugins)
+	mux.HandleFunc("/api/plugins/reload", s.handlePluginsReload)
+	mux.HandleFunc("/api/plugins/", s.handlePluginFile)
 	mux.HandleFunc("/", s.handleStatic)
 	return s.checkHost(mux)
 }

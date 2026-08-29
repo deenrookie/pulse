@@ -19,7 +19,7 @@ Pulse 是一款**运行于本地、通过浏览器操控的 Web 安全测试平�
 
 对标产品为 PortSwigger **Burp Suite** 与 **Caido**。Pulse v0.1 聚焦两者最核心、使用频率最高的工作流（Proxy / Intercept / Repeater），以现代技术栈重实现：
 
-| 能力 | Burp Suite | Caido | Pulse v0.1 |
+| 能力 | Burp Suite | Caido | Pulse v0.2 |
 | --- | --- | --- | --- |
 | 形态 | 桌面 Java 应用（Swing） | Rust 后端 + Web UI | Go 后端 + Web UI（浏览器操控） |
 | HTTP(S) MITM 抓包 | ✅ | ✅ | ✅ |
@@ -27,9 +27,11 @@ Pulse 是一款**运行于本地、通过浏览器操控的 Web 安全测试平�
 | 拦截改包（Intercept） | ✅ | ✅ | ✅（请求级） |
 | 重放（Repeater） | ✅ 多标签 | ✅ | ✅ 多标签，服务端持久化 |
 | 消息检查器（Headers/Params/Hex） | ✅ | ✅ | ✅ Headers/Params/Pretty/Hex |
+| 右键上下文菜单 | ✅ | ✅ | ✅ Send to Repeater / Copy as cURL / 浏览器查看响应等 |
+| Match & Replace 重写 | ✅ | ✅（Overrides） | ✅ 5 作用域，正则/字面量，命中计数 |
+| 插件/扩展生态 | ✅ BApps（Java/Python 等） | ✅（Rust/JS） | ✅ JS 插件（goja，隔离+超时保护） |
 | WebSocket 隧道 | ✅ 可解析 | ✅ | ✅ 隧道级透传（帧级解析在路线图） |
 | Intruder / 自动化攻击 | ✅ | ✅（Automation） | 🗓 路线图 |
-| 插件/扩展生态 | ✅ BApps（Java/Python 等） | ✅（Rust/JS） | 🗓 路线图（Go plugin / 脚本钩子） |
 | 协作 / 云端 | 企业版 | 云同步 | ❌ 非目标（见 1.4） |
 | 上游代理链 | ✅ | ✅ | 🗓 路线图 |
 
@@ -80,6 +82,19 @@ Pulse 是一款**运行于本地、通过浏览器操控的 Web 安全测试平�
 - 首次启动自动生成 CA（ECDSA P-256，10 年），界面提供 PEM 下载与 Windows/macOS/Firefox 安装指引。
 - 显示监听地址、数据目录、流量统计、CA 指纹。
 
+### 3.6 右键上下文菜单（v0.2）
+- 流量行右键：**Send to Repeater**、**Show response in browser**（以原始 Content-Type 在新标签渲染响应）、**Copy URL**、**Copy as cURL**（可直贴终端复现）、**Copy request/response body**、**Delete flow**。
+
+### 3.7 Match & Replace（v0.2，Extensions → Match & Replace）
+- 5 个作用域：请求行（URL，改 host 自动同步 Host 头）/ 请求头 / 请求体 / 响应头 / 响应体。
+- 字面量或正则（Go regexp 语法），逐条启停，命中计数，注释；规则持久化，重启保留。
+- 应用顺序：插件 → 规则 → 拦截（拦截面板看到的是最终请求）。
+
+### 3.8 插件系统（v0.2，Extensions → Plugins）
+- 数据目录 `plugins/` 下的 JS 文件即插件（`onRequest` / `onResponse` 钩子，可变 ctx），详见 `docs/Plugins.md`。
+- 界面：插件列表（元数据/钩子/调用数/错误）、启停开关、日志尾部、一键 Reload；随附示例插件（加头、token 打码）。
+- 安全模型：每请求独立 VM、2 秒超时中断、错误完全隔离——坏插件不可能拖垮代理。
+
 ## 4. 用户体验设计
 
 ### 4.1 信息架构
@@ -110,11 +125,13 @@ Pulse 是一款**运行于本地、通过浏览器操控的 Web 安全测试平�
 
 | 版本 | 主题 | 内容 |
 | --- | --- | --- |
-| v0.2 | 目标与范围 | Scope 过滤与高亮、目标树（站点地图）、Host/状态码/方法多条件过滤 |
-| v0.3 | 深度协议 | WebSocket 帧级解析与重放、HTTP/2 上游支持、SSE/gRPC 事件展示 |
-| v0.4 | 自动化 | Intruder 式批量攻击（字典/载荷槽）、匹配替换规则（Match & Replace）、宏/会话处理 |
-| v0.5 | 扩展性 | 脚本钩子（Go 脚本 / WASM）、HTTP 请求插件 API、导出（HAR/CSV） |
-| v1.0 | 工程化 | 上游代理链、项目文件、多用户协作（自托管）、正式安全审计 |
+| v0.3 | 目标与范围 | Scope 过滤与高亮、目标树（站点地图）、Host/状态码/方法多条件过滤 |
+| v0.4 | 深度协议 | WebSocket 帧级解析与重放、HTTP/2 上游支持、SSE/gRPC 事件展示 |
+| v0.5 | 自动化 | Intruder 式批量攻击（字典/载荷槽）、宏/会话处理、`pulse.fetch` 插件网络能力 |
+| v0.6 | 工程化 | 插件 UI 面板 API、HAR/CSV 导出、规则/插件分享 |
+| v1.0 | 对齐收官 | 上游代理链、项目文件、多用户协作（自托管）、正式安全审计 |
+
+> v0.2 已交付：右键上下文菜单、Match & Replace 重写引擎、JS 插件系统（原列于 v0.4/v0.5，提前完成）。
 
 ## 6. 非目标（v0.1 明确不做）
 - 云端同步 / SaaS 多租户。

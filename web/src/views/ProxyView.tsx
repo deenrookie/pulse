@@ -37,6 +37,8 @@ export default function ProxyView({ pulse }: { pulse: PulseState }) {
             selectedId={pulse.selectedId}
             onSelect={pulse.selectFlow}
             onDelete={pulse.removeFlow}
+            onSendToRepeater={pulse.sendToRepeater}
+            notify={pulse.notify}
           />
         </div>
       </div>

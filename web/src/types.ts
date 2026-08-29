@@ -91,3 +91,32 @@ export interface EditableRequest {
   headers: Header[]
   body: string // base64
 }
+
+export type RewriteZone =
+  | 'request_line'
+  | 'request_header'
+  | 'request_body'
+  | 'response_header'
+  | 'response_body'
+
+export interface RewriteRule {
+  id: string
+  enabled: boolean
+  zone: RewriteZone
+  match: string
+  replace: string
+  regex: boolean
+  comment: string
+  hits: number
+}
+
+export interface PluginInfo {
+  name: string
+  version: string
+  file: string
+  enabled: boolean
+  hooks: string[]
+  hits: number
+  error?: string
+  log?: string[]
+}

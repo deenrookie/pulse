@@ -17,6 +17,7 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 		"caFingerprint": s.auth.Fingerprint(),
 		"flows":         map[string]int{"total": s.st.Count(), "pending": s.st.CountPending()},
 		"intercept":     map[string]any{"enabled": s.eng.Inter.Enabled(), "pending": len(s.eng.Inter.Pending())},
+		"pluginsDir":    s.plug.Dir(),
 	})
 }
 

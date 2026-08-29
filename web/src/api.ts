@@ -5,7 +5,9 @@ import type {
   FlowMeta,
   HttpRequest,
   InterceptSummary,
+  PluginInfo,
   RepeaterTab,
+  RewriteRule,
   Status,
 } from './types'
 
@@ -72,6 +74,71 @@ export interface SseHandlers {
   onIntercept?: (summary: { enabled: boolean; pending: number }) => void
   onOpen?: () => void
   onClose?: () => void
+}
+
+// ---------- rewrite (Match & Replace) ----------
+
+export const listRewriteRules = () => api<{ rules: RewriteRule[] }>('/api/rewrite')
+
+export const createRewriteRule = (payload: Omit<RewriteRule, 'id' | 'hits'>) =>
+  api<RewriteRule>('/api/rewrite', { method: 'POST', body: JSON.stringify(payload) })
+
+export const updateRewriteRule = (id: string, payload: Omit<RewriteRule, 'id' | 'hits'>) =>
+  api<RewriteRule>(`/api/rewrite/${id}`, { method: 'PUT', body: JSON.stringify(payload) })
+
+export const deleteRewriteRule = (id: string) =>
+  api<{ ok: boolean }>(`/api/rewrite/${id}`, { method: 'DELETE' })
+
+// ---------- plugins ----------
+
+export const listPlugins = () => api<{ plugins: PluginInfo[]; dir: string }>('/api/plugins')
+
+export const reloadPlugins = () => api<{ plugins: PluginInfo[]; dir: string }>('/api/plugins/reload', { method: 'POST', body: '{}' })
+
+export const setPluginEnabled = (file: string, enabled: boolean) =>
+  api<{ ok: boolean }>(`/api/plugins/${encodeURIComponent(file)}`, { method: 'PUT', body: JSON.stringify({ enabled }) })
+
+// ---------- context-menu helpers ----------
+
+/** POSIX-shell-safe single-quoting for cURL export. */
+export function shellQuote(s: string): string {
+  if (s === '') return "''"
+  if (/^[A-Za-z0-9_\-:.,/@+=]+$/.test(s)) return s
+  return "'" + s.replace(/'/g, `'\\''`) + "'"
+}
+
+/** Build a curl command from a captured flow. */
+export function toCurl(flow: Flow): string {
+  const r = flow.request
+  const parts = [`curl -X ${shellQuote(r.method)}`, shellQuote(r.url)]
+  for (const h of r.headers) {
+    if (['host', 'content-length', 'connection', 'proxy-connection'].includes(h.name.toLowerCase())) continue
+    parts.push(`-H ${shellQuote(`${h.name}: ${h.value}`)}`)
+  }
+  const body = bodyToText(r.body)
+  if (body) parts.push(`--data-raw ${shellQuote(body)}`)
+  return parts.join(' \\\n  ')
+}
+
+export async function copyToClipboard(text: string): Promise<boolean> {
+  try {
+    await navigator.clipboard.writeText(text)
+    return true
+  } catch {
+    try {
+      const ta = document.createElement('textarea')
+      ta.value = text
+      ta.style.position = 'fixed'
+      ta.style.opacity = '0'
+      document.body.appendChild(ta)
+      ta.select()
+      const ok = document.execCommand('copy')
+      ta.remove()
+      return ok
+    } catch {
+      return false
+    }
+  }
 }
 
 export function subscribeEvents(handlers: SseHandlers): () => void {

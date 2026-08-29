@@ -18,8 +18,10 @@ import (
 	"pulse/internal/api"
 	"pulse/internal/certs"
 	"pulse/internal/events"
+	"pulse/internal/plugins"
 	"pulse/internal/proxy"
 	"pulse/internal/repeater"
+	"pulse/internal/rewrite"
 	"pulse/internal/store"
 )
 
@@ -29,6 +31,7 @@ type testEnv struct {
 	eng     *proxy.Engine
 	rep     *repeater.Manager
 	proxyAddr string
+	dir     string
 }
 
 func newEnv(t *testing.T) *testEnv {
@@ -47,7 +50,15 @@ func newEnv(t *testing.T) *testEnv {
 		t.Fatalf("repeater: %v", err)
 	}
 	bus := events.NewBus()
-	eng := proxy.New(auth, st, bus, "test")
+	rw, err := rewrite.Open(filepath.Join(dir, "match-replace.json"))
+	if err != nil {
+		t.Fatalf("rewrite: %v", err)
+	}
+	plug, err := plugins.Open(filepath.Join(dir, "plugins"), filepath.Join(dir, "plugins.json"))
+	if err != nil {
+		t.Fatalf("plugins: %v", err)
+	}
+	eng := proxy.New(auth, st, bus, plug, rw, "test")
 
 	pln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
@@ -60,7 +71,7 @@ func newEnv(t *testing.T) *testEnv {
 		t.Fatalf("ui listen: %v", err)
 	}
 	uiAddr := uln.Addr().String()
-	ts := httptest.NewUnstartedServer(api.New(st, eng, rep, auth, bus, "test", pln.Addr().String(), uiAddr, dir).Handler())
+	ts := httptest.NewUnstartedServer(api.New(st, eng, rep, auth, bus, rw, plug, "test", pln.Addr().String(), uiAddr, dir).Handler())
 	ts.Listener = uln
 	ts.Start()
 
@@ -69,7 +80,7 @@ func newEnv(t *testing.T) *testEnv {
 		eng.Close()
 		st.Close()
 	})
-	return &testEnv{ts: ts, st: st, eng: eng, rep: rep, proxyAddr: pln.Addr().String()}
+	return &testEnv{ts: ts, st: st, eng: eng, rep: rep, proxyAddr: pln.Addr().String(), dir: dir}
 }
 
 func (e *testEnv) do(t *testing.T, method, path string, body any) (*http.Response, []byte) {

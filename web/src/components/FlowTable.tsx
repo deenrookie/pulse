@@ -1,12 +1,15 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
-import { formatSize, formatTime } from '../api'
+import { copyToClipboard, bodyToText, formatSize, formatTime, getFlow, toCurl } from '../api'
 import type { FlowMeta } from '../types'
+import ContextMenu, { type MenuItem } from './ContextMenu'
 
 interface Props {
   flows: FlowMeta[]
   selectedId: string | null
   onSelect: (id: string) => void
   onDelete: (id: string) => void
+  onSendToRepeater: (id: string) => Promise<boolean>
+  notify: (text: string, kind?: 'ok' | 'err') => void
 }
 
 function statusClass(code: number): string {
@@ -29,11 +32,12 @@ function stateLabel(m: FlowMeta): string {
   }
 }
 
-export default function FlowTable({ flows, selectedId, onSelect, onDelete }: Props) {
+export default function FlowTable({ flows, selectedId, onSelect, onDelete, onSendToRepeater, notify }: Props) {
   const [follow, setFollow] = useState(true)
   const wrapRef = useRef<HTMLDivElement>(null)
   const knownIds = useRef<Set<string>>(new Set())
   const [newIds, setNewIds] = useState<Set<string>>(new Set())
+  const [menu, setMenu] = useState<{ x: number; y: number; flow: FlowMeta } | null>(null)
 
   // flag freshly arrived rows for the flash animation
   useEffect(() => {
@@ -57,6 +61,67 @@ export default function FlowTable({ flows, selectedId, onSelect, onDelete }: Pro
       wrapRef.current.scrollTop = wrapRef.current.scrollHeight
     }
   }, [flows.length, follow])
+
+  const copy = async (label: string, getText: () => Promise<string> | string) => {
+    try {
+      const text = await getText()
+      if (!text) {
+        notify(`${label} is empty`, 'err')
+        return
+      }
+      if (await copyToClipboard(text)) notify(`${label} copied`)
+      else notify('Clipboard unavailable in this browser', 'err')
+    } catch (e) {
+      notify(`Copy failed: ${(e as Error).message}`, 'err')
+    }
+  }
+
+  const menuItems = (m: FlowMeta): MenuItem[] => [
+    {
+      label: '⟳ Send to Repeater',
+      onClick: () => void onSendToRepeater(m.id),
+    },
+    {
+      label: '♷ Show response in browser',
+      disabled: m.statusCode === 0,
+      onClick: () => {
+        window.open(`/api/flows/${m.id}/render`, '_blank')
+      },
+    },
+    {
+      label: 'Copy URL',
+      separatorAfter: true,
+      onClick: () => copy('URL', () => m.url),
+    },
+    {
+      label: 'Copy as cURL',
+      onClick: async () => {
+        const fl = await getFlow(m.id)
+        await copy('cURL command', () => toCurl(fl))
+      },
+    },
+    {
+      label: 'Copy request body',
+      onClick: async () => {
+        const fl = await getFlow(m.id)
+        await copy('Request body', () => bodyToText(fl.request.body))
+      },
+    },
+    {
+      label: 'Copy response body',
+      disabled: m.statusCode === 0,
+      onClick: async () => {
+        const fl = await getFlow(m.id)
+        await copy('Response body', () => bodyToText(fl.response?.body ?? null))
+      },
+    },
+    {
+      label: '✕ Delete flow',
+      danger: true,
+      separatorAfter: false,
+      onClick: () => onDelete(m.id),
+    },
+  ]
 
   return (
     <div className="panel" style={{ flex: 1 }}>
@@ -105,7 +170,11 @@ export default function FlowTable({ flows, selectedId, onSelect, onDelete }: Pro
                   key={m.id}
                   className={`${selectedId === m.id ? 'selected' : ''} ${newIds.has(m.id) ? 'new-row' : ''}`}
                   onClick={() => onSelect(m.id)}
-                  title={m.url}
+                  onContextMenu={(e) => {
+                    e.preventDefault()
+                    setMenu({ x: e.clientX, y: e.clientY, flow: m })
+                  }}
+                  title={`${m.url} — right-click for actions`}
                 >
                   <td className="col-id">{m.id.replace('req-', '')}</td>
                   <td className="col-time">{formatTime(m.timestamp)}</td>
@@ -141,6 +210,9 @@ export default function FlowTable({ flows, selectedId, onSelect, onDelete }: Pro
           </table>
         )}
       </div>
+      {menu && (
+        <ContextMenu x={menu.x} y={menu.y} items={menuItems(menu.flow)} onClose={() => setMenu(null)} />
+      )}
     </div>
   )
 }
