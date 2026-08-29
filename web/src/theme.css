@@ -1050,7 +1050,10 @@ table.flows tbody tr.hl.selected td { background: var(--accent-bg); box-shadow: 
 .tree-row.host { color: var(--text); font-weight: 600; margin-top: 4px; border-top: 1px solid var(--border); }
 .tree-row.host .name { color: var(--info); }
 .tree-row.host > .icon { color: var(--text-faint); flex: none; }
-.tree-row.path { padding-left: 44px; color: var(--text-muted); cursor: default; }
+.tree-row.path { padding-left: 44px; color: var(--text-muted); }
+.tree-row.req { color: var(--text); }
+.tree-row.req .count { color: var(--text-faint); font-size: 11px; flex: none; }
+.tree-row.selected { background: var(--accent-bg); box-shadow: inset 2px 0 0 var(--accent); }
 .tree-row.leaf { padding-left: 66px; color: var(--text); }
 .tree-row.leaf.selected {
   background: var(--accent-bg);

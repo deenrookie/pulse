@@ -1,12 +1,11 @@
-// Burp-style site map: every captured flow aggregated into a
-// host → path → method tree. Built for scale:
-//  - query strings are folded into the path node (counts cover variants)
-//  - the visible tree is flattened and windowed — only on-screen rows
-//    exist in the DOM, so tens of thousands of endpoints stay smooth
-// Selecting a leaf inspects the newest flow; right-click integrates with
-// the rest of the workflow.
+// Burp-style site map workspace: three resizable columns —
+//   tree (host → path) | request list (one row per captured flow) |
+//   inspector (request above, response below)
+// All columns are windowed where lists can grow; every divider is
+// draggable. Query strings fold into the tree's path node but stay
+// visible per-record in the middle list.
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { getFlow } from '../api'
+import { getFlow, formatSize, formatTime } from '../api'
 import { RequestInspector, ResponseInspector } from '../components/MessageViewer'
 import Split from '../ui/Split'
 import Icon from '../ui/Icon'
@@ -18,15 +17,15 @@ import type { Flow, FlowMeta } from '../types'
 const ROW_H = 28
 const OVERSCAN = 12
 
-interface Leaf {
-  method: string
-  status: number
+interface PathNode {
+  methods: Set<string>
   count: number
-  flowId: string // newest flow for this host+path+method
+  newestId: string
+  newestStatus: number
 }
 interface HostNode {
   host: string
-  paths: Map<string, Leaf[]> // key: clean path (no query string)
+  paths: Map<string, PathNode> // key: clean path (no query string)
   total: number
 }
 
@@ -40,27 +39,24 @@ function buildTree(flows: FlowMeta[]): HostNode[] {
     }
     host.total++
     const cleanPath = f.path.split('?')[0] || '/'
-    let leaves = host.paths.get(cleanPath)
-    if (!leaves) {
-      leaves = []
-      host.paths.set(cleanPath, leaves)
+    let node = host.paths.get(cleanPath)
+    if (!node) {
+      node = { methods: new Set(), count: 0, newestId: f.id, newestStatus: f.statusCode }
+      host.paths.set(cleanPath, node)
     }
-    const existing = leaves.find((l) => l.method === f.method)
-    if (existing) {
-      existing.count++
-      existing.flowId = f.id // list is arrival-ordered; keep the newest
-      existing.status = f.statusCode
-    } else {
-      leaves.push({ method: f.method, status: f.statusCode, count: 1, flowId: f.id })
-    }
+    node.count++
+    node.methods.add(f.method)
+    node.newestId = f.id // arrival order → keep the newest
+    node.newestStatus = f.statusCode
   }
   return [...hosts.values()].sort((a, b) => b.total - a.total)
 }
 
-type Row =
-  | { kind: 'host'; host: HostNode }
-  | { kind: 'path'; host: HostNode; path: string }
-  | { kind: 'leaf'; host: HostNode; path: string; leaf: Leaf }
+interface TreeSel {
+  host: string
+  path?: string // clean path (no query)
+  method?: string
+}
 
 function viewParam(name: string): string | null {
   const h = window.location.hash
@@ -68,36 +64,108 @@ function viewParam(name: string): string | null {
   return new URLSearchParams(q).get(name)
 }
 
+function windowRange(scrollTop: number, viewH: number, count: number) {
+  const rawStart = Math.floor(scrollTop / ROW_H) - OVERSCAN
+  const start = Math.min(Math.max(0, rawStart), Math.max(0, count - OVERSCAN))
+  const n = Math.ceil(viewH / ROW_H) + OVERSCAN * 2
+  return { start, end: Math.min(count, start + n) }
+}
+
 export default function SiteMapView({ pulse, goProxy }: { pulse: PulseState; goProxy: () => void }) {
   const tree = useMemo(() => buildTree(pulse.flows), [pulse.flows])
   const [search, setSearch] = useState('')
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
+  const [treeSel, setTreeSel] = useState<TreeSel | null>(null)
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [flow, setFlow] = useState<Flow | null>(null)
   const [menu, setMenu] = useState<{ x: number; y: number; flowId: string; url: string } | null>(null)
+  const pendingScroll = useRef(false)
 
-  const wrapRef = useRef<HTMLDivElement>(null)
-  const [scrollTop, setScrollTop] = useState(0)
-  const [viewH, setViewH] = useState(500)
-  const pendingScroll = useRef<boolean>(false)
+  // ---- tree (flattened + windowed) ----
+  const treeWin = useRef<HTMLDivElement>(null)
+  const [treeScroll, setTreeScroll] = useState(0)
+  const [treeViewH, setTreeViewH] = useState(400)
 
-  // deep link: #/sitemap?flow=<id> selects that flow's leaf and expands its
-  // host; flows may not be loaded yet at mount, so the pending flag stays
-  // set until the target row actually appears in the flattened tree
+  const filteredTree = useMemo(() => {
+    const needle = search.trim().toLowerCase()
+    if (!needle) return tree
+    return tree
+      .map((h) => {
+        const paths = [...h.paths.entries()].filter(
+          ([path, node]) =>
+            h.host.toLowerCase().includes(needle) ||
+            path.toLowerCase().includes(needle) ||
+            [...node.methods].some((mth) => mth.toLowerCase().includes(needle)),
+        )
+        const nodes = paths.map(([, node]) => node)
+        return { host: h.host, paths: new Map(paths), total: nodes.reduce((n, x) => n + x.count, 0) }
+      })
+      .filter((h) => h.paths.size > 0)
+  }, [tree, search])
+
+  const treeRows = useMemo(() => {
+    const out: { kind: 'host' | 'path'; host: HostNode; path?: string }[] = []
+    for (const h of filteredTree) {
+      out.push({ kind: 'host', host: h })
+      if (expanded.has(h.host) || !!search) {
+        for (const path of h.paths.keys()) out.push({ kind: 'path', host: h, path })
+      }
+    }
+    return out
+  }, [filteredTree, expanded, search])
+
+  const treeRange = windowRange(treeScroll, treeViewH, treeRows.length)
+  const treeVisible = treeRows.slice(treeRange.start, treeRange.end)
+
+  // ---- request list for the selected tree node (windowed) ----
+  const listWin = useRef<HTMLDivElement>(null)
+  const [listScroll, setListScroll] = useState(0)
+  const [listViewH, setListViewH] = useState(400)
+
+  const listFlows = useMemo(() => {
+    if (!treeSel) return []
+    return pulse.flows
+      .filter((f) => {
+        if (f.host !== treeSel.host) return false
+        if (treeSel.path !== undefined && f.path.split('?')[0] !== treeSel.path) return false
+        if (treeSel.method !== undefined && f.method !== treeSel.method) return false
+        return true
+      })
+      .slice()
+      .reverse() // newest first
+  }, [pulse.flows, treeSel])
+
+  const listRange = windowRange(listScroll, listViewH, listFlows.length)
+  const listVisible = listFlows.slice(listRange.start, listRange.end)
+
+  useEffect(() => {
+    const els = [treeWin.current, listWin.current]
+    const ros = els.map((el) => {
+      if (!el) return null
+      const ro = new ResizeObserver(() => {
+        setTreeViewH(treeWin.current?.clientHeight ?? 400)
+        setListViewH(listWin.current?.clientHeight ?? 400)
+      })
+      ro.observe(el)
+      return ro
+    })
+    setTreeViewH(treeWin.current?.clientHeight ?? 400)
+    setListViewH(listWin.current?.clientHeight ?? 400)
+    return () => ros.forEach((ro) => ro?.disconnect())
+  }, [])
+
+  // deep link: #/sitemap?flow=<id> — retries until flows make it reachable
   useEffect(() => {
     const apply = () => {
       const id = viewParam('flow')
       if (id) {
         setSelectedId(id)
-        pendingScroll.current = true // retried by the rows effect below
-        const meta = pulse.flows.find((f) => f.id === id)
-        if (meta) setExpanded((prev) => new Set(prev).add(meta.host))
+        pendingScroll.current = true
       }
     }
     apply()
     window.addEventListener('hashchange', apply)
     return () => window.removeEventListener('hashchange', apply)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   // address bar mirrors selection
@@ -105,6 +173,24 @@ export default function SiteMapView({ pulse, goProxy }: { pulse: PulseState; goP
     const next = selectedId ? `#/sitemap?flow=${selectedId}` : '#/sitemap'
     if (window.location.hash !== next) window.history.replaceState(null, '', next)
   }, [selectedId])
+
+  // resolve pending deep link: expand host, focus tree, load inspector
+  useEffect(() => {
+    if (!selectedId || !pendingScroll.current) return
+    const meta = pulse.flows.find((f) => f.id === selectedId)
+    if (meta) {
+      setExpanded((prev) => (prev.has(meta.host) ? prev : new Set(prev).add(meta.host)))
+      setTreeSel({ host: meta.host, path: meta.path.split('?')[0] || '/' })
+    }
+    if (meta && treeWin.current) {
+      const idx = treeRows.findIndex((r) => r.kind === 'path' && r.host.host === meta.host && r.path === meta.path.split('?')[0])
+      if (idx >= 0) {
+        pendingScroll.current = false
+        treeWin.current.scrollTop = Math.max(0, idx * ROW_H - treeViewH / 2)
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pulse.flows, treeRows, selectedId, treeViewH])
 
   // full detail fetch on selection
   useEffect(() => {
@@ -121,69 +207,6 @@ export default function SiteMapView({ pulse, goProxy }: { pulse: PulseState; goP
     }
   }, [selectedId])
 
-  const filteredTree = useMemo(() => {
-    const needle = search.trim().toLowerCase()
-    if (!needle) return tree
-    return tree
-      .map((h) => {
-        const paths = [...h.paths.entries()].filter(
-          ([path, leaves]) =>
-            h.host.toLowerCase().includes(needle) ||
-            path.toLowerCase().includes(needle) ||
-            leaves.some((l) => l.method.toLowerCase().includes(needle)),
-        )
-        return { host: h.host, paths: new Map(paths), total: [...paths.values()].reduce((n, ls) => n + ls.length, 0) }
-      })
-      .filter((h) => h.paths.size > 0)
-  }, [tree, search])
-
-  // flatten the visible tree — the only rows that can possibly render
-  const rows = useMemo(() => {
-    const out: Row[] = []
-    for (const h of filteredTree) {
-      out.push({ kind: 'host', host: h })
-      if (expanded.has(h.host) || !!search) {
-        for (const [path, leaves] of h.paths) {
-          out.push({ kind: 'path', host: h, path })
-          for (const leaf of leaves) out.push({ kind: 'leaf', host: h, path, leaf })
-        }
-      }
-    }
-    return out
-  }, [filteredTree, expanded, search])
-
-  // scroll a freshly-selected row into view (deep link / cross-view jump);
-  // keeps retrying while flows load — expanding the host and scrolling once
-  // the target row becomes reachable in the flattened tree
-  useEffect(() => {
-    if (!selectedId || !pendingScroll.current) return
-    const meta = pulse.flows.find((f) => f.id === selectedId)
-    if (meta) setExpanded((prev) => (prev.has(meta.host) ? prev : new Set(prev).add(meta.host)))
-    const idx = rows.findIndex((r) => r.kind === 'leaf' && r.leaf.flowId === selectedId)
-    if (idx < 0) return // not built yet — leave pending for the next change
-    pendingScroll.current = false
-    if (wrapRef.current) wrapRef.current.scrollTop = Math.max(0, idx * ROW_H - viewH / 2)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [rows, selectedId, viewH, pulse.flows])
-
-  // visible window (clamped so shrinking lists never blank the viewport)
-  const { start, end } = useMemo(() => {
-    const rawStart = Math.floor(scrollTop / ROW_H) - OVERSCAN
-    const s = Math.min(Math.max(0, rawStart), Math.max(0, rows.length - OVERSCAN))
-    const count = Math.ceil(viewH / ROW_H) + OVERSCAN * 2
-    return { start: s, end: Math.min(rows.length, s + count) }
-  }, [scrollTop, viewH, rows.length])
-  const visible = useMemo(() => rows.slice(start, end), [rows, start, end])
-
-  useEffect(() => {
-    const el = wrapRef.current
-    if (!el) return
-    const ro = new ResizeObserver(() => setViewH(el.clientHeight))
-    ro.observe(el)
-    setViewH(el.clientHeight)
-    return () => ro.disconnect()
-  }, [])
-
   const toggle = (host: string) =>
     setExpanded((prev) => {
       const next = new Set(prev)
@@ -192,14 +215,26 @@ export default function SiteMapView({ pulse, goProxy }: { pulse: PulseState; goP
       return next
     })
 
-  const collapseAll = () => setExpanded(new Set())
-  const expandAll = () => {
-    const next = new Set<string>()
-    for (const h of filteredTree) next.add(h.host)
-    setExpanded(next)
+  const collapseAll = () => {
+    setExpanded(new Set())
+    setTreeSel(null)
+  }
+  const expandAll = () => setExpanded(new Set(filteredTree.map((h) => h.host)))
+
+  const selectTreeNode = (host: string, path?: string, method?: string) => {
+    setTreeSel({ host, path, method })
+    // clicking a node also loads its newest flow, Burp-style
+    const pool = pulse.flows.filter((f) => {
+      if (f.host !== host) return false
+      if (path !== undefined && f.path.split('?')[0] !== path) return false
+      if (method !== undefined && f.method !== method) return false
+      return true
+    })
+    pendingScroll.current = false
+    setSelectedId(pool.length > 0 ? pool[pool.length - 1].id : null)
   }
 
-  const leafMenu = (flowId: string, url: string): MenuItem[] => [
+  const rowMenu = (flowId: string, url: string): MenuItem[] => [
     {
       icon: 'send',
       label: 'Send to Repeater',
@@ -226,79 +261,19 @@ export default function SiteMapView({ pulse, goProxy }: { pulse: PulseState; goP
 
   const statusClass = (code: number) => (code === 0 ? 'status0' : `status${Math.floor(code / 100)}`)
 
-  const renderRow = (row: Row) => {
-    const key = `${row.kind}:${row.host.host}:${'path' in row ? row.path : ''}:${'leaf' in row ? row.leaf.method : ''}`
-    if (row.kind === 'host') {
-      const open = expanded.has(row.host.host)
-      return (
-        <div key={key} className="tree-row host" style={{ height: ROW_H }} onClick={() => toggle(row.host.host)}>
-          <Icon name={open ? 'chevronDown' : 'chevronRight'} size={12} />
-          <Icon name="globe" size={13} />
-          <span className="name" title={row.host.host}>
-            {row.host.host}
-          </span>
-          <span className="grow" />
-          <span className="badge" title={`${row.host.total} flows`}>
-            {row.host.total > 999 ? `${(row.host.total / 1000).toFixed(1)}k` : row.host.total}
-          </span>
-        </div>
-      )
-    }
-    if (row.kind === 'path') {
-      return (
-        <div key={key} className="tree-row path" style={{ height: ROW_H }} title={row.path}>
-          <span className="name" title={row.path}>
-            {row.path}
-          </span>
-        </div>
-      )
-    }
-    const sel = selectedId === row.leaf.flowId
-    return (
-      <div
-        key={key}
-        className={`tree-row leaf ${sel ? 'selected' : ''}`}
-        style={{ height: ROW_H }}
-        onClick={() => {
-          pendingScroll.current = false
-          setSelectedId(row.leaf.flowId)
-        }}
-        onContextMenu={(e) => {
-          e.preventDefault()
-          setSelectedId(row.leaf.flowId)
-          setMenu({ x: e.clientX, y: e.clientY, flowId: row.leaf.flowId, url: `http://${row.host.host}${row.path}` })
-        }}
-        title={`Newest of ${row.leaf.count} — click to inspect · right-click for actions`}
-      >
-        <span className={`method-${row.leaf.method} mono`} style={{ fontWeight: 600 }}>
-          {row.leaf.method}
-        </span>
-        <span className={`mono ${statusClass(row.leaf.status)}`} style={{ fontWeight: 700 }}>
-          {row.leaf.status === 0 ? '—' : row.leaf.status}
-        </span>
-        {row.leaf.count > 1 && <span className="count mono">×{row.leaf.count}</span>}
-      </div>
-    )
-  }
-
-  const endpointCount = useMemo(() => rows.filter((r) => r.kind === 'leaf').length, [rows])
-
   return (
     <div className="view padded row">
       <Split
         dir="h"
         storageKey="pulse.split.sitemap"
-        initial={0.38}
-        min={0.15}
-        max={0.7}
+        initial={0.26}
+        min={0.1}
+        max={0.6}
         a={
           <div className="panel" style={{ flex: 1 }}>
             <div className="panel-head">
               <span className="title">Site map</span>
-              <span className="meta">
-                {filteredTree.length} host{filteredTree.length === 1 ? '' : 's'} ·{' '}
-                {endpointCount.toLocaleString()} endpoint{endpointCount === 1 ? '' : 's'}
-              </span>
+              <span className="meta">{filteredTree.length} hosts</span>
               <div className="spacer" />
               <button className="btn ghost sm icon-btn" title="Expand all hosts" onClick={expandAll}>
                 <Icon name="plus" size={13} />
@@ -325,72 +300,198 @@ export default function SiteMapView({ pulse, goProxy }: { pulse: PulseState; goP
                 )}
               </div>
             </div>
-            <div className="tree-wrap" ref={wrapRef} onScroll={() => wrapRef.current && setScrollTop(wrapRef.current.scrollTop)}>
+            <div
+              className="tree-wrap"
+              ref={treeWin}
+              onScroll={() => treeWin.current && setTreeScroll(treeWin.current.scrollTop)}
+            >
               {filteredTree.length === 0 ? (
                 <Empty icon="sitemap" title={search ? 'No matching endpoints' : 'Nothing mapped yet'}>
                   {search ? 'Try a different search.' : 'Traffic captured by the proxy appears here as a host → path tree.'}
                 </Empty>
               ) : (
                 <>
-                  {start > 0 && <div style={{ height: start * ROW_H }} />}
-                  {visible.map(renderRow)}
-                  {end < rows.length && <div style={{ height: (rows.length - end) * ROW_H }} />}
+                  {treeRange.start > 0 && <div style={{ height: treeRange.start * ROW_H }} />}
+                  {treeVisible.map((row) => {
+                    if (row.kind === 'host') {
+                      const open = expanded.has(row.host.host)
+                      const active = treeSel?.host === row.host.host
+                      return (
+                        <div
+                          key={`h:${row.host.host}`}
+                          className={`tree-row host ${active ? 'selected' : ''}`}
+                          style={{ height: ROW_H }}
+                          onClick={() => selectTreeNode(row.host.host)}
+                          title={`${row.host.host} — click to list its flows · double-click to expand`}
+                          onDoubleClick={() => toggle(row.host.host)}
+                        >
+                          <span
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              toggle(row.host.host)
+                            }}
+                            style={{ display: 'flex' }}
+                          >
+                            <Icon name={open ? 'chevronDown' : 'chevronRight'} size={12} />
+                          </span>
+                          <Icon name="globe" size={13} />
+                          <span className="name" title={row.host.host}>
+                            {row.host.host}
+                          </span>
+                          <span className="grow" />
+                          <span className="badge" title={`${row.host.total} flows`}>
+                            {row.host.total > 999 ? `${(row.host.total / 1000).toFixed(1)}k` : row.host.total}
+                          </span>
+                        </div>
+                      )
+                    }
+                    const node = row.host.paths.get(row.path!)!
+                    const active = treeSel?.host === row.host.host && treeSel.path === row.path && !treeSel.method
+                    return (
+                      <div
+                        key={`p:${row.host.host}:${row.path}`}
+                        className={`tree-row path ${active ? 'selected' : ''}`}
+                        style={{ height: ROW_H, paddingLeft: 40, cursor: 'pointer' }}
+                        onClick={() => selectTreeNode(row.host.host, row.path)}
+                        title={`${row.path} — ${node.count} flow${node.count > 1 ? 's' : ''} · click to list`}
+                      >
+                        <span className="name" title={row.path}>
+                          {row.path}
+                        </span>
+                        <span className="grow" />
+                        <span className="count mono">
+                          {[...node.methods].join('·')} ×{node.count}
+                        </span>
+                      </div>
+                    )
+                  })}
+                  {treeRange.end < treeRows.length && <div style={{ height: (treeRows.length - treeRange.end) * ROW_H }} />}
                 </>
               )}
             </div>
           </div>
         }
         b={
-          <div className="panel" style={{ flex: 1 }}>
-            <div className="panel-head">
-              {flow ? (
-                <>
-                  <button className="btn sm" title="Copy this request into a new Repeater tab" onClick={() => void pulse.sendToRepeater(flow.id)}>
-                    <Icon name="send" size={13} />
-                    Send to Repeater
-                  </button>
-                  <span className={`method-${flow.request.method} mono`} style={{ fontWeight: 700, fontSize: 12 }}>
-                    {flow.request.method}
-                  </span>
-                  <span className="meta" title={flow.request.url}>
-                    {flow.request.url}
-                  </span>
-                </>
-              ) : (
-                <span className="title">Inspector</span>
-              )}
-              <div className="spacer" />
-              {flow?.response && (
-                <button
-                  className="btn ghost sm icon-btn"
-                  title="Open the response in a browser tab"
-                  onClick={() => window.open(`/api/flows/${flow.id}/render`, '_blank')}
+          <Split
+            dir="h"
+            storageKey="pulse.split.sitelist"
+            initial={0.34}
+            min={0.15}
+            max={0.7}
+            a={
+              <div className="panel" style={{ flex: 1 }}>
+                <div className="panel-head">
+                  <span className="title">Requests</span>
+                  {treeSel && (
+                    <span className="meta" title={`${treeSel.host}${treeSel.path ?? ''}`}>
+                      {treeSel.host}
+                      {treeSel.path}
+                      {treeSel.method ? ` · ${treeSel.method}` : ''}
+                    </span>
+                  )}
+                  <div className="spacer" />
+                  <span className="meta">{listFlows.length.toLocaleString()} rows</span>
+                </div>
+                <div
+                  className="tree-wrap"
+                  ref={listWin}
+                  onScroll={() => listWin.current && setListScroll(listWin.current.scrollTop)}
                 >
-                  <Icon name="external" size={13} />
-                </button>
-              )}
-            </div>
-            {flow ? (
-              <Split
-                dir="h"
-                storageKey="pulse.split.sitemap-inspector"
-                initial={0.5}
-                a={<RequestInspector req={flow.request} />}
-                b={<ResponseInspector resp={flow.response} error={flow.error} flowId={flow.id} />}
-              />
-            ) : (
-              <Empty icon="sitemap" title="Pick an endpoint">
-                Expand a host and click a method row to inspect
-                <br />
-                the newest request/response captured for it.
-              </Empty>
-            )}
-          </div>
+                  {!treeSel ? (
+                    <Empty icon="waves" title="Pick a site">
+                      Select a host or path in the tree — every captured request for it lists here, one row each.
+                    </Empty>
+                  ) : listFlows.length === 0 ? (
+                    <Empty icon="search" title="No requests" />
+                  ) : (
+                    <>
+                      {listRange.start > 0 && <div style={{ height: listRange.start * ROW_H }} />}
+                      {listVisible.map((m) => (
+                        <div
+                          key={m.id}
+                          className={`tree-row req ${selectedId === m.id ? 'selected' : ''}`}
+                          style={{ height: ROW_H }}
+                          onClick={() => setSelectedId(m.id)}
+                          onContextMenu={(e) => {
+                            e.preventDefault()
+                            setSelectedId(m.id)
+                            setMenu({ x: e.clientX, y: e.clientY, flowId: m.id, url: m.url })
+                          }}
+                          title={`${m.url} — click to inspect · right-click for actions`}
+                        >
+                          <span className={`method-${m.method} mono`} style={{ fontWeight: 600, flex: 'none' }}>
+                            {m.method}
+                          </span>
+                          <span className={`mono ${statusClass(m.statusCode)}`} style={{ fontWeight: 700, flex: 'none' }}>
+                            {m.statusCode === 0 ? '—' : m.statusCode}
+                          </span>
+                          <span className="name mono" title={m.path}>
+                            {m.path}
+                          </span>
+                          <span className="grow" />
+                          <span className="count mono" title={m.timestamp}>
+                            {formatTime(m.timestamp)}
+                          </span>
+                          <span className="count mono">{formatSize(m.respSize || m.reqSize)}</span>
+                        </div>
+                      ))}
+                      {listRange.end < listFlows.length && <div style={{ height: (listFlows.length - listRange.end) * ROW_H }} />}
+                    </>
+                  )}
+                </div>
+              </div>
+            }
+            b={
+              <div className="panel" style={{ flex: 1 }}>
+                <div className="panel-head">
+                  {flow ? (
+                    <>
+                      <button className="btn sm" title="Copy this request into a new Repeater tab" onClick={() => void pulse.sendToRepeater(flow.id)}>
+                        <Icon name="send" size={13} />
+                        Send to Repeater
+                      </button>
+                      <span className={`method-${flow.request.method} mono`} style={{ fontWeight: 700, fontSize: 12 }}>
+                        {flow.request.method}
+                      </span>
+                      <span className="meta" title={flow.request.url}>
+                        {flow.request.url}
+                      </span>
+                    </>
+                  ) : (
+                    <span className="title">Inspector</span>
+                  )}
+                  <div className="spacer" />
+                  {flow?.response && (
+                    <button
+                      className="btn ghost sm icon-btn"
+                      title="Open the response in a browser tab"
+                      onClick={() => window.open(`/api/flows/${flow.id}/render`, '_blank')}
+                    >
+                      <Icon name="external" size={13} />
+                    </button>
+                  )}
+                </div>
+                {flow ? (
+                  <Split
+                    dir="v"
+                    storageKey="pulse.split.sitemap-inspector"
+                    initial={0.5}
+                    a={<RequestInspector req={flow.request} />}
+                    b={<ResponseInspector resp={flow.response} error={flow.error} flowId={flow.id} />}
+                  />
+                ) : (
+                  <Empty icon="sitemap" title="Pick a request">
+                    Click a row in the request list to inspect
+                    <br />
+                    its request and response.
+                  </Empty>
+                )}
+              </div>
+            }
+          />
         }
       />
-      {menu && (
-        <ContextMenu x={menu.x} y={menu.y} items={leafMenu(menu.flowId, menu.url)} onClose={() => setMenu(null)} />
-      )}
+      {menu && <ContextMenu x={menu.x} y={menu.y} items={rowMenu(menu.flowId, menu.url)} onClose={() => setMenu(null)} />}
     </div>
   )
 }
