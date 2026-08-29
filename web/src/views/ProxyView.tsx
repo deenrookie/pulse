@@ -6,6 +6,12 @@ import Empty from '../ui/Empty'
 import Icon from '../ui/Icon'
 import { confirm } from '../ui/Confirm'
 import HighlightRules, { ruleMatches, type HighlightRule } from '../ui/HighlightRules'
+import AdvancedFilterPopover, {
+  EMPTY_ADVANCED,
+  advancedActive,
+  passesAdvanced,
+  type AdvancedFilter,
+} from '../ui/AdvancedFilter'
 import type { PulseState } from '../state'
 import type { FlowMeta } from '../types'
 
@@ -20,6 +26,16 @@ const STATUS_FILTERS: [string, string][] = [
 const STATIC_EXT = /\.(css|js|mjs|map|png|jpe?g|gif|svg|ico|webp|avif|woff2?|ttf|otf|eot|mp4|webm)(\?|$)/i
 const STATIC_TYPE = /^(image\/|font\/|text\/css|text\/javascript|application\/javascript|application\/x-font)/i
 const HL_KEY = 'pulse.highlights'
+const ADV_KEY = 'pulse.advfilter'
+
+function loadAdvanced(): AdvancedFilter {
+  try {
+    const raw = JSON.parse(localStorage.getItem(ADV_KEY) ?? 'null')
+    return raw ? { ...EMPTY_ADVANCED, ...raw } : { ...EMPTY_ADVANCED }
+  } catch {
+    return { ...EMPTY_ADVANCED }
+  }
+}
 
 function loadRules(): HighlightRule[] {
   try {
@@ -61,6 +77,8 @@ export default function ProxyView({ pulse }: { pulse: PulseState }) {
   const [follow, setFollow] = useState(true)
   const [rules, setRules] = useState<HighlightRule[]>(loadRules)
   const [rulesPos, setRulesPos] = useState<{ x: number; y: number } | null>(null)
+  const [adv, setAdv] = useState<AdvancedFilter>(loadAdvanced)
+  const [advPos, setAdvPos] = useState<{ x: number; y: number } | null>(null)
   const searchRef = useRef<HTMLInputElement>(null)
 
   // Ctrl+F lands here (App dispatches after switching views)
@@ -93,6 +111,15 @@ export default function ProxyView({ pulse }: { pulse: PulseState }) {
     setRules(next)
     try {
       localStorage.setItem(HL_KEY, JSON.stringify(next))
+    } catch {
+      /* ignore */
+    }
+  }
+
+  const saveAdv = (next: AdvancedFilter) => {
+    setAdv(next)
+    try {
+      localStorage.setItem(ADV_KEY, JSON.stringify(next))
     } catch {
       /* ignore */
     }
@@ -137,6 +164,22 @@ export default function ProxyView({ pulse }: { pulse: PulseState }) {
       })
     }
     if (hideStatic) out = out.filter((m) => !isStatic(m))
+    if (advancedActive(adv)) {
+      out = out.filter((m) =>
+        passesAdvanced(
+          adv,
+          {
+            host: m.host,
+            path: m.path,
+            url: m.url,
+            method: m.method,
+            status: String(m.statusCode),
+            type: m.contentType,
+          },
+          m.respSize || m.reqSize,
+        ),
+      )
+    }
     if (sort.key) {
       const key: keyof FlowMeta =
         sort.key === 'status'
@@ -154,7 +197,7 @@ export default function ProxyView({ pulse }: { pulse: PulseState }) {
     }
     return out
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pulse.flows, q, method, statuses, hideStatic, sort])
+  }, [pulse.flows, q, method, statuses, hideStatic, sort, adv])
 
   const toggleStatus = (s: string) => {
     setStatuses((prev) => {
@@ -176,7 +219,7 @@ export default function ProxyView({ pulse }: { pulse: PulseState }) {
   }
 
   const fl = pulse.selectedFlow
-  const filtersActive = q.trim() !== '' || method !== 'ANY' || statuses.size > 0 || hideStatic
+  const filtersActive = q.trim() !== '' || method !== 'ANY' || statuses.size > 0 || hideStatic || advancedActive(adv)
 
   return (
     <div className="view padded">
@@ -238,6 +281,18 @@ export default function ProxyView({ pulse }: { pulse: PulseState }) {
                 </button>
               )}
               <div className="spacer" style={{ flex: 1 }} />
+              <button
+                className={`btn sm ${advancedActive(adv) ? 'primary' : ''}`}
+                title="Advanced filter — regex/invert matching, hide by type, size range"
+                onClick={(e) => {
+                  const r = (e.currentTarget as HTMLElement).getBoundingClientRect()
+                  setAdvPos(advPos ? null : { x: r.right - 470, y: r.bottom + 6 })
+                }}
+              >
+                <Icon name="sliders" size={13} />
+                Filter+
+                {advancedActive(adv) && <span className="badge">on</span>}
+              </button>
               <button
                 className={`btn sm ${rules.length > 0 ? 'primary' : ''}`}
                 title="Highlight rules — color-code matching flows"
@@ -340,6 +395,9 @@ export default function ProxyView({ pulse }: { pulse: PulseState }) {
           </div>
         }
       />
+      {advPos && (
+        <AdvancedFilterPopover value={adv} onChange={saveAdv} x={advPos.x} y={advPos.y} onClose={() => setAdvPos(null)} />
+      )}
       {rulesPos && (
         <HighlightRules
           rules={rules}

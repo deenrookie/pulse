@@ -4,7 +4,6 @@ import { ResponseInspector } from '../components/MessageViewer'
 import Split from '../ui/Split'
 import Icon from '../ui/Icon'
 import Empty from '../ui/Empty'
-import { confirm } from '../ui/Confirm'
 import ContextMenu, { type MenuItem } from '../components/ContextMenu'
 import MarkEditor, { type Mark } from '../ui/MarkEditor'
 import { colorTriplet } from '../ui/palette'
@@ -111,17 +110,11 @@ export default function RepeaterView({ pulse, goProxy }: { pulse: PulseState; go
     }
   }
 
+  // quick delete: no confirmation — the tab list is long and deletes are frequent
   const remove = async (id: string) => {
-    const t = tabs.find((x) => x.id === id)
-    const ok = await confirm({
-      title: 'Delete Repeater tab?',
-      message: `Removes the saved request ${t ? `«${t.title}»` : ''} and its last response.`,
-      confirmLabel: 'Delete tab',
-      danger: true,
-    })
-    if (!ok) return
     await pulse.repeaterDelete(id)
-    setSelected(null)
+    pulse.notify('Tab deleted')
+    if (selected === id) setSelected(null)
   }
 
   // Ctrl/Cmd+Enter sends from anywhere in this view
@@ -232,12 +225,17 @@ export default function RepeaterView({ pulse, goProxy }: { pulse: PulseState; go
                 <Icon name="search" size={12} />
                 <input
                   className="input"
-                  style={{ width: '100%', paddingLeft: 26, paddingRight: 8, fontSize: 12 }}
+                  style={{ width: '100%', paddingLeft: 26, paddingRight: 26, fontSize: 12 }}
                   placeholder="Filter tabs…"
                   value={search}
                   spellCheck={false}
                   onChange={(e) => setSearch(e.target.value)}
                 />
+                {search && (
+                  <button className="clear-btn" title="Clear filter" onClick={() => setSearch('')}>
+                    <Icon name="x" size={11} />
+                  </button>
+                )}
               </div>
             </div>
             <div className="panel-body">

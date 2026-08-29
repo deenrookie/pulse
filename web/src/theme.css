@@ -1001,6 +1001,14 @@ table.flows tbody tr.hl.selected td { background: var(--accent-bg); box-shadow: 
 
 /* side-list search */
 .side-search { padding: 8px 10px; border-bottom: 1px solid var(--border); flex: none; }
+.search-box { position: relative; }
+.clear-btn {
+  position: absolute; right: 7px; top: 50%; transform: translateY(-50%);
+  border: none; background: none; cursor: pointer; padding: 2px;
+  color: var(--text-faint); border-radius: var(--radius-xs);
+  display: inline-flex; align-items: center; justify-content: center;
+}
+.clear-btn:hover { color: var(--text); background: var(--bg-active); }
 .side-search .input { width: 100%; font-size: 12px; padding: 5px 9px; }
 
 /* ============ 21. Waiting state (ResponseInspector) ============ */
@@ -1023,3 +1031,57 @@ table.flows tbody tr.hl.selected td { background: var(--accent-bg); box-shadow: 
 }
 .waiting b { font-size: 12.5px; font-weight: 600; color: var(--text-muted); }
 .waiting .hint { font-size: 11.5px; color: var(--text-faint); line-height: 1.6; }
+
+/* ============ 22. Site map tree ============ */
+.tree-host { }
+.tree-row {
+  display: flex; align-items: center; gap: 7px;
+  padding: 5px 10px; cursor: pointer;
+  font-family: var(--mono); font-size: 12px;
+  border-bottom: 1px solid transparent;
+  transition: background var(--t-fast) ease;
+}
+.tree-row:hover { background: var(--bg-hover); }
+.tree-row .name {
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  min-width: 0;
+}
+.tree-row .grow { flex: 1; }
+.tree-row.host { color: var(--text); font-weight: 600; padding-top: 7px; padding-bottom: 7px; }
+.tree-row.host .name { color: var(--info); }
+.tree-row.host > .icon { color: var(--text-faint); flex: none; }
+.tree-row.path {
+  padding-left: 44px; color: var(--text-muted); cursor: default;
+  border-bottom: none; padding-top: 3px; padding-bottom: 1px;
+}
+.tree-row.leaf {
+  padding-left: 66px; padding-top: 3px; padding-bottom: 3px;
+  color: var(--text);
+}
+.tree-row.leaf.selected {
+  background: var(--accent-bg);
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+.tree-row.leaf .count { color: var(--text-faint); font-size: 11px; }
+.tree-row.leaf .badge { margin-left: auto; }
+
+/* ============ 23. Advanced filter popover ============ */
+.adv-section { margin-bottom: 12px; }
+.adv-label {
+  font-size: 10.5px; font-weight: 600; letter-spacing: 0.5px;
+  text-transform: uppercase; color: var(--text-faint);
+  margin-bottom: 6px;
+}
+.adv-row { display: flex; gap: 6px; align-items: center; }
+.adv-row .mini { flex: 1; min-width: 0; }
+.adv-checks { display: flex; gap: 16px; flex-wrap: wrap; }
+.switch.sm { font-size: 11.5px; gap: 6px; }
+.switch.sm .track { width: 28px; height: 16px; border-radius: 8px; }
+.switch.sm .track::after { width: 10px; height: 10px; top: 2px; left: 2px; }
+.switch.sm input:checked + .track::after { transform: translateX(12px); }
+
+/* popover sm switches keep focus ring */
+.switch.sm input:focus-visible + .track { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
+
+/* fix: adv-row selects shouldn't flex-shrink labels */
+.adv-row select.mini { flex: 0 0 auto; }
