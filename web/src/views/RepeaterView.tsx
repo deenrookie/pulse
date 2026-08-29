@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import RequestEditor, { editorStateFrom, editorToRequest, type EditorState } from '../components/RequestEditor'
+import RawEditor, { rawToRequest, requestToRaw } from '../components/RawEditor'
 import { ResponseInspector } from '../components/MessageViewer'
 import Split from '../ui/Split'
 import Icon from '../ui/Icon'
@@ -41,7 +41,9 @@ export default function RepeaterView({ pulse, goProxy }: { pulse: PulseState; go
   const currentId = selected ?? tabs[0]?.id ?? null
   const tab = tabs.find((t) => t.id === currentId) ?? null
 
-  const [editor, setEditor] = useState<EditorState | null>(null)
+  // raw request buffer, tagged with the tab it belongs to so switching tabs
+  // reloads it while typing in the same tab does not
+  const [raw, setRaw] = useState<{ text: string; __id: string | null } | null>(null)
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
 
@@ -65,15 +67,19 @@ export default function RepeaterView({ pulse, goProxy }: { pulse: PulseState; go
     return () => window.removeEventListener('hashchange', apply)
   }, [])
 
+  // address bar mirrors the selected tab (replaceState fires no hashchange)
+  useEffect(() => {
+    const base = '#/repeater'
+    const next = currentId ? `${base}?tab=${currentId}` : base
+    if (window.location.hash !== next) window.history.replaceState(null, '', next)
+  }, [currentId])
+
   useEffect(() => {
     if (!tab) {
-      setEditor(null)
+      setRaw(null)
       return
     }
-    // load editor from the tab unless we're already editing this tab
-    setEditor((prev: TaggedEditor | null) =>
-      prev && currentId === prev.__id ? prev : withId(editorStateFrom(tab.request), currentId),
-    )
+    setRaw((prev) => (prev && prev.__id === currentId ? prev : { text: requestToRaw(tab.request), __id: currentId }))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentId, tab?.updatedAt])
 
@@ -88,8 +94,8 @@ export default function RepeaterView({ pulse, goProxy }: { pulse: PulseState; go
   }, [tabs, search, marks])
 
   const send = async () => {
-    if (!currentId || !editor) return
-    const req = editorToRequest(editor)
+    if (!currentId || !raw || !tab) return
+    const req = rawToRequest(raw.text, tab.request.url)
     if ('error' in req) {
       setErr(req.error)
       return
@@ -129,7 +135,14 @@ export default function RepeaterView({ pulse, goProxy }: { pulse: PulseState; go
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentId, editor, busy])
+  }, [currentId, raw, busy])
+
+  const markPosOf = (id: string) => {
+    const el = document.querySelector(`[data-tab-id="${id}"]`)
+    if (!el) return { x: 300, y: 300 }
+    const r = el.getBoundingClientRect()
+    return { x: r.right + 8, y: r.top }
+  }
 
   const tabMenu = (t: RepeaterTab): MenuItem[] => [
     {
@@ -146,7 +159,7 @@ export default function RepeaterView({ pulse, goProxy }: { pulse: PulseState; go
       icon: 'tag',
       label: marks[t.id] ? 'Edit mark' : 'Mark…',
       separatorAfter: true,
-      onClick: () => setMarkFor({ ...menuPosOf(t.id), tab: t }),
+      onClick: () => setMarkFor({ ...markPosOf(t.id), tab: t }),
     },
     ...(marks[t.id]
       ? [
@@ -184,14 +197,6 @@ export default function RepeaterView({ pulse, goProxy }: { pulse: PulseState; go
       onClick: () => void remove(t.id),
     },
   ]
-
-  // position helper for the mark editor: open near the tab row
-  const menuPosOf = (id: string) => {
-    const el = document.querySelector(`[data-tab-id="${id}"]`)
-    if (!el) return { x: 300, y: 300 }
-    const r = el.getBoundingClientRect()
-    return { x: r.right + 8, y: r.top }
-  }
 
   const resp = tab?.lastResponse
   const currentMark = currentId ? marks[currentId] : undefined
@@ -273,32 +278,38 @@ export default function RepeaterView({ pulse, goProxy }: { pulse: PulseState; go
                       title={`${t.request.url} — right-click for actions`}
                     >
                       <div className="l1">
+                        {mark ? (
+                          <Icon name="tag" size={11} className="lead-icon marked" style={{ color: mark.color }} />
+                        ) : (
+                          <Icon name="file" size={11} className="lead-icon" />
+                        )}
                         <span className={`method-${t.request.method}`}>{t.request.method}</span>
                         {t.lastResponse && (
                           <span className={`status${Math.floor(t.lastResponse.statusCode / 100)}`} style={{ fontWeight: 700 }}>
                             {t.lastResponse.statusCode}
                           </span>
                         )}
+                        <span className="grow" />
+                        {mark && (
+                          <span className="mark-mini" style={{ color: mark.color }} title={mark.text}>
+                            {mark.text}
+                          </span>
+                        )}
                         <span className="id">{t.id.replace('tab-', '')}</span>
+                        <button
+                          className="tab-x"
+                          title="Delete tab"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            void remove(t.id)
+                          }}
+                        >
+                          <Icon name="x" size={11} />
+                        </button>
                       </div>
                       <div className="l2" title={t.title}>
                         {t.title}
                       </div>
-                      {mark && (
-                        <div className="l2" style={{ paddingTop: 2 }}>
-                          <span
-                            className="mark-chip"
-                            style={{
-                              color: mark.color,
-                              background: `rgb(${colorTriplet(mark.color)} / 0.12)`,
-                              border: `1px solid rgb(${colorTriplet(mark.color)} / 0.35)`,
-                            }}
-                          >
-                            <span className="hl-dot" style={{ background: mark.color, margin: 0 }} />
-                            {mark.text}
-                          </span>
-                        </div>
-                      )}
                     </div>
                   )
                 })
@@ -356,12 +367,12 @@ export default function RepeaterView({ pulse, goProxy }: { pulse: PulseState; go
               )}
             </div>
             <div className="panel-body" style={{ display: 'flex', flexDirection: 'column', padding: 0 }}>
-              {editor ? (
+              {raw ? (
                 <Split
                   dir="v"
                   storageKey="pulse.split.repeater"
                   initial={0.55}
-                  a={<RequestEditor state={editor} onChange={(next) => setEditor(withId(next, currentId))} />}
+                  a={<RawEditor value={raw.text} onChange={(text) => setRaw({ text, __id: currentId })} />}
                   b={<ResponseInspector resp={resp} />}
                 />
               ) : (
@@ -391,11 +402,4 @@ export default function RepeaterView({ pulse, goProxy }: { pulse: PulseState; go
       )}
     </div>
   )
-}
-
-// tiny helper: tag editor state with the tab it belongs to so switching tabs
-// reloads content while typing in the same tab does not
-type TaggedEditor = EditorState & { __id?: string | null }
-function withId(st: EditorState, id: string | null): TaggedEditor {
-  return { ...st, __id: id }
 }

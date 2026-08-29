@@ -62,6 +62,17 @@ export default function HighlightRules({
     }
   }, [onClose])
 
+  // focus the match input of the freshly added rule (runs after commit)
+  const prevCount = useRef(rules.length)
+  useEffect(() => {
+    if (rules.length > prevCount.current) {
+      const rows = document.querySelectorAll('.popover .rule-row')
+      const last = rows[rows.length - 1]
+      ;(last?.querySelector('input.mini') as HTMLInputElement | null)?.focus()
+    }
+    prevCount.current = rules.length
+  }, [rules.length])
+
   const update = (id: string, patch: Partial<HighlightRule>) =>
     onChange(rules.map((r) => (r.id === id ? { ...r, ...patch } : r)))
 
@@ -84,7 +95,7 @@ export default function HighlightRules({
     <div
       ref={ref}
       className="popover"
-      style={{ left: Math.max(8, Math.min(x, window.innerWidth - 440)), top: Math.max(8, Math.min(y, window.innerHeight - 360)) }}
+      style={{ left: Math.max(8, Math.min(x, window.innerWidth - 480)), top: Math.max(8, Math.min(y, window.innerHeight - 360)) }}
       onMouseDown={(e) => e.stopPropagation()}
     >
       <h4>
@@ -118,27 +129,29 @@ export default function HighlightRules({
               <option value="contains">contains</option>
               <option value="regex">regex</option>
             </select>
-            <input
-              className="mini"
-              placeholder="match…"
-              value={r.match}
-              spellCheck={false}
-              onChange={(e) => update(r.id, { match: e.target.value })}
-            />
-            <div className="swatch-picker">
-              {MARK_COLORS.map((c) => (
-                <button
-                  key={c.id}
-                  className={`swatch ${r.color === c.value ? 'on' : ''}`}
-                  style={{ background: c.value }}
-                  title={c.label}
-                  onClick={() => update(r.id, { color: c.value })}
-                />
-              ))}
-            </div>
             <button className="btn ghost sm icon-btn" title="Remove rule" onClick={() => del(r.id)}>
               <Icon name="x" size={12} />
             </button>
+            <div className="match-line">
+              <input
+                className="mini"
+                placeholder="match…"
+                value={r.match}
+                spellCheck={false}
+                onChange={(e) => update(r.id, { match: e.target.value })}
+              />
+              <div className="swatch-picker">
+                {MARK_COLORS.map((c) => (
+                  <button
+                    key={c.id}
+                    className={`swatch ${r.color === c.value ? 'on' : ''}`}
+                    style={{ background: c.value }}
+                    title={c.label}
+                    onClick={() => update(r.id, { color: c.value })}
+                  />
+                ))}
+              </div>
+            </div>
           </div>
         ))}
       </div>

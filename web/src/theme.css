@@ -631,6 +631,18 @@ textarea.editor:focus {
   box-shadow: 0 0 0 2px var(--glow);
 }
 textarea.editor.headers { min-height: 96px; }
+textarea.editor.raw {
+  flex: 1; min-height: 120px; line-height: 1.6; font-size: 12.5px;
+  white-space: pre; overflow: auto;
+}
+.raw-hint {
+  flex: none; padding: 6px 12px;
+  font-size: 11px; color: var(--text-faint);
+  border-top: 1px solid var(--border);
+  background: var(--bg-raised);
+  line-height: 1.6;
+}
+.raw-hint kbd { margin: 0 2px; }
 
 /* ============ 9. Side lists (intercept queue / repeater tabs) ============ */
 .side-list { width: 250px; flex: none; }
@@ -644,10 +656,26 @@ textarea.editor.headers { min-height: 96px; }
 .side-item:hover { background: var(--bg-hover); }
 .side-item.selected { background: var(--accent-bg); box-shadow: inset 2px 0 0 var(--accent); }
 .side-item .l1 {
-  display: flex; gap: 8px; align-items: center;
+  display: flex; gap: 7px; align-items: center;
   font-family: var(--mono); font-size: 12px;
 }
-.side-item .l1 .id { color: var(--text-faint); font-size: 11px; margin-left: auto; }
+.side-item .l1 .grow { flex: 1; min-width: 0; }
+.side-item .l1 .id { color: var(--text-faint); font-size: 11px; }
+.side-item .l1 .lead-icon { color: var(--text-faint); flex: none; opacity: 0.7; }
+.side-item .l1 .lead-icon.marked { opacity: 1; }
+.mark-mini {
+  display: inline-flex; align-items: center; gap: 3px;
+  font-size: 10px; font-weight: 600; max-width: 96px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.tab-x {
+  border: none; background: none; cursor: pointer; padding: 1px 2px;
+  color: var(--text-faint); border-radius: var(--radius-xs);
+  display: inline-flex; align-items: center;
+  opacity: 0; transition: opacity var(--t-fast) ease, color var(--t-fast) ease;
+}
+.side-item:hover .tab-x { opacity: 1; }
+.tab-x:hover { color: var(--danger); }
 .side-item .l2 {
   color: var(--text-faint); font-size: 11px; font-family: var(--mono);
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
@@ -918,7 +946,7 @@ table.flows tbody tr.hl.selected td { background: var(--accent-bg); box-shadow: 
 /* ============ 19. Popover panel (highlights / intercept rules) ============ */
 .popover {
   position: fixed; z-index: var(--z-menu);
-  width: 420px; max-width: calc(100vw - 24px);
+  width: 460px; max-width: calc(100vw - 24px);
   max-height: 70vh; overflow: auto;
   background: var(--bg-raised);
   border: 1px solid var(--border-strong);
@@ -932,17 +960,24 @@ table.flows tbody tr.hl.selected td { background: var(--accent-bg); box-shadow: 
 }
 .popover .sub { color: var(--text-faint); font-size: 11.5px; margin-bottom: 10px; line-height: 1.5; }
 .rule-row {
-  display: grid; grid-template-columns: 84px 86px 92px 1fr auto auto;
-  gap: 6px; align-items: center; padding: 6px; border-radius: var(--radius-sm);
+  display: grid; grid-template-columns: 104px 112px 92px 26px;
+  gap: 6px; align-items: center; padding: 7px; border-radius: var(--radius-sm);
 }
 .rule-row:hover { background: var(--bg-hover); }
 .rule-row + .rule-row { margin-top: 2px; }
 .rule-row .mini {
   background: var(--bg-input); color: var(--text);
   border: 1px solid var(--border); border-radius: var(--radius-xs);
-  font: inherit; font-size: 11.5px; padding: 4px 6px; min-width: 0;
+  font: inherit; font-size: 12px; padding: 6px 8px; min-width: 0;
   font-family: var(--mono);
 }
+.rule-row .match-line {
+  grid-column: 1 / -1;
+  display: flex; gap: 10px; align-items: center;
+}
+.rule-row .match-line .mini { flex: 1; min-width: 220px; }
+.rule-row .swatch { width: 16px; height: 16px; }
+.rule-row .swatch-picker { gap: 5px; }
 .rule-row .mini:focus { border-color: var(--accent-dim); outline: none; }
 .swatch-picker { display: flex; gap: 6px; }
 .swatch {

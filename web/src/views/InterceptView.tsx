@@ -77,7 +77,27 @@ function HoldRules({
     }
   }, [onClose])
 
+  // focus the match input of the freshly added rule (runs after commit)
+  const prevCount = useRef(rules.length)
+  useEffect(() => {
+    if (rules.length > prevCount.current) {
+      const rows = document.querySelectorAll('.popover .rule-row')
+      const last = rows[rows.length - 1]
+      ;(last?.querySelector('input.mini') as HTMLInputElement | null)?.focus()
+    }
+    prevCount.current = rules.length
+  }, [rules.length])
+
   const update = (id: string, patch: Partial<HoldRule>) => onChange(rules.map((r) => (r.id === id ? { ...r, ...patch } : r)))
+
+  const focusLastMatch = () => {
+    requestAnimationFrame(() => {
+      const rows = document.querySelectorAll('.popover .rule-row')
+      const last = rows[rows.length - 1]
+      const input = last?.querySelector('input.mini') as HTMLInputElement | null
+      input?.focus()
+    })
+  }
 
   return (
     <div
@@ -96,7 +116,7 @@ function HoldRules({
       <div className="rule-list">
         {rules.length === 0 && <div className="rule-empty">No rules — currently holding everything.</div>}
         {rules.map((r) => (
-          <div key={r.id} className="rule-row" style={{ gridTemplateColumns: '84px 92px 1fr auto' }}>
+          <div key={r.id} className="rule-row" style={{ gridTemplateColumns: '118px 96px 26px' }}>
             <select className="mini" value={r.field} onChange={(e) => update(r.id, { field: e.target.value as HoldRule['field'] })}>
               <option value="host">host</option>
               <option value="path">path</option>
@@ -107,13 +127,6 @@ function HoldRules({
               <option value="contains">contains</option>
               <option value="regex">regex</option>
             </select>
-            <input
-              className="mini"
-              placeholder="match…"
-              value={r.match}
-              spellCheck={false}
-              onChange={(e) => update(r.id, { match: e.target.value })}
-            />
             <button
               className="btn ghost sm icon-btn"
               title="Remove rule"
@@ -121,14 +134,24 @@ function HoldRules({
             >
               <Icon name="x" size={12} />
             </button>
+            <div className="match-line">
+              <input
+                className="mini"
+                placeholder="match…"
+                value={r.match}
+                spellCheck={false}
+                onChange={(e) => update(r.id, { match: e.target.value })}
+              />
+            </div>
           </div>
         ))}
       </div>
       <button
         className="btn sm"
-        onClick={() =>
+        onClick={() => {
           onChange([...rules, { id: crypto.randomUUID(), field: 'host', mode: 'contains', match: '' }])
-        }
+          focusLastMatch()
+        }}
       >
         <Icon name="plus" size={13} />
         Add rule

@@ -82,6 +82,13 @@ export default function ProxyView({ pulse }: { pulse: PulseState }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  // address bar mirrors the selected flow (replaceState fires no hashchange)
+  useEffect(() => {
+    const base = '#/proxy'
+    const next = pulse.selectedId ? `${base}?flow=${pulse.selectedId}` : base
+    if (window.location.hash !== next) window.history.replaceState(null, '', next)
+  }, [pulse.selectedId])
+
   const saveRules = (next: HighlightRule[]) => {
     setRules(next)
     try {
