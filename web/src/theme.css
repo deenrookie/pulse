@@ -1033,12 +1033,12 @@ table.flows tbody tr.hl.selected td { background: var(--accent-bg); box-shadow: 
 .waiting .hint { font-size: 11.5px; color: var(--text-faint); line-height: 1.6; }
 
 /* ============ 22. Site map tree ============ */
-.tree-host { }
+.tree-wrap { flex: 1; min-height: 0; overflow: auto; }
 .tree-row {
   display: flex; align-items: center; gap: 7px;
-  padding: 5px 10px; cursor: pointer;
+  padding: 0 10px; cursor: pointer;
   font-family: var(--mono); font-size: 12px;
-  border-bottom: 1px solid transparent;
+  flex: none;
   transition: background var(--t-fast) ease;
 }
 .tree-row:hover { background: var(--bg-hover); }
@@ -1047,17 +1047,11 @@ table.flows tbody tr.hl.selected td { background: var(--accent-bg); box-shadow: 
   min-width: 0;
 }
 .tree-row .grow { flex: 1; }
-.tree-row.host { color: var(--text); font-weight: 600; padding-top: 7px; padding-bottom: 7px; }
+.tree-row.host { color: var(--text); font-weight: 600; margin-top: 4px; border-top: 1px solid var(--border); }
 .tree-row.host .name { color: var(--info); }
 .tree-row.host > .icon { color: var(--text-faint); flex: none; }
-.tree-row.path {
-  padding-left: 44px; color: var(--text-muted); cursor: default;
-  border-bottom: none; padding-top: 3px; padding-bottom: 1px;
-}
-.tree-row.leaf {
-  padding-left: 66px; padding-top: 3px; padding-bottom: 3px;
-  color: var(--text);
-}
+.tree-row.path { padding-left: 44px; color: var(--text-muted); cursor: default; }
+.tree-row.leaf { padding-left: 66px; color: var(--text); }
 .tree-row.leaf.selected {
   background: var(--accent-bg);
   box-shadow: inset 2px 0 0 var(--accent);
