@@ -1,10 +1,141 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import RequestEditor, { editorStateFrom, editorToRequest, type EditorState } from '../components/RequestEditor'
 import * as api from '../api'
 import Icon from '../ui/Icon'
 import Empty from '../ui/Empty'
+import ContextMenu, { type MenuItem } from '../components/ContextMenu'
+import { copyToClipboard } from '../api'
 import type { PulseState } from '../state'
-import type { HttpRequest } from '../types'
+import type { HttpRequest, PendingItem } from '../types'
+
+const RULES_KEY = 'pulse.holdrules'
+
+/** client-side hold rules: when non-empty, only matching requests are held;
+    everything else is auto-forwarded the moment it arrives */
+export interface HoldRule {
+  id: string
+  field: 'host' | 'path' | 'method' | 'url'
+  mode: 'contains' | 'regex'
+  match: string
+}
+
+function loadRules(): HoldRule[] {
+  try {
+    const raw = JSON.parse(localStorage.getItem(RULES_KEY) ?? '[]')
+    return Array.isArray(raw) ? raw.filter((r) => r && r.match !== undefined) : []
+  } catch {
+    return []
+  }
+}
+
+function ruleMatchesUrl(r: HoldRule, method: string, url: string): boolean {
+  if (!r.match) return false
+  let value = url
+  if (r.field === 'host') {
+    const m = url.match(/^\w+:\/\/([^/?#]+)/)
+    value = m ? m[1] : url
+  } else if (r.field === 'path') {
+    const i = url.indexOf('://')
+    const rest = i >= 0 ? url.slice(i + 3) : url
+    const j = rest.indexOf('/')
+    value = j >= 0 ? rest.slice(j) : '/'
+  } else if (r.field === 'method') {
+    value = method
+  }
+  if (r.mode === 'regex') {
+    try {
+      return new RegExp(r.match, 'i').test(value)
+    } catch {
+      return false
+    }
+  }
+  return value.toLowerCase().includes(r.match.toLowerCase())
+}
+
+// tiny inline rules popover (reuses .popover styles)
+function HoldRules({
+  rules,
+  onChange,
+  x,
+  y,
+  onClose,
+}: {
+  rules: HoldRule[]
+  onChange: (r: HoldRule[]) => void
+  x: number
+  y: number
+  onClose: () => void
+}) {
+  useEffect(() => {
+    const onDoc = () => onClose()
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose()
+    window.addEventListener('mousedown', onDoc)
+    window.addEventListener('keydown', onKey)
+    return () => {
+      window.removeEventListener('mousedown', onDoc)
+      window.removeEventListener('keydown', onKey)
+    }
+  }, [onClose])
+
+  const update = (id: string, patch: Partial<HoldRule>) => onChange(rules.map((r) => (r.id === id ? { ...r, ...patch } : r)))
+
+  return (
+    <div
+      className="popover"
+      style={{ left: Math.max(8, Math.min(x, window.innerWidth - 440)), top: Math.max(8, Math.min(y, window.innerHeight - 320)) }}
+      onMouseDown={(e) => e.stopPropagation()}
+    >
+      <h4>
+        <Icon name="sliders" size={14} />
+        Hold rules
+      </h4>
+      <div className="sub">
+        With no rules every request is held. With rules, only requests matching at least one rule pause here — the rest
+        are auto-forwarded instantly. Needs the console to stay open.
+      </div>
+      <div className="rule-list">
+        {rules.length === 0 && <div className="rule-empty">No rules — currently holding everything.</div>}
+        {rules.map((r) => (
+          <div key={r.id} className="rule-row" style={{ gridTemplateColumns: '84px 92px 1fr auto' }}>
+            <select className="mini" value={r.field} onChange={(e) => update(r.id, { field: e.target.value as HoldRule['field'] })}>
+              <option value="host">host</option>
+              <option value="path">path</option>
+              <option value="url">url</option>
+              <option value="method">method</option>
+            </select>
+            <select className="mini" value={r.mode} onChange={(e) => update(r.id, { mode: e.target.value as HoldRule['mode'] })}>
+              <option value="contains">contains</option>
+              <option value="regex">regex</option>
+            </select>
+            <input
+              className="mini"
+              placeholder="match…"
+              value={r.match}
+              spellCheck={false}
+              onChange={(e) => update(r.id, { match: e.target.value })}
+            />
+            <button
+              className="btn ghost sm icon-btn"
+              title="Remove rule"
+              onClick={() => onChange(rules.filter((x) => x.id !== r.id))}
+            >
+              <Icon name="x" size={12} />
+            </button>
+          </div>
+        ))}
+      </div>
+      <button
+        className="btn sm"
+        onClick={() =>
+          onChange([...rules, { id: crypto.randomUUID(), field: 'host', mode: 'contains', match: '' }])
+        }
+      >
+        <Icon name="plus" size={13} />
+        Add rule
+      </button>
+    </div>
+  )
+}
 
 export default function InterceptView({ pulse }: { pulse: PulseState }) {
   const pending = pulse.intercept.pending
@@ -13,8 +144,41 @@ export default function InterceptView({ pulse }: { pulse: PulseState }) {
   const [editor, setEditor] = useState<EditorState | null>(null)
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
+  const [rules, setRules] = useState<HoldRule[]>(loadRules)
+  const [rulesPos, setRulesPos] = useState<{ x: number; y: number } | null>(null)
+  const [menu, setMenu] = useState<{ x: number; y: number; item: PendingItem } | null>(null)
+  const autoForwarded = useRef<Set<string>>(new Set())
 
   const currentId = selectedPending ?? pending[0]?.id ?? null
+
+  const saveRules = (next: HoldRule[]) => {
+    setRules(next)
+    autoForwarded.current.clear()
+    try {
+      localStorage.setItem(RULES_KEY, JSON.stringify(next))
+    } catch {
+      /* ignore */
+    }
+  }
+
+  // auto-forward engine: non-matching held requests are released instantly
+  useEffect(() => {
+    if (rules.length === 0 || pending.length === 0) return
+    for (const p of pending) {
+      if (autoForwarded.current.has(p.id)) continue
+      const matched = rules.some((r) => ruleMatchesUrl(r, p.method, p.url))
+      if (!matched) {
+        autoForwarded.current.add(p.id)
+        void api.forwardHeld(p.id).catch(() => autoForwarded.current.delete(p.id))
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pending, rules])
+
+  // prune the forwarded set when the queue drains
+  useEffect(() => {
+    if (pending.length === 0) autoForwarded.current.clear()
+  }, [pending.length])
 
   useEffect(() => {
     if (!currentId) {
@@ -86,24 +250,83 @@ export default function InterceptView({ pulse }: { pulse: PulseState }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [busy, currentId, editor])
 
+  const queueMenu = (p: PendingItem): MenuItem[] => [
+    {
+      icon: 'play',
+      label: 'Forward',
+      hint: 'F',
+      onClick: () => {
+        setSelectedPending(p.id)
+        // forward the stored request as-is
+        void api.forwardHeld(p.id).then(
+          () => pulse.refreshIntercept(),
+          (e) => pulse.notify(`Forward failed: ${e.message}`, 'err'),
+        )
+      },
+    },
+    {
+      icon: 'x',
+      label: 'Drop',
+      hint: 'D',
+      separatorAfter: true,
+      onClick: () => {
+        void api.dropHeld(p.id).then(
+          () => pulse.refreshIntercept(),
+          (e) => pulse.notify(`Drop failed: ${e.message}`, 'err'),
+        )
+      },
+    },
+    {
+      icon: 'copy',
+      label: 'Copy URL',
+      onClick: async () => {
+        if (await copyToClipboard(p.url)) pulse.notify('URL copied')
+      },
+    },
+  ]
+
   return (
     <div className="view padded row">
-      <div className="panel side-list">
+      <div className="panel" style={{ flex: 1 }}>
         <div className="panel-head">
           <span className="title">Held requests</span>
           <span className={`badge ${pending.length ? 'hot' : ''}`}>{pending.length || ''}</span>
+          <button
+            className={`btn sm ${rules.length > 0 ? 'primary' : ''}`}
+            title="Hold rules — only matching requests pause here"
+            onClick={(e) => {
+              const r = (e.currentTarget as HTMLElement).getBoundingClientRect()
+              setRulesPos(rulesPos ? null : { x: r.left, y: r.bottom + 6 })
+            }}
+          >
+            <Icon name="sliders" size={13} />
+            Rules
+            {rules.length > 0 && <span className="badge">{rules.length}</span>}
+          </button>
           <div className="spacer" />
           {pulse.intercept.enabled ? (
-            <span className="meta" style={{ color: 'var(--accent)' }}>● holding</span>
+            <span className="meta" style={{ color: 'var(--accent)' }}>
+              ● holding
+            </span>
           ) : (
-            <span className="meta" style={{ color: 'var(--warn)' }}>● off</span>
+            <span className="meta" style={{ color: 'var(--warn)' }}>
+              ● off
+            </span>
           )}
         </div>
         <div className="panel-body">
           {pending.length === 0 ? (
             <Empty icon={pulse.intercept.enabled ? 'hand' : 'circle'} title={pulse.intercept.enabled ? 'Nothing held' : 'Intercept is off'}>
               {pulse.intercept.enabled ? (
-                'Browse something — matching requests will pause here.'
+                rules.length > 0 ? (
+                  <>
+                    Only requests matching the {rules.length} hold rule{rules.length > 1 ? 's' : ''} pause here.
+                    <br />
+                    Everything else flows straight through.
+                  </>
+                ) : (
+                  'Browse something — matching requests will pause here.'
+                )
               ) : (
                 'Every request currently flows straight to the server.'
               )}
@@ -120,6 +343,12 @@ export default function InterceptView({ pulse }: { pulse: PulseState }) {
                 key={p.id}
                 className={`side-item ${currentId === p.id ? 'selected' : ''}`}
                 onClick={() => setSelectedPending(p.id)}
+                onContextMenu={(e) => {
+                  e.preventDefault()
+                  setSelectedPending(p.id)
+                  setMenu({ x: e.clientX, y: e.clientY, item: p })
+                }}
+                title={`${p.url} — right-click for actions`}
               >
                 <div className="l1">
                   <span className={`method-${p.method}`}>{p.method}</span>
@@ -134,10 +363,19 @@ export default function InterceptView({ pulse }: { pulse: PulseState }) {
         </div>
       </div>
 
-      <div className="panel" style={{ flex: 1 }}>
+      <div className="panel" style={{ flex: 3 }}>
         <div className="panel-head">
-          <span className="title">Intercepted request</span>
-          {heldFull && <span className="meta">{heldFull.id}</span>}
+          {/* common actions on the left, next to the title */}
+          <button className="btn primary" disabled={!currentId || busy} onClick={onForward} title="Forward (F)">
+            {busy ? <span className="spinner" /> : <Icon name="play" size={13} />}
+            Forward
+            <kbd>F</kbd>
+          </button>
+          <button className="btn danger" disabled={!currentId || busy} onClick={onDrop} title="Drop (D)">
+            <Icon name="x" size={13} />
+            Drop
+            <kbd>D</kbd>
+          </button>
           <div className="spacer" />
           {err && (
             <span className="err-inline" title={err}>
@@ -145,16 +383,7 @@ export default function InterceptView({ pulse }: { pulse: PulseState }) {
               {err}
             </span>
           )}
-          <button className="btn danger" disabled={!currentId || busy} onClick={onDrop} title="Drop (D)">
-            <Icon name="x" size={13} />
-            Drop
-            <kbd>D</kbd>
-          </button>
-          <button className="btn primary" disabled={!currentId || busy} onClick={onForward} title="Forward (F)">
-            {busy ? <span className="spinner" /> : <Icon name="play" size={13} />}
-            Forward
-            <kbd>F</kbd>
-          </button>
+          {heldFull && <span className="meta">{heldFull.id}</span>}
         </div>
         <div className="panel-body" style={{ display: 'flex', flexDirection: 'column' }}>
           {editor ? (
@@ -170,6 +399,11 @@ export default function InterceptView({ pulse }: { pulse: PulseState }) {
           )}
         </div>
       </div>
+
+      {rulesPos && (
+        <HoldRules rules={rules} onChange={saveRules} x={rulesPos.x} y={rulesPos.y} onClose={() => setRulesPos(null)} />
+      )}
+      {menu && <ContextMenu x={menu.x} y={menu.y} items={queueMenu(menu.item)} onClose={() => setMenu(null)} />}
     </div>
   )
 }

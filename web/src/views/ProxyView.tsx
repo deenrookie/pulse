@@ -5,6 +5,7 @@ import Split from '../ui/Split'
 import Empty from '../ui/Empty'
 import Icon from '../ui/Icon'
 import { confirm } from '../ui/Confirm'
+import HighlightRules, { ruleMatches, type HighlightRule } from '../ui/HighlightRules'
 import type { PulseState } from '../state'
 import type { FlowMeta } from '../types'
 
@@ -18,6 +19,16 @@ const STATUS_FILTERS: [string, string][] = [
 ]
 const STATIC_EXT = /\.(css|js|mjs|map|png|jpe?g|gif|svg|ico|webp|avif|woff2?|ttf|otf|eot|mp4|webm)(\?|$)/i
 const STATIC_TYPE = /^(image\/|font\/|text\/css|text\/javascript|application\/javascript|application\/x-font)/i
+const HL_KEY = 'pulse.highlights'
+
+function loadRules(): HighlightRule[] {
+  try {
+    const raw = JSON.parse(localStorage.getItem(HL_KEY) ?? '[]')
+    return Array.isArray(raw) ? raw.filter((r) => r && r.match !== undefined) : []
+  } catch {
+    return []
+  }
+}
 
 function isStatic(m: FlowMeta): boolean {
   if (m.contentType && STATIC_TYPE.test(m.contentType)) return true
@@ -34,6 +45,13 @@ function cmp(a: FlowMeta, b: FlowMeta, key: keyof FlowMeta, dir: 1 | -1): number
   return r * dir
 }
 
+/** view params from the address bar: #/proxy?flow=req-12 */
+function viewParam(name: string): string | null {
+  const h = window.location.hash
+  const q = h.includes('?') ? h.slice(h.indexOf('?') + 1) : ''
+  return new URLSearchParams(q).get(name)
+}
+
 export default function ProxyView({ pulse }: { pulse: PulseState }) {
   const [q, setQ] = useState('')
   const [statuses, setStatuses] = useState<Set<string>>(new Set())
@@ -41,6 +59,8 @@ export default function ProxyView({ pulse }: { pulse: PulseState }) {
   const [hideStatic, setHideStatic] = useState(false)
   const [sort, setSort] = useState<SortSpec>({ key: null, dir: 1 })
   const [follow, setFollow] = useState(true)
+  const [rules, setRules] = useState<HighlightRule[]>(loadRules)
+  const [rulesPos, setRulesPos] = useState<{ x: number; y: number } | null>(null)
   const searchRef = useRef<HTMLInputElement>(null)
 
   // Ctrl+F lands here (App dispatches after switching views)
@@ -49,6 +69,51 @@ export default function ProxyView({ pulse }: { pulse: PulseState }) {
     window.addEventListener('pulse:focus-filter', focus)
     return () => window.removeEventListener('pulse:focus-filter', focus)
   }, [])
+
+  // deep link: #/proxy?flow=<id> selects that flow
+  useEffect(() => {
+    const apply = () => {
+      const id = viewParam('flow')
+      if (id) pulse.selectFlow(id)
+    }
+    apply()
+    window.addEventListener('hashchange', apply)
+    return () => window.removeEventListener('hashchange', apply)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  const saveRules = (next: HighlightRule[]) => {
+    setRules(next)
+    try {
+      localStorage.setItem(HL_KEY, JSON.stringify(next))
+    } catch {
+      /* ignore */
+    }
+  }
+
+  const highlightOf = useMemo(() => {
+    if (rules.length === 0) return undefined
+    return (m: FlowMeta) => {
+      const flat: Record<string, string> = {
+        'request.url': m.url,
+        'request.host': m.host,
+        'request.path': m.path,
+        'request.method': m.method,
+        'request.status': '',
+        'request.type': '',
+        'response.url': '',
+        'response.host': '',
+        'response.path': '',
+        'response.method': '',
+        'response.status': String(m.statusCode),
+        'response.type': m.contentType,
+      }
+      for (const r of rules) {
+        if (ruleMatches(r, flat)) return r.color
+      }
+      return null
+    }
+  }, [rules])
 
   const filtered = useMemo(() => {
     const needle = q.trim().toLowerCase()
@@ -166,6 +231,18 @@ export default function ProxyView({ pulse }: { pulse: PulseState }) {
                 </button>
               )}
               <div className="spacer" style={{ flex: 1 }} />
+              <button
+                className={`btn sm ${rules.length > 0 ? 'primary' : ''}`}
+                title="Highlight rules — color-code matching flows"
+                onClick={(e) => {
+                  const r = (e.currentTarget as HTMLElement).getBoundingClientRect()
+                  setRulesPos(rulesPos ? null : { x: r.right - 430, y: r.bottom + 6 })
+                }}
+              >
+                <Icon name="bolt" size={13} />
+                Highlights
+                {rules.length > 0 && <span className="badge">{rules.length}</span>}
+              </button>
               <span className="faint mono" style={{ fontSize: 11, fontVariantNumeric: 'tabular-nums' }} title="Total recorded flows (including filtered-out)">
                 {pulse.total.toLocaleString()} total
               </span>
@@ -187,6 +264,7 @@ export default function ProxyView({ pulse }: { pulse: PulseState }) {
               notify={pulse.notify}
               proxyAddr={pulse.status?.proxyAddr}
               filtered={filtersActive}
+              highlightOf={highlightOf}
             />
           </div>
         }
@@ -195,6 +273,15 @@ export default function ProxyView({ pulse }: { pulse: PulseState }) {
             <div className="panel-head">
               {fl ? (
                 <>
+                  <button
+                    className="btn sm"
+                    disabled={!fl}
+                    title="Copy this request into a new Repeater tab"
+                    onClick={() => fl && pulse.sendToRepeater(fl.id)}
+                  >
+                    <Icon name="send" size={13} />
+                    Send to Repeater
+                  </button>
                   <span className={`method-${fl.request.method} mono`} style={{ fontWeight: 700, fontSize: 12 }}>
                     {fl.request.method}
                   </span>
@@ -206,6 +293,20 @@ export default function ProxyView({ pulse }: { pulse: PulseState }) {
                 <span className="title">Inspector</span>
               )}
               <div className="spacer" />
+              {fl && (
+                <button
+                  className="btn ghost sm icon-btn"
+                  title="Copy a link that opens this flow selected"
+                  onClick={() => {
+                    void navigator.clipboard?.writeText(`${location.origin}/#/proxy?flow=${fl.id}`).then(
+                      () => pulse.notify('Link copied'),
+                      () => pulse.notify('Clipboard unavailable', 'err'),
+                    )
+                  }}
+                >
+                  <Icon name="link" size={13} />
+                </button>
+              )}
               {fl?.response && (
                 <button
                   className="btn ghost sm icon-btn"
@@ -215,15 +316,6 @@ export default function ProxyView({ pulse }: { pulse: PulseState }) {
                   <Icon name="external" size={13} />
                 </button>
               )}
-              <button
-                className="btn sm"
-                disabled={!fl}
-                title="Copy this request into a new Repeater tab"
-                onClick={() => fl && pulse.sendToRepeater(fl.id)}
-              >
-                <Icon name="send" size={13} />
-                Send to Repeater
-              </button>
             </div>
             {fl ? (
               <Split
@@ -241,6 +333,15 @@ export default function ProxyView({ pulse }: { pulse: PulseState }) {
           </div>
         }
       />
+      {rulesPos && (
+        <HighlightRules
+          rules={rules}
+          onChange={saveRules}
+          x={rulesPos.x}
+          y={rulesPos.y}
+          onClose={() => setRulesPos(null)}
+        />
+      )}
     </div>
   )
 }

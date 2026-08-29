@@ -1,12 +1,14 @@
-// Virtualized, sortable traffic table.
+// Virtualized, sortable, column-resizable traffic table.
 // Renders only the visible window (+ overscan) as spacer rows keep the
-// scrollbar honest — 5000 captured flows scroll at 60fps.
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+// scrollbar honest — 5000 captured flows scroll at 60fps. Column widths
+// are user-adjustable via header grips and persisted per browser.
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { copyToClipboard, bodyToText, formatSize, formatTime, getFlow, toCurl } from '../api'
 import type { FlowMeta } from '../types'
 import ContextMenu, { type MenuItem } from './ContextMenu'
 import Icon from '../ui/Icon'
 import Empty from '../ui/Empty'
+import { colorTriplet } from '../ui/palette'
 
 export type SortKey = 'time' | 'method' | 'host' | 'path' | 'status' | 'size' | 'dur' | 'type'
 
@@ -32,6 +34,36 @@ interface Props {
   proxyAddr?: string
   /** true when a filter is active and 0 results is therefore a filter outcome */
   filtered?: boolean
+  /** returns a marker color (hex) when a highlight rule matches, else null */
+  highlightOf?: (m: FlowMeta) => string | null
+}
+
+// fixed-pixel columns; `path` flexes to fill the remainder
+type ColKey = 'id' | 'time' | 'method' | 'host' | 'status' | 'type' | 'size' | 'dur' | 'src'
+const DEFAULT_W: Record<ColKey, number> = {
+  id: 56,
+  time: 84,
+  method: 68,
+  host: 240,
+  status: 62,
+  type: 92,
+  size: 78,
+  dur: 64,
+  src: 56,
+}
+const WIDTHS_KEY = 'pulse.colw'
+
+function loadWidths(): Record<ColKey, number> {
+  try {
+    const raw = JSON.parse(localStorage.getItem(WIDTHS_KEY) ?? '{}')
+    const out = { ...DEFAULT_W }
+    for (const k of Object.keys(DEFAULT_W) as ColKey[]) {
+      if (typeof raw[k] === 'number' && raw[k] >= 44 && raw[k] <= 720) out[k] = raw[k]
+    }
+    return out
+  } catch {
+    return { ...DEFAULT_W }
+  }
 }
 
 function statusClass(code: number): string {
@@ -67,6 +99,7 @@ export default function FlowTable({
   notify,
   proxyAddr,
   filtered,
+  highlightOf,
 }: Props) {
   const wrapRef = useRef<HTMLDivElement>(null)
   const [scrollTop, setScrollTop] = useState(0)
@@ -74,6 +107,39 @@ export default function FlowTable({
   const knownIds = useRef<Set<string>>(new Set())
   const [newIds, setNewIds] = useState<Set<string>>(new Set())
   const [menu, setMenu] = useState<{ x: number; y: number; flow: FlowMeta } | null>(null)
+
+  // ---- column widths (draggable) ----
+  const [widths, setWidths] = useState<Record<ColKey, number>>(loadWidths)
+  const [dragCol, setDragCol] = useState<ColKey | null>(null)
+  const dragRef = useRef<{ key: ColKey; startX: number; startW: number } | null>(null)
+
+  const gripDown = (key: ColKey) => (e: React.PointerEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    ;(e.target as HTMLElement).setPointerCapture(e.pointerId)
+    dragRef.current = { key, startX: e.clientX, startW: widths[key] }
+    setDragCol(key)
+  }
+  const gripMove = (e: React.PointerEvent) => {
+    const d = dragRef.current
+    if (!d) return
+    const next = Math.min(720, Math.max(44, d.startW + e.clientX - d.startX))
+    setWidths((w) => ({ ...w, [d.key]: next }))
+  }
+  const gripUp = (e: React.PointerEvent) => {
+    if (!dragRef.current) return
+    ;(e.target as HTMLElement).releasePointerCapture(e.pointerId)
+    dragRef.current = null
+    setDragCol(null)
+    setWidths((w) => {
+      try {
+        localStorage.setItem(WIDTHS_KEY, JSON.stringify(w))
+      } catch {
+        /* ignore */
+      }
+      return w
+    })
+  }
 
   // visible window — clamp start so a shrinking list (filtering, deletes)
   // can never leave the scrollport past the last row
@@ -137,6 +203,8 @@ export default function FlowTable({
     }
   }
 
+  const flowLink = (id: string) => `${location.origin}/#/proxy?flow=${id}`
+
   const menuItems = (m: FlowMeta): MenuItem[] => [
     {
       icon: 'send',
@@ -152,9 +220,14 @@ export default function FlowTable({
       },
     },
     {
+      icon: 'link',
+      label: 'Copy link to this flow',
+      separatorAfter: true,
+      onClick: () => copy('Link', () => flowLink(m.id)),
+    },
+    {
       icon: 'copy',
       label: 'Copy URL',
-      separatorAfter: true,
       onClick: () => copy('URL', () => m.url),
     },
     {
@@ -192,24 +265,42 @@ export default function FlowTable({
   ]
 
   const sortIndicator = (key: SortKey) =>
-    sort.key === key ? <span className="sort-ind"><Icon name={sort.dir === 1 ? 'arrowUp' : 'arrowDown'} size={10} /></span> : null
+    sort.key === key ? (
+      <span className="sort-ind">
+        <Icon name={sort.dir === 1 ? 'arrowUp' : 'arrowDown'} size={10} />
+      </span>
+    ) : null
 
   const clickSort = (key: SortKey) => {
     if (sort.key === key) {
       onSort({ key, dir: sort.dir === 1 ? -1 : 1 })
-    } else if (sort.key === null) {
-      onSort({ key, dir: -1 })
     } else {
       onSort({ key, dir: -1 })
     }
   }
 
-  const th = (key: SortKey, label: string, className: string) => (
-    <th className={`${className} sortable`} onClick={() => clickSort(key)} title={`Sort by ${label.toLowerCase()}`}>
+  const th = (key: SortKey, label: string) => (
+    <th className="sortable" style={{ width: widths[key as ColKey] }} onClick={() => clickSort(key)} title={`Sort by ${label.toLowerCase()}`}>
       {label}
       {sortIndicator(key)}
+      <span
+        className={`col-grip ${dragCol === key ? 'dragging' : ''}`}
+        onPointerDown={gripDown(key as ColKey)}
+        onPointerMove={gripMove}
+        onPointerUp={gripUp}
+        title="Drag to resize"
+      />
     </th>
   )
+
+  const hlOf = (m: FlowMeta) => highlightOf?.(m) ?? null
+
+  const rowStyle = (m: FlowMeta): CSSProperties | undefined => {
+    const hl = hlOf(m)
+    if (!hl) return undefined
+    const t = colorTriplet(hl)
+    return { '--hl-bar': hl, '--hl-bg': `rgb(${t} / 0.09)`, '--hl-hover': `rgb(${t} / 0.16)` } as CSSProperties
+  }
 
   return (
     <div className="panel" style={{ flex: 1 }}>
@@ -227,9 +318,7 @@ export default function FlowTable({
         {flows.length === 0 ? (
           <Empty icon={filtered ? 'search' : 'waves'} title={filtered ? 'No matching traffic' : 'No traffic captured yet'}>
             {filtered ? (
-              <>
-                Nothing matches the current filters — try Reset in the toolbar.
-              </>
+              <>Nothing matches the current filters — try Reset in the toolbar.</>
             ) : (
               <>
                 Point your browser proxy at <b>{proxyAddr ?? '127.0.0.1:8080'}</b>
@@ -240,18 +329,36 @@ export default function FlowTable({
           </Empty>
         ) : (
           <table className="flows">
+            <colgroup>
+              <col style={{ width: widths.id }} />
+              <col style={{ width: widths.time }} />
+              <col style={{ width: widths.method }} />
+              <col style={{ width: widths.host }} />
+              <col />
+              <col style={{ width: widths.status }} />
+              <col style={{ width: widths.type }} />
+              <col style={{ width: widths.size }} />
+              <col style={{ width: widths.dur }} />
+              <col style={{ width: widths.src }} />
+              <col style={{ width: 34 }} />
+            </colgroup>
             <thead>
               <tr>
-                <th className="col-id">#</th>
-                {th('time', 'Time', 'col-time')}
-                {th('method', 'Method', 'col-method')}
-                {th('host', 'Host', 'col-host')}
-                {th('path', 'Path', 'col-path')}
-                {th('status', 'Status', 'col-status')}
-                {th('type', 'Type', 'col-type')}
-                {th('size', 'Size', 'col-size')}
-                {th('dur', 'Took', 'col-dur')}
-                <th className="col-src">Src</th>
+                <th className="col-id" title="Flow id">#</th>
+                {th('time', 'Time')}
+                {th('method', 'Method')}
+                {th('host', 'Host')}
+                <th className="sortable" onClick={() => clickSort('path')} title="Sort by path">
+                  Path
+                  {sortIndicator('path')}
+                </th>
+                {th('status', 'Status')}
+                {th('type', 'Type')}
+                {th('size', 'Size')}
+                {th('dur', 'Took')}
+                <th className="col-src" title="Source">
+                  Src
+                </th>
                 <th style={{ width: 34 }} />
               </tr>
             </thead>
@@ -261,51 +368,67 @@ export default function FlowTable({
                   <td colSpan={11} />
                 </tr>
               )}
-              {visible.map((m) => (
-                <tr
-                  key={m.id}
-                  style={{ height: ROW_H }}
-                  className={`${selectedId === m.id ? 'selected' : ''} ${newIds.has(m.id) ? 'new-row' : ''}`}
-                  onClick={() => onSelect(m.id)}
-                  onContextMenu={(e) => {
-                    e.preventDefault()
-                    onSelect(m.id)
-                    setMenu({ x: e.clientX, y: e.clientY, flow: m })
-                  }}
-                  title={`${m.url} — right-click for actions`}
-                >
-                  <td className="col-id">{m.id.replace('req-', '')}</td>
-                  <td className="col-time">{formatTime(m.timestamp)}</td>
-                  <td className={`col-method method-${m.method}`}>{m.method}</td>
-                  <td className="col-host" title={m.host}>
-                    {m.host}
-                  </td>
-                  <td className="col-path" title={m.path}>
-                    {m.path}
-                  </td>
-                  <td className={`col-status ${statusClass(m.statusCode)}`}>{stateCell(m)}</td>
-                  <td className="col-type" title={m.contentType}>
-                    {shortType(m.contentType)}
-                  </td>
-                  <td className="col-size">{formatSize(m.respSize || m.reqSize)}</td>
-                  <td className="col-dur">{m.durationMs > 0 ? `${m.durationMs}ms` : ''}</td>
-                  <td className="col-src" title={m.source === 'repeater' ? 'Sent from Repeater' : ''}>
-                    {m.source === 'repeater' ? 'rptr' : ''}
-                  </td>
-                  <td>
-                    <button
-                      className="btn ghost sm icon-btn"
-                      title="Delete row"
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        onDelete(m.id)
-                      }}
-                    >
-                      <Icon name="x" size={12} />
-                    </button>
-                  </td>
-                </tr>
-              ))}
+              {visible.map((m) => {
+                const hl = hlOf(m)
+                return (
+                  <tr
+                    key={m.id}
+                    style={{ height: ROW_H, ...rowStyle(m) }}
+                    className={`${selectedId === m.id ? 'selected' : ''} ${newIds.has(m.id) ? 'new-row' : ''} ${hl ? 'hl' : ''}`}
+                    onClick={() => onSelect(m.id)}
+                    onContextMenu={(e) => {
+                      e.preventDefault()
+                      onSelect(m.id)
+                      setMenu({ x: e.clientX, y: e.clientY, flow: m })
+                    }}
+                    title={`${m.url} — right-click for actions`}
+                  >
+                    <td className="col-id" title={m.id}>
+                      {m.id.replace('req-', '')}
+                    </td>
+                    <td className="col-time" title={m.timestamp}>
+                      {formatTime(m.timestamp)}
+                    </td>
+                    <td className={`col-method method-${m.method}`} title={m.method}>
+                      {m.method}
+                    </td>
+                    <td className="col-host" title={m.host}>
+                      {hl && <span className="hl-dot" style={{ background: hl }} />}
+                      {m.host}
+                    </td>
+                    <td className="col-path" title={m.path}>
+                      {m.path}
+                    </td>
+                    <td className={`col-status ${statusClass(m.statusCode)}`} title={m.state === 'complete' ? `HTTP ${m.statusCode}` : m.state}>
+                      {stateCell(m)}
+                    </td>
+                    <td className="col-type" title={m.contentType}>
+                      {shortType(m.contentType)}
+                    </td>
+                    <td className="col-size" title={`response ${formatSize(m.respSize)} · request ${formatSize(m.reqSize)}`}>
+                      {formatSize(m.respSize || m.reqSize)}
+                    </td>
+                    <td className="col-dur" title={`${m.durationMs} ms`}>
+                      {m.durationMs > 0 ? `${m.durationMs}ms` : ''}
+                    </td>
+                    <td className="col-src" title={m.source === 'repeater' ? 'Sent from Repeater' : 'Captured from the proxy'}>
+                      {m.source === 'repeater' ? 'rptr' : ''}
+                    </td>
+                    <td>
+                      <button
+                        className="btn ghost sm icon-btn"
+                        title="Delete row"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          onDelete(m.id)
+                        }}
+                      >
+                        <Icon name="x" size={12} />
+                      </button>
+                    </td>
+                  </tr>
+                )
+              })}
               {end < flows.length && (
                 <tr className="vspacer" style={{ height: (flows.length - end) * ROW_H }}>
                   <td colSpan={11} />

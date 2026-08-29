@@ -887,5 +887,104 @@ textarea.editor.headers { min-height: 96px; }
   .rail-status .dot { animation: none; }
   .spinner { animation-duration: 1.6s; }
   .modal, .modal-overlay { animation-duration: 0.01ms; }
+  .waiting .glyph { animation: none; }
   .rail { transition: none; }
 }
+
+/* ============ 18. Column resize (Live Traffic) ============ */
+table.flows thead th { position: sticky; }
+th .col-grip {
+  position: absolute; top: 0; right: -3px; bottom: 0;
+  width: 7px; cursor: col-resize; z-index: 3;
+}
+th .col-grip::after {
+  content: ''; position: absolute; top: 6px; bottom: 6px; left: 3px;
+  width: 1.5px; border-radius: 1px;
+  background: transparent;
+  transition: background var(--t-fast) ease;
+}
+th .col-grip:hover::after, th .col-grip.dragging::after { background: var(--accent); }
+
+/* highlight-tinted rows (first matching rule wins) */
+table.flows tbody tr.hl td { background: var(--hl-bg, transparent); }
+table.flows tbody tr.hl td:first-child { box-shadow: inset 3px 0 0 var(--hl-bar, transparent); }
+table.flows tbody tr.hl:hover td { background: var(--hl-hover, var(--bg-hover)); }
+table.flows tbody tr.hl.selected td { background: var(--accent-bg); box-shadow: inset 2px 0 0 var(--accent); }
+.hl-dot {
+  display: inline-block; width: 7px; height: 7px; border-radius: 50%;
+  margin-right: 6px; vertical-align: 0;
+}
+
+/* ============ 19. Popover panel (highlights / intercept rules) ============ */
+.popover {
+  position: fixed; z-index: var(--z-menu);
+  width: 420px; max-width: calc(100vw - 24px);
+  max-height: 70vh; overflow: auto;
+  background: var(--bg-raised);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 12px;
+  animation: ctx-in 130ms var(--ease-out);
+}
+.popover h4 {
+  margin: 0 0 2px; font-size: 13px; display: flex; align-items: center; gap: 8px;
+}
+.popover .sub { color: var(--text-faint); font-size: 11.5px; margin-bottom: 10px; line-height: 1.5; }
+.rule-row {
+  display: grid; grid-template-columns: 84px 86px 92px 1fr auto auto;
+  gap: 6px; align-items: center; padding: 6px; border-radius: var(--radius-sm);
+}
+.rule-row:hover { background: var(--bg-hover); }
+.rule-row + .rule-row { margin-top: 2px; }
+.rule-row .mini {
+  background: var(--bg-input); color: var(--text);
+  border: 1px solid var(--border); border-radius: var(--radius-xs);
+  font: inherit; font-size: 11.5px; padding: 4px 6px; min-width: 0;
+  font-family: var(--mono);
+}
+.rule-row .mini:focus { border-color: var(--accent-dim); outline: none; }
+.swatch-picker { display: flex; gap: 6px; }
+.swatch {
+  width: 18px; height: 18px; border-radius: 50%;
+  border: 2px solid transparent; cursor: pointer; padding: 0;
+  transition: transform var(--t-fast) var(--ease-out), border-color var(--t-fast) ease;
+}
+.swatch:hover { transform: scale(1.15); }
+.swatch.on { border-color: var(--text); }
+.rule-list { display: flex; flex-direction: column; gap: 2px; margin-bottom: 10px; }
+.rule-empty { color: var(--text-faint); font-size: 12px; padding: 10px 4px; line-height: 1.6; }
+
+/* ============ 20. Tab marks (Repeater) ============ */
+.mark-chip {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-size: 10.5px; font-weight: 600;
+  padding: 1px 7px; border-radius: 999px;
+  max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.mark-editor .row2 { display: flex; gap: 8px; margin-top: 10px; justify-content: flex-end; }
+
+/* side-list search */
+.side-search { padding: 8px 10px; border-bottom: 1px solid var(--border); flex: none; }
+.side-search .input { width: 100%; font-size: 12px; padding: 5px 9px; }
+
+/* ============ 21. Waiting state (ResponseInspector) ============ */
+.waiting {
+  height: 100%; min-height: 140px;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 12px; padding: 30px; text-align: center;
+}
+.waiting .glyph {
+  width: 46px; height: 46px; border-radius: 50%;
+  display: grid; place-items: center;
+  background: var(--accent-bg);
+  border: 1px solid var(--accent-line);
+  color: var(--accent);
+}
+.waiting .glyph { animation: wait-breathe 2.2s ease-in-out infinite; }
+@keyframes wait-breathe {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(0.92); opacity: 0.75; }
+}
+.waiting b { font-size: 12.5px; font-weight: 600; color: var(--text-muted); }
+.waiting .hint { font-size: 11.5px; color: var(--text-faint); line-height: 1.6; }

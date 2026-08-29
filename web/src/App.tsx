@@ -34,7 +34,8 @@ const VIEWS: { id: Tab; icon: IconName; label: string; title: string; subtitle: 
 export default function App() {
   const pulse = usePulse()
   const viewFromHash = () => {
-    const h = window.location.hash.replace(/^#\/?/, '')
+    // strip any query (#/repeater?tab=x → repeater) before matching a view
+    const h = window.location.hash.replace(/^#\/?/, '').split('?')[0]
     return VIEWS.some((v) => v.id === h) ? (h as Tab) : null
   }
   const [tab, setTab] = useState<Tab>(() => {
@@ -104,7 +105,7 @@ export default function App() {
   // same-document navigation; our own go() uses replaceState so it never loops)
   useEffect(() => {
     const onHash = () => {
-      const h = window.location.hash.replace(/^#\/?/, '')
+      const h = window.location.hash.replace(/^#\/?/, '').split('?')[0]
       if (VIEWS.some((v) => v.id === h) && h !== tab) {
         setTab(h as Tab)
         try {

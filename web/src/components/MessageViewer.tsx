@@ -42,7 +42,9 @@ export function RequestInspector({ req }: { req: RequestLike }) {
         </span>
         <div className="spacer" />
         <CopyBody b64={req.body} />
-        <SubTabs tab={tab} setTab={setTab} hasBody={hasBody} hasParams={params.length > 0} />
+        {/* Raw (request line + headers + body) is always available — GET and
+            other body-less requests still have a raw form */}
+        <SubTabs tab={tab} setTab={setTab} hasBody={hasBody} hasParams={params.length > 0} alwaysRaw />
       </div>
       <div className="summary-strip">
         <span>
@@ -81,23 +83,26 @@ export function ResponseInspector({
         <div className="panel-head">
           <span className="title">Response</span>
         </div>
-        <div className="empty-wrap" style={{ flex: 1, display: 'flex' }}>
-          {error ? (
-            <div className="empty" style={{ color: 'var(--danger)' }}>
-              <div className="glyph" style={{ borderColor: 'rgb(var(--danger-rgb) / .35)', color: 'var(--danger)' }}>
-                <Icon name="alert" size={22} />
-              </div>
-              <div style={{ wordBreak: 'break-all', color: 'var(--danger)' }}>{error}</div>
+        {error ? (
+          <div className="empty" style={{ color: 'var(--danger)' }}>
+            <div className="glyph" style={{ borderColor: 'rgb(var(--danger-rgb) / .35)', color: 'var(--danger)' }}>
+              <Icon name="alert" size={22} />
             </div>
-          ) : (
-            <div className="empty">
-              <div className="glyph">
-                <Icon name="clock" size={22} />
-              </div>
-              <b>Waiting for response…</b>
+            <div style={{ wordBreak: 'break-all', color: 'var(--danger)' }}>{error}</div>
+          </div>
+        ) : (
+          <div className="waiting">
+            <div className="glyph">
+              <Icon name="pulse" size={22} />
             </div>
-          )}
-        </div>
+            <b>Waiting for response</b>
+            <span className="hint">
+              The response appears here the moment it arrives.
+              <br />
+              Status line, headers and body render live.
+            </span>
+          </div>
+        )}
       </div>
     )
   }
@@ -122,7 +127,7 @@ export function ResponseInspector({
             <Icon name="external" size={13} />
           </button>
         )}
-        <SubTabs tab={tab} setTab={setTab} hasBody={hasBody} hasParams={false} />
+        <SubTabs tab={tab} setTab={setTab} hasBody={hasBody} hasParams={false} alwaysRaw />
       </div>
       <div className="summary-strip">
         <span>
@@ -166,16 +171,20 @@ function SubTabs({
   setTab,
   hasBody,
   hasParams,
+  alwaysRaw,
 }: {
   tab: Tab
   setTab: (t: Tab) => void
   hasBody: boolean
   hasParams: boolean
+  /** show Raw (start line + headers + body) even when there is no body */
+  alwaysRaw?: boolean
 }) {
   const tabs: [Tab, string][] = [
     ['headers', 'Headers'],
     ...(hasParams ? ([['params', 'Params']] as [Tab, string][]) : []),
-    ...(hasBody ? ([['pretty', 'Pretty'], ['hex', 'Hex'], ['raw', 'Raw']] as [Tab, string][]) : []),
+    ...(alwaysRaw || hasBody ? ([['raw', 'Raw']] as [Tab, string][]) : []),
+    ...(hasBody ? ([['pretty', 'Pretty'], ['hex', 'Hex']] as [Tab, string][]) : []),
   ]
   return (
     <div className="subtabs">

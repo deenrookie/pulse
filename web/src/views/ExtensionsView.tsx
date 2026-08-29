@@ -3,6 +3,7 @@ import * as api from '../api'
 import Icon from '../ui/Icon'
 import Empty from '../ui/Empty'
 import { confirm } from '../ui/Confirm'
+import ContextMenu, { type MenuItem } from '../components/ContextMenu'
 import type { PluginInfo, RewriteRule, RewriteZone } from '../types'
 
 const ZONES: [RewriteZone, string][] = [
@@ -59,6 +60,27 @@ function RewritePanel({ notify }: { notify: (text: string, kind?: 'ok' | 'err') 
   const [draft, setDraft] = useState<Draft>(emptyDraft)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  const [menu, setMenu] = useState<{ x: number; y: number; rule: RewriteRule } | null>(null)
+
+  const rowMenu = (r: RewriteRule): MenuItem[] => [
+    {
+      icon: 'file',
+      label: 'Edit rule',
+      onClick: () => edit(r),
+    },
+    {
+      icon: r.enabled ? 'minus' : 'check',
+      label: r.enabled ? 'Disable rule' : 'Enable rule',
+      onClick: () => void toggle(r),
+    },
+    {
+      icon: 'trash',
+      label: 'Delete rule',
+      danger: true,
+      separatorAfter: true,
+      onClick: () => void remove(r),
+    },
+  ]
 
   const refresh = () => api.listRewriteRules().then((r) => setRules(r.rules)).catch(() => {})
   useEffect(() => {
@@ -137,9 +159,11 @@ function RewritePanel({ notify }: { notify: (text: string, kind?: 'ok' | 'err') 
   return (
     <div className="panel" style={{ flex: 1 }}>
       <div className="panel-head">
-        <span className="title">{editingId ? 'Edit rule' : 'Add rule'}</span>
-        <span className="meta">rules run on proxy traffic after plugins, before interception</span>
-        <div className="spacer" />
+        <span className="title">{editingId ? 'Edit rule' : 'Rules'}</span>
+        <button className="btn primary" disabled={busy} onClick={submit}>
+          {busy ? <span className="spinner" /> : <Icon name="plus" size={13} />}
+          {editingId ? 'Save' : 'Add rule'}
+        </button>
         {editingId && (
           <button
             className="btn ghost sm"
@@ -151,10 +175,8 @@ function RewritePanel({ notify }: { notify: (text: string, kind?: 'ok' | 'err') 
             Cancel edit
           </button>
         )}
-        <button className="btn primary" disabled={busy} onClick={submit}>
-          {busy ? <span className="spinner" /> : <Icon name="plus" size={13} />}
-          {editingId ? 'Save' : 'Add rule'}
-        </button>
+        <span className="meta">rules run on proxy traffic after plugins, before interception</span>
+        <div className="spacer" />
       </div>
       <div className="rule-form">
         <select className="select" value={draft.zone} onChange={(e) => setDraft({ ...draft, zone: e.target.value as RewriteZone })}>
@@ -217,7 +239,15 @@ function RewritePanel({ notify }: { notify: (text: string, kind?: 'ok' | 'err') 
             </thead>
             <tbody>
               {rules.map((r) => (
-                <tr key={r.id} onDoubleClick={() => edit(r)} title="Double-click to edit">
+                <tr
+                  key={r.id}
+                  onDoubleClick={() => edit(r)}
+                  onContextMenu={(e) => {
+                    e.preventDefault()
+                    setMenu({ x: e.clientX, y: e.clientY, rule: r })
+                  }}
+                  title="Double-click to edit - right-click for actions"
+                >
                   <td>
                     <label className="switch">
                       <input type="checkbox" checked={r.enabled} onChange={() => toggle(r)} />
@@ -263,6 +293,7 @@ function RewritePanel({ notify }: { notify: (text: string, kind?: 'ok' | 'err') 
           </span>
         </div>
       )}
+      {menu && <ContextMenu x={menu.x} y={menu.y} items={rowMenu(menu.rule)} onClose={() => setMenu(null)} />}
     </div>
   )
 }
@@ -271,6 +302,21 @@ function PluginsPanel({ notify }: { notify: (text: string, kind?: 'ok' | 'err') 
   const [plugins, setPlugins] = useState<PluginInfo[]>([])
   const [dir, setDir] = useState('')
   const [busy, setBusy] = useState(false)
+  const [menu, setMenu] = useState<{ x: number; y: number; plugin: PluginInfo } | null>(null)
+
+  const pluginMenu = (p: PluginInfo): MenuItem[] => [
+    {
+      icon: p.enabled ? 'minus' : 'check',
+      label: p.enabled ? 'Disable plugin' : 'Enable plugin',
+      onClick: () => void toggle(p),
+    },
+    {
+      icon: 'refresh',
+      label: 'Reload all plugins',
+      separatorAfter: true,
+      onClick: () => void reload(),
+    },
+  ]
 
   const refresh = () =>
     api
@@ -313,14 +359,14 @@ function PluginsPanel({ notify }: { notify: (text: string, kind?: 'ok' | 'err') 
     <div className="panel" style={{ flex: 1 }}>
       <div className="panel-head">
         <span className="title">Plugins</span>
-        <span className="meta" title={dir}>
-          {dir}
-        </span>
-        <div className="spacer" />
         <button className="btn primary" disabled={busy} onClick={reload}>
           {busy ? <span className="spinner" /> : <Icon name="refresh" size={13} />}
           Reload
         </button>
+        <span className="meta" title={dir}>
+          {dir}
+        </span>
+        <div className="spacer" />
       </div>
       <div className="banner">
         <Icon name="terminal" size={14} />
@@ -338,7 +384,15 @@ function PluginsPanel({ notify }: { notify: (text: string, kind?: 'ok' | 'err') 
           </Empty>
         ) : (
           plugins.map((p) => (
-            <div key={p.file} className="plugin-card">
+            <div
+              key={p.file}
+              className="plugin-card"
+              onContextMenu={(e) => {
+                e.preventDefault()
+                setMenu({ x: e.clientX, y: e.clientY, plugin: p })
+              }}
+              title="Right-click for actions"
+            >
               <div className="head">
                 <label className="switch" title={p.enabled ? 'Disable' : 'Enable'}>
                   <input type="checkbox" checked={p.enabled} onChange={() => toggle(p)} />
@@ -363,6 +417,7 @@ function PluginsPanel({ notify }: { notify: (text: string, kind?: 'ok' | 'err') 
           ))
         )}
       </div>
+      {menu && <ContextMenu x={menu.x} y={menu.y} items={pluginMenu(menu.plugin)} onClose={() => setMenu(null)} />}
     </div>
   )
 }
