@@ -21,6 +21,7 @@ v0.3 对控制台做了整体重设计（对标 Caido 的工作台形态）并�
 | 模块 | 能力 |
 | --- | --- |
 | **Shell** | 左侧图标导航栏（可折叠、徽章计数、连接状态、**双主题切换**：Warm 炭灰终端 / Midnight 午夜青柠，取自 awesome-design-md 的 Warp 与 Sentry 体系），顶栏全局 Intercept 开关与监听地址，`#/view` 直达路由，`Ctrl+1..5` 切换视图、`Ctrl+F` 聚焦过滤 |
+| **WebSocket** | RFC 6455 帧级捕获：升级握手后透明转发并解析帧，text/binary/close/ping/pong 消息双向记录（64KB/条、1000 条上限，节流持久化+实时推送），检查器内 WebSocket 标签页查看；gzip/deflate/br 响应体自动解压展示 |
 | **Proxy** | HTTP/HTTPS MITM 抓包，实时（SSE）**虚拟化**流量表格（5000 行流畅滚动、点击列头排序、**列宽可拖拽**），多维过滤（关键字、状态码分类、HTTP 方法、隐藏静态 + **高级过滤器**：字段×正则×反向排除、按类型隐藏、响应体大小范围），**高亮规则**（命中行着色，8 色），正文完整检查（Headers/Params/Pretty/Hex/Raw、图片预览、JSON 美化），JSONL 持久化重启恢复，**右键菜单**（Send to Repeater / Copy as cURL / 复制链接直达 / 浏览器查看响应 / 删除），表格/检查器分割可拖拽调整，`#/proxy?flow=` 深链接 |
 | **Intercept** | 请求挂起队列，改方法/URL/头/体后放行或丢弃（502），键盘 `F`/`D` 快捷操作 |
 | **Site Map** | 全部捕获端点聚合为 host→path→method 树（状态着色、计数、搜索、`Ctrl+6`），点击叶子检查最新请求/响应，右键联动 Repeater / Live Traffic |
@@ -28,7 +29,7 @@ v0.3 对控制台做了整体重设计（对标 Caido 的工作台形态）并�
 | **Extensions** | **Match & Replace**（5 作用域、正则/字面量、命中计数、持久化）；**JS 插件**（onRequest/onResponse 钩子，隔离 VM + 超时保护，热重载，日志面板） |
 | **Settings** | CA 证书下载与各平台安装指引、运行状态与指纹、快捷键速查 |
 
-WebSocket 等升级流量以透明隧道转发（握手后逐字节双向透传）。
+WebSocket 已支持帧级捕获（非 WebSocket 的其他 Upgrade 协议仍为透明隧道）。
 请求管线顺序：`插件 → 重写规则 → 拦截 → 上游`；存储的流量始终是实际发送/接收的最终形态。
 
 ## 快速开始
