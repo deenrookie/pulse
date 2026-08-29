@@ -1,0 +1,14 @@
+# build artifacts
+pulse.exe
+pulse
+*.pdb
+
+# node
+web/node_modules/
+
+# runtime data (dev instances)
+.pulse-dev/
+*.log
+
+# keep the built SPA so fresh clones can `go build` without node
+!web/dist/
