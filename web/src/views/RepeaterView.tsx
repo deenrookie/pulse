@@ -9,7 +9,7 @@ import Empty from '../ui/Empty'
 import ContextMenu, { type MenuItem } from '../components/ContextMenu'
 import MarkEditor, { type Mark } from '../ui/MarkEditor'
 import { colorTriplet } from '../ui/palette'
-import { copyToClipboard, createRepeaterTab, listRepeater } from '../api'
+import { copyToClipboard, createRepeaterTab, listRepeater, updateRepeaterTab } from '../api'
 import type { PulseState } from '../state'
 import type { RepeaterTab } from '../types'
 
@@ -240,6 +240,37 @@ export default function RepeaterView({ pulse, goProxy }: { pulse: PulseState; go
     setRaw((prev) => (prev && prev.__id === currentId ? prev : { text: requestToRaw(tab.request), __id: currentId }))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentId, tab?.updatedAt])
+
+  // draft auto-save: edits persist to the server even without sending, so a
+  // reload (or restart) never loses them. Debounced at 800ms; leaving the
+  // view or switching tabs flushes the pending text immediately.
+  const draftTimer = useRef<number | undefined>(undefined)
+  const draftRef = useRef<{ id: string; text: string } | null>(null)
+  const flushDraft = () => {
+    const d = draftRef.current
+    draftRef.current = null
+    if (!d) return
+    const t = tabs.find((x) => x.id === d.id)
+    if (!t) return
+    void updateRepeaterTab(d.id, rawToRequest(d.text, t.request.url))
+  }
+  useEffect(() => {
+    if (!raw || !currentId || raw.__id !== currentId) return
+    window.clearTimeout(draftTimer.current)
+    draftRef.current = { id: currentId, text: raw.text }
+    draftTimer.current = window.setTimeout(flushDraft, 800)
+    return () => window.clearTimeout(draftTimer.current)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [raw?.text, currentId])
+  // switching tabs or leaving the view: don't lose a pending edit
+  const prevIdRef = useRef(currentId)
+  useEffect(() => {
+    if (prevIdRef.current !== currentId) {
+      flushDraft()
+      prevIdRef.current = currentId
+    }
+  }, [currentId])
+  useEffect(() => flushDraft, [])
 
   const filteredTabs = useMemo(() => {
     const needle = search.trim().toLowerCase()
