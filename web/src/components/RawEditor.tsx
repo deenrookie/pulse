@@ -133,9 +133,11 @@ export default function RawEditor({
   }
 
   // ---- find in raw (mirror highlights + native selection over the match) ----
+  // find-on-enter: q is the input, needle is APPLIED — typing alone never
+  // highlights; Enter (or the step buttons) commits, further Enters walk.
   const [q, setQ] = useState('')
   const [hit, setHit] = useState(0)
-  const needle = q.trim().toLowerCase()
+  const [needle, setNeedle] = useState('')
   const offsets = useMemo<[number, number][]>(() => {
     if (!needle) return []
     const hay = value.toLowerCase()
@@ -168,6 +170,11 @@ export default function RawEditor({
     if (m) ta.setSelectionRange(m[0], m[1])
   }
 
+  const commit = () => {
+    setNeedle(q.trim().toLowerCase())
+    setHit(0)
+  }
+
   const step = (dir: 1 | -1) => {
     if (matches === 0) return
     const next = clampHit(hit + dir)
@@ -175,7 +182,7 @@ export default function RawEditor({
     requestAnimationFrame(() => applyCur(next, true))
   }
 
-  // typing a needle: land on the first match immediately
+  // a fresh needle lands on the first match once the mirror re-rendered
   useEffect(() => {
     if (!needle) return
     requestAnimationFrame(() => applyCur(0, true))
@@ -403,26 +410,40 @@ export default function RawEditor({
         <input
           value={q}
           spellCheck={false}
-          placeholder="Find in raw…"
-          onChange={(e) => {
-            setQ(e.target.value)
-            setHit(0)
-          }}
+          placeholder="Find in raw… (Enter to search)"
+          onChange={(e) => setQ(e.target.value)}
           onKeyDown={(e) => {
             e.stopPropagation()
-            if (e.key === 'Enter') {
-              e.preventDefault()
-              step(e.shiftKey ? -1 : 1)
+            if (e.key !== 'Enter') return
+            e.preventDefault()
+            if (q.trim().toLowerCase() !== needle) {
+              commit()
+              return
             }
+            step(e.shiftKey ? -1 : 1)
           }}
         />
-        {needle && (
-          <>
+        {q.trim() && q.trim().toLowerCase() !== needle && (
+          <button className="mini" title="Search (Enter)" onClick={commit}>
+            ↵
+          </button>
+        )}
+        {needle && (          <>
             <span className="count">{matches > 0 ? `${clampHit(hit) + 1}/${matches}` : '0'}</span>
-            <button className="mini" title="Previous match (Shift+Enter)" disabled={matches < 2} onClick={() => step(-1)}>
+            <button
+              className="mini"
+              title="Previous match (Shift+Enter)"
+              disabled={matches < 2}
+              onClick={() => (q.trim().toLowerCase() !== needle ? commit() : step(-1))}
+            >
               ▲
             </button>
-            <button className="mini" title="Next match (Enter)" disabled={matches < 2} onClick={() => step(1)}>
+            <button
+              className="mini"
+              title="Next match (Enter)"
+              disabled={matches < 2}
+              onClick={() => (q.trim().toLowerCase() !== needle ? commit() : step(1))}
+            >
               ▼
             </button>
           </>

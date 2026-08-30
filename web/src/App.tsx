@@ -160,9 +160,10 @@ export default function App() {
         e.preventDefault()
         go(VIEWS[Number(e.key) - 1].id)
       } else if (mod && e.key.toLowerCase() === 'f') {
+        // focus the traffic filter only when already on Live Traffic —
+        // never yank the user away from the view they are working in
         e.preventDefault()
-        if (tab !== 'proxy') go('proxy')
-        window.dispatchEvent(new CustomEvent('pulse:focus-filter'))
+        if (tab === 'proxy') window.dispatchEvent(new CustomEvent('pulse:focus-filter'))
       } else if (mod && e.shiftKey && e.key.toLowerCase() === 'd') {
         // Burp-style Ctrl+Shift+D: send the current text selection to Decoder
         e.preventDefault()

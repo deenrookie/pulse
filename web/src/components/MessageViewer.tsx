@@ -50,6 +50,7 @@ export function RequestInspector({
   raw,
   onRawChange,
   hideRawHint,
+  headerExtra,
 }: {
   req: RequestLike
   flowId?: string
@@ -58,6 +59,8 @@ export function RequestInspector({
   onRawChange?: (v: string) => void
   /** suppress the raw format hint bar under the editor */
   hideRawHint?: boolean
+  /** slot right after the URL meta in the header (e.g. Repeater settings) */
+  headerExtra?: React.ReactNode
 }) {
   const [tab, setTab] = useState<Tab>('raw')
   const params = useMemo(() => collectParams(req.url, req.headers, req.body), [req.url, req.headers, req.body])
@@ -71,6 +74,7 @@ export function RequestInspector({
         <span className="meta" title={req.url}>
           {req.method} {pathOf(req.url)}
         </span>
+        {headerExtra}
         <div className="spacer" />
         <CopyRaw
           text={raw ?? text}
@@ -562,7 +566,26 @@ function RawView({
   const [showAll, setShowAll] = useState(false)
   const rawText = showAll ? fullRaw : fullRaw.length > CAP ? fullRaw.slice(0, CAP) : fullRaw
 
-  const needle = q.trim().toLowerCase()
+  // find-on-enter: q is what the input holds, needle is what is APPLIED.
+  // Typing alone never highlights — Enter (or the step buttons) commits the
+  // search; further Enters walk the matches.
+  const [needle, setNeedle] = useState('')
+  const commit = () => {
+    const next = q.trim().toLowerCase()
+    setNeedle(next)
+    setHit(0)
+    if (next) requestAnimationFrame(() => applyCur(0, true))
+  }
+  const onFindKey = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    e.stopPropagation()
+    if (e.key !== 'Enter') return
+    e.preventDefault()
+    if (q.trim().toLowerCase() !== needle) {
+      commit()
+      return
+    }
+    step(e.shiftKey ? -1 : 1)
+  }
   const matches = useMemo(() => {
     if (!needle) return 0
     return fullRaw.toLowerCase().split(needle).length - 1
@@ -581,14 +604,6 @@ function RawView({
       if (scroll) el.scrollIntoView({ block: 'center' })
     }
   }
-
-  // typing a needle: land on the first match immediately so the highlight
-  // is visible even when it lives outside the viewport
-  useEffect(() => {
-    if (!needle) return
-    requestAnimationFrame(() => applyCur(0, true))
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [needle])
 
   // content swapped under the same needle (cap expander, live flow update):
   // repaint the marker at the (clamped) position without stealing scroll
@@ -739,28 +754,34 @@ function RawView({
         <input
           value={q}
           spellCheck={false}
-          placeholder="Find in raw…"
-          onChange={(e) => {
-            setQ(e.target.value)
-            setHit(0)
-          }}
-          onKeyDown={(e) => {
-            e.stopPropagation()
-            if (e.key === 'Enter') {
-              e.preventDefault()
-              step(e.shiftKey ? -1 : 1)
-            }
-          }}
+          placeholder="Find in raw… (Enter to search)"
+          onChange={(e) => setQ(e.target.value)}
+          onKeyDown={onFindKey}
         />
+        {q.trim() && q.trim().toLowerCase() !== needle && (
+          <button className="mini" title="Search (Enter)" onClick={commit}>
+            ↵
+          </button>
+        )}
         {needle && (
           <>
             <span className="count">
               {matches > 0 ? `${clampHit(hit) + 1}/${matches}` : '0'}
             </span>
-            <button className="mini" title="Previous match (Shift+Enter)" disabled={matches < 2} onClick={() => step(-1)}>
+            <button
+              className="mini"
+              title="Previous match (Shift+Enter)"
+              disabled={matches < 2}
+              onClick={() => (q.trim().toLowerCase() !== needle ? commit() : step(-1))}
+            >
               ▲
             </button>
-            <button className="mini" title="Next match (Enter)" disabled={matches < 2} onClick={() => step(1)}>
+            <button
+              className="mini"
+              title="Next match (Enter)"
+              disabled={matches < 2}
+              onClick={() => (q.trim().toLowerCase() !== needle ? commit() : step(1))}
+            >
               ▼
             </button>
           </>

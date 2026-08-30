@@ -30,6 +30,74 @@ function viewParam(name: string): string | null {
   return new URLSearchParams(q).get(name)
 }
 
+// Burp-style request options, applied to every Repeater tab (persisted).
+const AUTOCL_KEY = 'pulse.repeater.autocl'
+
+function loadAutoCL(): boolean {
+  try {
+    return localStorage.getItem(AUTOCL_KEY) !== '0'
+  } catch {
+    return true
+  }
+}
+
+function RequestOptions({ autoCL, setAutoCL }: { autoCL: boolean; setAutoCL: (v: boolean) => void }) {
+  const [open, setOpen] = useState(false)
+  useEffect(() => {
+    if (!open) return
+    const onDoc = () => setOpen(false)
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && setOpen(false)
+    window.addEventListener('mousedown', onDoc)
+    window.addEventListener('keydown', onKey)
+    return () => {
+      window.removeEventListener('mousedown', onDoc)
+      window.removeEventListener('keydown', onKey)
+    }
+  }, [open])
+  return (
+    <span style={{ position: 'relative', display: 'inline-flex' }} onMouseDown={(e) => e.stopPropagation()}>
+      <button
+        className="btn ghost sm icon-btn"
+        title="Request options — auto Content-Length"
+        onClick={() => setOpen((o) => !o)}
+      >
+        <Icon name="sliders" size={13} />
+      </button>
+      {open && (
+        <div className="popover" style={{ left: 0, top: '120%', width: 300 }}>
+          <h4>
+            <Icon name="sliders" size={14} />
+            Request options
+          </h4>
+          <div className="sub">Applies to every Repeater tab.</div>
+          <label style={{ display: 'flex', gap: 8, alignItems: 'flex-start', cursor: 'pointer' }}>
+            <input
+              type="checkbox"
+              checked={autoCL}
+              style={{ marginTop: 2 }}
+              onChange={(e) => {
+                const v = e.target.checked
+                setAutoCL(v)
+                try {
+                  localStorage.setItem(AUTOCL_KEY, v ? '1' : '0')
+                } catch {
+                  /* ignore */
+                }
+              }}
+            />
+            <span>
+              Auto Content-Length
+              <div className="sub" style={{ margin: 0 }}>
+                On send: when the request has a body and no Content-Length header, add one with the exact body size.
+              </div>
+            </span>
+          </label>
+        </div>
+      )}
+    </span>
+  )
+}
+
 export default function RepeaterView({ pulse, goProxy }: { pulse: PulseState; goProxy: () => void }) {
   const [tabsMirror, setRepeaterTabsDirect] = useState<RepeaterTab[] | null>(null)
   const tabs = tabsMirror ?? pulse.repeaterTabs
@@ -47,6 +115,7 @@ export default function RepeaterView({ pulse, goProxy }: { pulse: PulseState; go
   const [raw, setRaw] = useState<{ text: string; __id: string | null } | null>(null)
   // response history navigation (Burp-style): index into tab.history; null = latest
   const [histIdx, setHistIdx] = useState<number | null>(null)
+  const [autoCL, setAutoCL] = useState(loadAutoCL)
   const [sentAt, setSentAt] = useState<number>(0)
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
@@ -146,7 +215,28 @@ export default function RepeaterView({ pulse, goProxy }: { pulse: PulseState; go
 
   const send = async () => {
     if (!currentId || !raw || !tab) return
-    const req = rawToRequest(raw.text, tab.request.url)
+    let text = raw.text
+    // Burp-style auto Content-Length: with a body and no header present,
+    // insert the exact size at the end of the header block (visible in raw)
+    if (autoCL) {
+      const parsed = rawToRequest(text, tab.request.url)
+      const hasCL = parsed.headers.some((h) => h.name.toLowerCase() === 'content-length')
+      let bodyBytes = 0
+      try {
+        bodyBytes = parsed.body ? atob(parsed.body).length : 0
+      } catch {
+        bodyBytes = 0
+      }
+      if (bodyBytes > 0 && !hasCL) {
+        const lines = text.replace(/\r\n/g, '\n').split('\n')
+        let empty = lines.findIndex((l, i) => i > 0 && l.trim() === '')
+        if (empty < 0) empty = lines.length
+        lines.splice(empty, 0, `Content-Length: ${bodyBytes}`)
+        text = lines.join('\n')
+        setRaw({ text, __id: currentId })
+      }
+    }
+    const req = rawToRequest(text, tab.request.url)
     setBusy(true)
     setErr(null)
     setSentAt(Date.now())
@@ -489,6 +579,7 @@ export default function RepeaterView({ pulse, goProxy }: { pulse: PulseState; go
                         raw={raw.text}
                         onRawChange={(text) => setRaw({ text, __id: currentId })}
                         hideRawHint
+                        headerExtra={<RequestOptions autoCL={autoCL} setAutoCL={setAutoCL} />}
                       />
                     ) : null
                   }
