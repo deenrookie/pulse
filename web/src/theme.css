@@ -566,7 +566,7 @@ tr.vspacer td { border: none; padding: 0; }
   border-bottom: 1px solid var(--border);
   word-break: break-all; line-height: 1.5;
 }
-.kv-table td:first-child { color: var(--accent); white-space: nowrap; user-select: none; width: 1%; }
+.kv-table td:first-child { color: var(--info); white-space: nowrap; user-select: none; width: 1%; }
 .kv-table tr:hover td { background: var(--bg-hover); }
 .kv-table .src-tag {
   color: var(--text-faint); font-size: 10px; margin-right: 8px; user-select: none;
@@ -1381,7 +1381,9 @@ table.flows tbody tr.hl.selected td { background: var(--accent-bg); box-shadow: 
 
 /* header lines in raw view: names colored (Burp-style) */
 .raw-hdr { display: flex; align-items: baseline; }
-.raw-hname { color: var(--accent); flex: none; }
+/* header names use --info: distinct from values in BOTH themes
+   (warm's --accent is cream, identical to --text there) */
+.raw-hname { color: var(--info); flex: none; }
 .raw-colon { color: var(--text-faint); flex: none; }
 .raw-hvalue { color: var(--text); }
 
