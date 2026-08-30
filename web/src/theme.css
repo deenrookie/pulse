@@ -71,7 +71,7 @@
 
   /* semantic (warm-tuned for the charcoal canvas) */
   --ok: #96cf8f;      --ok-rgb: 150 207 143;
-  --info: #9db4d6;    --info-rgb: 157 180 214;
+  --info: #7fb1f7;    --info-rgb: 127 177 247;
   --warn: #dcae55;    --warn-rgb: 220 174 85;
   --danger: #e58a8a;  --danger-rgb: 229 138 138;
   --purple: #b39ed1;  --purple-rgb: 179 158 209;
@@ -121,11 +121,11 @@
 
   /* semantic */
   --ok: #6fe0b4;      --ok-rgb: 111 224 180;
-  --info: #9dc1f5;    --info-rgb: 157 193 245;
+  --info: #8ab8ff;    --info-rgb: 138 184 255;
   --warn: #e8b450;    --warn-rgb: 232 180 80;
   --danger: #f27272;  --danger-rgb: 242 114 114;
   --purple: #a390e8;  --purple-rgb: 163 144 232;
-  --focus-ring: #9dc1f5;
+  --focus-ring: #8ab8ff;
 
   /* derived tints */
   --sel: rgba(194, 239, 78, 0.22);
@@ -573,13 +573,14 @@ tr.vspacer td { border: none; padding: 0; }
 }
 
 .code-view {
-  margin: 0; padding: 10px 12px;
-  font-family: var(--mono); font-size: 12px; line-height: 1.55;
+  margin: 0; padding: 12px 16px;
+  font-family: var(--mono); font-size: 12.5px; line-height: 1.75;
   white-space: pre-wrap; word-break: break-all;
   color: var(--text); user-select: text;
   font-variant-numeric: tabular-nums;
 }
-.code-view .ln { color: var(--text-faint); margin-right: 10px; user-select: none; }
+/* line numbers stay quiet — they must never compete with the payload text */
+.code-view .ln { color: var(--text-faint); opacity: 0.55; margin-right: 12px; user-select: none; }
 
 .summary-strip {
   display: flex; flex-wrap: wrap; gap: 5px 16px;
@@ -1427,8 +1428,8 @@ table.flows tbody tr.hl.selected td { background: var(--accent-bg); box-shadow: 
 .raw-mirror,
 textarea.editor.raw.over-mirror {
   position: absolute; inset: 0;
-  margin: 0; padding: 8px 10px;
-  font-family: var(--mono); font-size: 12.5px; line-height: 1.6;
+  margin: 0; padding: 10px 12px;
+  font-family: var(--mono); font-size: 12.5px; line-height: 1.75;
   border: 1px solid var(--border); border-radius: var(--radius-sm);
   overflow: auto;
   tab-size: 4;
@@ -1439,12 +1440,12 @@ textarea.editor.raw.over-mirror {
   pointer-events: none;
   white-space: inherit;
 }
-.raw-mirror div { position: relative; padding-left: 42px; min-height: 1.6em; }
+.raw-mirror div { position: relative; padding-left: 48px; min-height: 1.75em; }
 /* line-number gutter inside the editor mirror: absolute so wrapped
    continuation lines keep the text aligned with the padded textarea */
 .raw-mirror .ln {
-  position: absolute; left: 0; width: 30px;
-  text-align: right; color: var(--text-faint); user-select: none;
+  position: absolute; left: 0; width: 34px;
+  text-align: right; color: var(--text-faint); opacity: 0.55; user-select: none;
 }
 /* find-in-raw highlights in the editor mirror — NO horizontal padding so
    the highlighted line keeps byte-exact textarea metrics (0 vs 1px drift) */
@@ -1459,8 +1460,8 @@ textarea.editor.raw.over-mirror {
   /* the base .raw rule's min-height would push the textarea past its
      absolute inset:0 box and cover the find bar below the stack */
   min-height: 0;
-  /* 10px base padding + 42px gutter — matches the mirror line padding */
-  padding-left: 52px;
+  /* 12px base padding + 48px gutter — matches the mirror line padding */
+  padding-left: 60px;
 }
 textarea.editor.raw.over-mirror::selection { background: rgba(52, 211, 192, 0.25); }
 textarea.editor.raw.over-mirror::placeholder { color: var(--text-faint); }
