@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { rawToRequest, requestToRaw } from '../components/RawEditor'
 import { RequestInspector } from '../components/MessageViewer'
 import { ResponseInspector } from '../components/MessageViewer'
@@ -43,6 +44,18 @@ function loadAutoCL(): boolean {
 
 function RequestOptions({ autoCL, setAutoCL }: { autoCL: boolean; setAutoCL: (v: boolean) => void }) {
   const [open, setOpen] = useState(false)
+  const [pos, setPos] = useState<{ x: number; y: number } | null>(null)
+  const btnRef = useRef<HTMLButtonElement>(null)
+  // .popover is position:fixed — anchor it to the button's viewport rect
+  const toggleOpen = () => {
+    if (open) {
+      setOpen(false)
+      return
+    }
+    const r = btnRef.current?.getBoundingClientRect()
+    if (r) setPos({ x: Math.min(r.left, window.innerWidth - 320), y: Math.min(r.bottom + 6, window.innerHeight - 220) })
+    setOpen(true)
+  }
   useEffect(() => {
     if (!open) return
     const onDoc = () => setOpen(false)
@@ -55,16 +68,21 @@ function RequestOptions({ autoCL, setAutoCL }: { autoCL: boolean; setAutoCL: (v:
     }
   }, [open])
   return (
-    <span style={{ position: 'relative', display: 'inline-flex' }} onMouseDown={(e) => e.stopPropagation()}>
+    <span style={{ display: 'inline-flex' }} onMouseDown={(e) => e.stopPropagation()}>
       <button
+        ref={btnRef}
         className="btn ghost sm icon-btn"
         title="Request options — auto Content-Length"
-        onClick={() => setOpen((o) => !o)}
+        onClick={toggleOpen}
       >
         <Icon name="sliders" size={13} />
       </button>
-      {open && (
-        <div className="popover" style={{ left: 0, top: '120%', width: 300 }}>
+      {open && pos && createPortal(
+        <div
+          className="popover"
+          style={{ left: pos.x, top: pos.y, width: 300 }}
+          onMouseDown={(e) => e.stopPropagation()}
+        >
           <h4>
             <Icon name="sliders" size={14} />
             Request options
@@ -88,11 +106,13 @@ function RequestOptions({ autoCL, setAutoCL }: { autoCL: boolean; setAutoCL: (v:
             <span>
               Auto Content-Length
               <div className="sub" style={{ margin: 0 }}>
-                On send: when the request has a body and no Content-Length header, add one with the exact body size.
+                On send: Content-Length always mirrors the body — inserted when missing, corrected when stale after a
+                body edit, removed when the body is empty.
               </div>
             </span>
           </label>
-        </div>
+        </div>,
+        document.body,
       )}
     </span>
   )
@@ -216,23 +236,36 @@ export default function RepeaterView({ pulse, goProxy }: { pulse: PulseState; go
   const send = async () => {
     if (!currentId || !raw || !tab) return
     let text = raw.text
-    // Burp-style auto Content-Length: with a body and no header present,
-    // insert the exact size at the end of the header block (visible in raw)
+    // Burp-style auto Content-Length: the header always mirrors the exact
+    // body size — inserted when missing, corrected when stale (requests
+    // sent to Repeater carry the ORIGINAL Content-Length, so a body edit
+    // leaves a wrong value behind), removed when the body is gone.
     if (autoCL) {
       const parsed = rawToRequest(text, tab.request.url)
-      const hasCL = parsed.headers.some((h) => h.name.toLowerCase() === 'content-length')
       let bodyBytes = 0
       try {
         bodyBytes = parsed.body ? atob(parsed.body).length : 0
       } catch {
         bodyBytes = 0
       }
-      if (bodyBytes > 0 && !hasCL) {
-        const lines = text.replace(/\r\n/g, '\n').split('\n')
-        let empty = lines.findIndex((l, i) => i > 0 && l.trim() === '')
-        if (empty < 0) empty = lines.length
-        lines.splice(empty, 0, `Content-Length: ${bodyBytes}`)
-        text = lines.join('\n')
+      const lines = text.replace(/\r\n/g, '\n').split('\n')
+      let empty = lines.findIndex((l, i) => i > 0 && l.trim() === '')
+      if (empty < 0) empty = lines.length
+      const clIdx = lines.slice(1, empty).findIndex((l) => /^content-length\s*:/i.test(l))
+      const absIdx = clIdx >= 0 ? 1 + clIdx : -1
+      const currentVal = absIdx >= 0 ? lines[absIdx].slice(lines[absIdx].indexOf(':') + 1).trim() : null
+      if (bodyBytes > 0) {
+        if (absIdx < 0) {
+          lines.splice(empty, 0, `Content-Length: ${bodyBytes}`)
+        } else if (currentVal !== String(bodyBytes)) {
+          lines[absIdx] = `Content-Length: ${bodyBytes}`
+        }
+      } else if (absIdx >= 0) {
+        lines.splice(absIdx, 1) // body removed → stale header goes too
+      }
+      const next = lines.join('\n')
+      if (next !== text) {
+        text = next
         setRaw({ text, __id: currentId })
       }
     }
