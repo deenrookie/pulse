@@ -125,8 +125,16 @@ export default function RawEditor({
         icon: 'send',
         label: 'Send to Repeater',
         hint: '⌃R',
+        separatorAfter: true,
         onClick: () => {
           window.dispatchEvent(new CustomEvent('pulse:send-to-repeater'))
+        },
+      },
+      {
+        icon: 'copy',
+        label: 'Copy URL',
+        onClick: async () => {
+          await copyToClipboard(parsed.url)
         },
       },
       ...(ok
@@ -147,21 +155,30 @@ export default function RawEditor({
     ]
   }, [value])
 
-  // highlight mirror: header names colored like the read-only RawView.
+  // highlight mirror: header names colored like the read-only RawView, plus a
+  // line-number gutter (absolute spans inside each line; the textarea gets
+  // matching left padding so text stays aligned in both wrap modes).
   // The textarea above it is transparent-text; both share exact metrics.
   const mirror = useMemo(() => {
     return value.split('\n').map((line, i) => {
+      const ln = <span className="ln">{i + 1}</span>
       const idx = line.indexOf(':')
       if (i > 0 && idx > 0 && !line.startsWith(' ') && !line.startsWith('\t')) {
         return (
           <div key={i}>
+            {ln}
             <span className="raw-hname">{line.slice(0, idx)}</span>
             <span className="raw-colon">:</span>
             {line.slice(idx + 1) || '\u00a0'}
           </div>
         )
       }
-      return <div key={i}>{line || '\u00a0'}</div>
+      return (
+        <div key={i}>
+          {ln}
+          {line || '\u00a0'}
+        </div>
+      )
     })
   }, [value])
 

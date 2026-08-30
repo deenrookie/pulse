@@ -1439,13 +1439,21 @@ textarea.editor.raw.over-mirror {
   pointer-events: none;
   white-space: inherit;
 }
-.raw-mirror div { min-height: 1.6em; }
+.raw-mirror div { position: relative; padding-left: 42px; min-height: 1.6em; }
+/* line-number gutter inside the editor mirror: absolute so wrapped
+   continuation lines keep the text aligned with the padded textarea */
+.raw-mirror .ln {
+  position: absolute; left: 0; width: 30px;
+  text-align: right; color: var(--text-faint); user-select: none;
+}
 textarea.editor.raw.over-mirror {
   background: transparent;
   color: transparent;
   caret-color: var(--accent);
   resize: none;
   outline: none;
+  /* 10px base padding + 42px gutter — matches the mirror line padding */
+  padding-left: 52px;
 }
 textarea.editor.raw.over-mirror::selection { background: rgba(52, 211, 192, 0.25); }
 textarea.editor.raw.over-mirror::placeholder { color: var(--text-faint); }

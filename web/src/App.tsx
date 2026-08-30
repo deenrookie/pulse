@@ -60,6 +60,20 @@ export default function App() {
   })
   const [theme, setTheme] = useState<Theme>(readTheme)
   const [decoderOpen, setDecoderOpen] = useState(false)
+  const [decoderSeed, setDecoderSeed] = useState<{ text: string; n: number } | null>(null)
+
+  // "Send to Decoder" from anywhere: opens the decoder card with the selected
+  // text loaded as its input (n forces a re-seed even for identical text)
+  useEffect(() => {
+    const onSend = (e: Event) => {
+      const text = (e as CustomEvent<string>).detail
+      if (!text) return
+      setDecoderSeed((prev) => ({ text, n: (prev?.n ?? 0) + 1 }))
+      setDecoderOpen(true)
+    }
+    window.addEventListener('pulse:send-to-decoder', onSend)
+    return () => window.removeEventListener('pulse:send-to-decoder', onSend)
+  }, [])
 
   // apply theme to <html>, persist it, and keep the favicon in sync
   useEffect(() => {
@@ -135,12 +149,17 @@ export default function App() {
         e.preventDefault()
         if (tab !== 'proxy') go('proxy')
         window.dispatchEvent(new CustomEvent('pulse:focus-filter'))
+      } else if (mod && e.shiftKey && e.key.toLowerCase() === 'd') {
+        // Burp-style Ctrl+Shift+D: send the current text selection to Decoder
+        e.preventDefault()
+        const sel = window.getSelection()
+        const text = sel ? sel.toString() : ''
+        if (text) window.dispatchEvent(new CustomEvent('pulse:send-to-decoder', { detail: text }))
       } else if (mod && e.key.toLowerCase() === 'r') {
         // Burp-style Ctrl+R: send the selected flow to Repeater. No jump —
         // the toast confirms, and the next Repeater visit focuses the newest.
+        // Fires regardless of focus: users hit it while editing the raw.
         e.preventDefault()
-        const target = e.target as HTMLElement
-        if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') return
         // every view owns its notion of "current request" and handles the event
         window.dispatchEvent(new CustomEvent('pulse:send-to-repeater'))
       }
@@ -267,7 +286,7 @@ export default function App() {
       </footer>
       </div>
 
-      {decoderOpen && <Decoder onClose={() => setDecoderOpen(false)} />}
+      {decoderOpen && <Decoder onClose={() => setDecoderOpen(false)} seed={decoderSeed} />}
 
       {pulse.toast && (
         <div className={`toast ${pulse.toast.kind === 'err' ? 'err' : ''} ${pulse.toastLeaving ? 'leaving' : ''}`}>

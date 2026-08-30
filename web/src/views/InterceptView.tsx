@@ -218,6 +218,7 @@ export default function InterceptView({ pulse }: { pulse: PulseState }) {
     if (!currentId) {
       setHeldFull(null)
       setRaw(null)
+      setErr(null)
       return
     }
     let alive = true
@@ -261,19 +262,20 @@ export default function InterceptView({ pulse }: { pulse: PulseState }) {
     act(() => pulse.dropPending(currentId))
   }
 
-  // copy the currently held request into a Repeater tab (parity with Live Traffic)
+  // copy the currently held request into a Repeater tab (parity with Live Traffic);
+  // when the raw buffer has been edited, the edited version is what gets sent
   const sendHeldToRepeater = async () => {
     if (!heldFull) return
+    const edited = raw !== null ? rawToRequest(raw, heldFull.url) : null
+    const request = edited ?? {
+      method: heldFull.method,
+      url: heldFull.url,
+      httpVersion: heldFull.httpVersion,
+      headers: heldFull.headers,
+      body: heldFull.body ?? '',
+    }
     try {
-      const tab = await api.createRepeaterTab({
-        request: {
-          method: heldFull.method,
-          url: heldFull.url,
-          httpVersion: heldFull.httpVersion,
-          headers: heldFull.headers,
-          body: heldFull.body ?? '',
-        },
-      })
+      const tab = await api.createRepeaterTab({ request })
       try {
         localStorage.setItem('pulse.repeater.jumpNewest', '1')
       } catch {
@@ -285,29 +287,14 @@ export default function InterceptView({ pulse }: { pulse: PulseState }) {
     }
   }
 
-  // Ctrl+R (global): copy the currently held request into a Repeater tab
+  // Ctrl+R (global) and the raw context menu both land here — same path,
+  // same toast, as the header button
   useEffect(() => {
-    const onSend = () => {
-      if (!heldFull) return
-      void api.createRepeaterTab({
-        request: {
-          method: heldFull.method,
-          url: heldFull.url,
-          httpVersion: heldFull.httpVersion,
-          headers: heldFull.headers,
-          body: heldFull.body ?? '',
-        },
-      }).then(() => {
-        try {
-          localStorage.setItem('pulse.repeater.jumpNewest', '1')
-        } catch {
-          /* ignore */
-        }
-      })
-    }
+    const onSend = () => void sendHeldToRepeater()
     window.addEventListener('pulse:send-to-repeater', onSend)
     return () => window.removeEventListener('pulse:send-to-repeater', onSend)
-  }, [heldFull])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [heldFull, raw, pulse])
 
   // F / D forward & drop the held request — but never while typing
   useEffect(() => {
@@ -340,6 +327,33 @@ export default function InterceptView({ pulse }: { pulse: PulseState }) {
           () => pulse.refreshIntercept(),
           (e) => pulse.notify(`Forward failed: ${e.message}`, 'err'),
         )
+      },
+    },
+    {
+      icon: 'send',
+      label: 'Send to Repeater',
+      hint: '⌃R',
+      onClick: async () => {
+        try {
+          const req = await api.getHeldRequest(p.id)
+          const tab = await api.createRepeaterTab({
+            request: {
+              method: req.method,
+              url: req.url,
+              httpVersion: req.httpVersion,
+              headers: req.headers,
+              body: req.body ?? '',
+            },
+          })
+          try {
+            localStorage.setItem('pulse.repeater.jumpNewest', '1')
+          } catch {
+            /* ignore */
+          }
+          pulse.notify(`Sent to Repeater (${tab.id})`)
+        } catch (e) {
+          pulse.notify(`Send failed: ${(e as Error).message}`, 'err')
+        }
       },
     },
     {

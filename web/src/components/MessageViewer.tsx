@@ -388,7 +388,7 @@ function TabBody({
         kind === 'request' && req
           ? `${req.method} ${pathOf(req.url)} ${req.httpVersion || 'HTTP/1.1'}`
           : statusLine
-      return <RawView headLine={headLine} headers={headers} text={text} flowIdForCurl={curlFlowId} curlRequest={curlRequest} />
+      return <RawView headLine={headLine} headers={headers} text={text} flowIdForCurl={curlFlowId} curlRequest={curlRequest} urlForCopy={kind === 'request' ? req?.url : undefined} />
     }
   }
 }
@@ -476,12 +476,15 @@ function RawView({
   text,
   flowIdForCurl,
   curlRequest,
+  urlForCopy,
 }: {
   headLine?: string
   headers: Header[]
   text: string
   flowIdForCurl?: string
   curlRequest?: RequestLike
+  /** request side only — adds the Burp-style "Copy URL" menu entry */
+  urlForCopy?: string
 }) {
   const [q, setQ] = useState('')
   const [hit, setHit] = useState(0)
@@ -555,6 +558,18 @@ function RawView({
                 ? toCurl(await getFlow(flowIdForCurl))
                 : toCurlRequest(curlRequest!.method, curlRequest!.url, curlRequest!.headers, bodyToText(curlRequest!.body))
               await copyToClipboard(cmd)
+            },
+          },
+        ]
+      : []),
+    ...(urlForCopy
+      ? [
+          {
+            icon: 'copy' as const,
+            label: 'Copy URL',
+            separatorAfter: true,
+            onClick: async () => {
+              await copyToClipboard(urlForCopy)
             },
           },
         ]

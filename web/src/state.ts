@@ -36,6 +36,17 @@ export function usePulse() {
     }, 2400)
   }, [])
 
+  // toast bridge: components without a pulse handle (e.g. RawEditor) dispatch
+  // window event 'pulse:notify' with { text, kind }
+  useEffect(() => {
+    const onToast = (e: Event) => {
+      const d = (e as CustomEvent<{ text: string; kind?: Toast['kind'] }>).detail
+      if (d?.text) notify(d.text, d.kind ?? 'ok')
+    }
+    window.addEventListener('pulse:notify', onToast)
+    return () => window.removeEventListener('pulse:notify', onToast)
+  }, [notify])
+
   const metaOfFlow = (fl: Flow): FlowMeta => ({
     id: fl.id,
     method: fl.request.method,
