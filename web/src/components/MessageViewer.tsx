@@ -81,6 +81,7 @@ export function RequestInspector({
           kind="request"
           headLine={`${req.method} ${pathOf(req.url)} ${req.httpVersion || 'HTTP/1.1'}`}
           headers={req.headers}
+          complete={raw !== undefined && onRawChange !== undefined}
         />
         {/* Raw (request line + headers + body) is always available — GET and
             other body-less requests still have a raw form */}
@@ -139,11 +140,15 @@ export function ResponseInspector({
   error,
   flowId,
   ws,
+  busy,
 }: {
   resp?: ResponseLike
   error?: string
   flowId?: string
   ws?: WSMessage[]
+  /** a send is in flight: keep the last response on screen and show a small
+   *  inline indicator instead of swapping the whole pane to a spinner */
+  busy?: boolean
 }) {
   const [tab, setTab] = useState<Tab>('raw')
   // transparently decompress gzip/deflate/br response bodies for display
@@ -167,8 +172,21 @@ export function ResponseInspector({
       <div className="panel" style={{ flex: 1 }}>
         <div className="panel-head">
           <span className="title">Response</span>
+          {busy && (
+            <span className="meta" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+              <span className="spinner" />
+              sending…
+            </span>
+          )}
         </div>
-        {error ? (
+        {busy ? (
+          <div className="panel-body" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 10, color: 'var(--text-faint)', fontSize: 12 }}>
+              <span className="spinner" />
+              Waiting for the response — the request is on its way
+            </span>
+          </div>
+        ) : error ? (
           <div className="empty" style={{ color: 'var(--danger)' }}>
             <div className="glyph" style={{ borderColor: 'rgb(var(--danger-rgb) / .35)', color: 'var(--danger)' }}>
               <Icon name="alert" size={22} />
@@ -200,6 +218,12 @@ export function ResponseInspector({
         <span className={`status${Math.floor(resp.statusCode / 100)} mono`} style={{ fontWeight: 700 }}>
           {resp.statusCode} {resp.reason}
         </span>
+        {busy && (
+          <span className="meta" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }} title="A new request is in flight — this is the previous response">
+            <span className="spinner" />
+            sending…
+          </span>
+        )}
         <div className="spacer" />
         <CopyRaw
           text={dropped ? droppedBodyNotice(resp.droppedSize) : text}
@@ -326,19 +350,23 @@ function WSPanel({ ws }: { ws: WSMessage[] }) {
   )
 }
 
-function CopyRaw({ text, kind, headLine, headers, title }: {
+function CopyRaw({ text, kind, headLine, headers, title, complete }: {
   text: string
   kind: 'request' | 'response'
   headLine: string
   headers: Header[]
   title?: string
+  /** text is ALREADY the complete raw message — copy it verbatim instead of
+   *  framing headLine+headers around it (the editable raw already contains
+   *  them; framing again duplicated the whole header block) */
+  complete?: boolean
 }) {
   return (
     <button
       className="btn ghost sm icon-btn"
       title={title ?? `Copy the complete raw ${kind} to the clipboard`}
       onClick={async () => {
-        await copyToClipboard(rawOfMessage(headLine, headers, text), { label: `raw ${kind}` })
+        await copyToClipboard(complete ? text : rawOfMessage(headLine, headers, text), { label: `raw ${kind}` })
       }}
     >
       <Icon name="copy" size={13} />

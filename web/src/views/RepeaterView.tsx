@@ -543,27 +543,6 @@ export default function RepeaterView({ pulse, goProxy }: { pulse: PulseState; go
                 <Icon name="trash" size={13} />
                 Delete
               </button>
-              {currentMark && (
-                <span
-                  className="mark-chip"
-                  style={{
-                    background: `rgb(${colorTriplet(currentMark.color)} / 0.22)`,
-                    border: `1px solid ${currentMark.color}`,
-                  }}
-                  title={currentMark.text || 'marked'}
-                >
-                  <span className="hl-dot" style={{ background: currentMark.color, margin: 0 }} />
-                  {currentMark.text || 'marked'}
-                </span>
-              )}
-              <div className="spacer" />
-              {err && (
-                <span className="err-inline" title={err}>
-                  <Icon name="alert" size={13} />
-                  {err}
-                </span>
-              )}
-              <span className="meta">{tab ? tab.id : ''}</span>
               {hist.length > 0 && (
                 <span className="hist-nav" key={sentAt}>
                   <button
@@ -587,6 +566,27 @@ export default function RepeaterView({ pulse, goProxy }: { pulse: PulseState; go
                   </button>
                 </span>
               )}
+              {currentMark && (
+                <span
+                  className="mark-chip"
+                  style={{
+                    background: `rgb(${colorTriplet(currentMark.color)} / 0.22)`,
+                    border: `1px solid ${currentMark.color}`,
+                  }}
+                  title={currentMark.text || 'marked'}
+                >
+                  <span className="hl-dot" style={{ background: currentMark.color, margin: 0 }} />
+                  {currentMark.text || 'marked'}
+                </span>
+              )}
+              <div className="spacer" />
+              {err && (
+                <span className="err-inline" title={err}>
+                  <Icon name="alert" size={13} />
+                  {err}
+                </span>
+              )}
+              <span className="meta">{tab ? tab.id : ''}</span>
               {tab && (
                 <button
                   className="btn ghost sm icon-btn"
@@ -616,7 +616,7 @@ export default function RepeaterView({ pulse, goProxy }: { pulse: PulseState; go
                       />
                     ) : null
                   }
-                  b={<ResponseInspector resp={resp} error={respError} />}
+                  b={<ResponseInspector resp={resp} error={respError} busy={busy} />}
                 />
               ) : (
                 <Empty icon="repeat" title="Create a tab first">
