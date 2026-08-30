@@ -451,7 +451,6 @@ export default function RepeaterView({ pulse, goProxy }: { pulse: PulseState; go
                     reqView ? (
                       <RequestInspector
                         req={reqView}
-                        editable
                         raw={raw.text}
                         onRawChange={(text) => setRaw({ text, __id: currentId })}
                       />

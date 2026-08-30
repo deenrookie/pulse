@@ -448,7 +448,6 @@ export default function InterceptView({ pulse }: { pulse: PulseState }) {
             <div style={{ display: 'flex', flex: 1, minHeight: 0 }}>
               <RequestInspector
                 req={reqView}
-                editable
                 raw={raw}
                 onRawChange={setRaw}
               />

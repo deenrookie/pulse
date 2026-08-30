@@ -1,7 +1,8 @@
 // Burp-style raw request editor: one monospace buffer holding the request
 // line, headers and body — parsed back into an EditableRequest on send.
 import { useMemo, useRef, useState } from 'react'
-import { bodyToText, encodeBody } from '../api'
+import { bodyToText, copyToClipboard, encodeBody, toCurlRequest } from '../api'
+import ContextMenu, { type MenuItem } from './ContextMenu'
 import type { EditableRequest, HttpRequest } from '../types'
 
 /** serialize a captured request into a raw editable buffer */
@@ -80,6 +81,30 @@ export default function RawEditor({
     }
   })
   const mirrorRef = useRef<HTMLPreElement>(null)
+  const [menu, setMenu] = useState<{ x: number; y: number } | null>(null)
+
+  const menuItems = useMemo<MenuItem[]>(() => {
+    const parsed = rawToRequest(value, 'https://example.com/')
+    const ok = !(parsed instanceof Object && 'error' in parsed)
+    const headers = ok ? parsed.headers : []
+    const bodyText = ok ? bodyToText(parsed.body) : ''
+    return [
+      ...(ok
+        ? [
+            {
+              icon: 'terminal',
+              label: 'Copy as cURL',
+              onClick: async () => {
+                await copyToClipboard(toCurlRequest(parsed.method, parsed.url, headers, bodyText))
+              },
+            },
+          ]
+        : []),
+      { icon: 'copy', label: 'Copy raw request', separatorAfter: true, onClick: async () => void (await copyToClipboard(value)) },
+      { icon: 'copy', label: 'Copy headers', onClick: async () => void (await copyToClipboard(headers.map((h) => h.name + ': ' + h.value).join(String.fromCharCode(10)))) },
+      { icon: 'copy', label: 'Copy body', onClick: async () => void (await copyToClipboard(bodyText)) },
+    ]
+  }, [value])
   const toggleWrap = () =>
     setWrap((w) => {
       try {
@@ -123,7 +148,14 @@ export default function RawEditor({
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
-      <div className="raw-edit-stack" style={sharedText}>
+      <div
+        className="raw-edit-stack"
+        style={sharedText}
+        onContextMenu={(e) => {
+          e.preventDefault()
+          setMenu({ x: e.clientX, y: e.clientY })
+        }}
+      >
         <pre className="raw-mirror" ref={mirrorRef} aria-hidden="true">
           {mirror}
         </pre>
@@ -137,6 +169,7 @@ export default function RawEditor({
           placeholder={'GET /path HTTP/1.1' + String.fromCharCode(10) + 'Host: example.com' + String.fromCharCode(10) + String.fromCharCode(10) + 'body'}
         />
       </div>
+      {menu && <ContextMenu x={menu.x} y={menu.y} items={menuItems} onClose={() => setMenu(null)} />}
       <div className="raw-hint">
         <button className="mini" style={{ marginRight: 8 }} title="Toggle soft wrap of long lines" onClick={toggleWrap}>
           {wrap ? '[x] Wrap' : '[ ] Wrap'}

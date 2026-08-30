@@ -5,7 +5,8 @@
 // draggable. Query strings fold into the tree's path node but stay
 // visible per-record in the middle list.
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { getFlow, formatSize, formatTime } from '../api'
+import { getFlow, formatSize, formatTime, createRepeaterTab } from '../api'
+import { rawToRequest, requestToRaw } from '../components/RawEditor'
 import { RequestInspector, ResponseInspector } from '../components/MessageViewer'
 import Split from '../ui/Split'
 import Icon from '../ui/Icon'
@@ -78,6 +79,7 @@ export default function SiteMapView({ pulse, goProxy }: { pulse: PulseState; goP
   const [treeSel, setTreeSel] = useState<TreeSel | null>(null)
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [flow, setFlow] = useState<Flow | null>(null)
+  const [rawEdit, setRawEdit] = useState<{ id: string; text: string } | null>(null)
   const [menu, setMenu] = useState<{ x: number; y: number; flowId: string; url: string } | null>(null)
   const pendingScroll = useRef(false)
 
@@ -266,6 +268,31 @@ export default function SiteMapView({ pulse, goProxy }: { pulse: PulseState; goP
       },
     },
   ]
+
+  const editedRaw = flow && rawEdit && rawEdit.id === flow.id ? rawEdit.text : null
+
+  const sendSelected = async () => {
+    if (!flow) return
+    if (editedRaw !== null) {
+      const parsed = rawToRequest(editedRaw, flow.request.url)
+      if ('error' in parsed) return
+      try {
+        await createRepeaterTab({ request: parsed })
+        try {
+          localStorage.setItem('pulse.repeater.jumpNewest', '1')
+        } catch { /* ignore */ }
+      } catch { /* notify-less best effort */ }
+      return
+    }
+    void pulse.sendToRepeater(flow.id)
+  }
+
+  useEffect(() => {
+    const onSend = () => void sendSelected()
+    window.addEventListener('pulse:send-to-repeater', onSend)
+    return () => window.removeEventListener('pulse:send-to-repeater', onSend)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [flow, editedRaw])
 
   const statusClass = (code: number) => (code === 0 ? 'status0' : `status${Math.floor(code / 100)}`)
 
@@ -504,7 +531,7 @@ export default function SiteMapView({ pulse, goProxy }: { pulse: PulseState; goP
                     dir="v"
                     storageKey="pulse.split.sitemap-inspector"
                     initial={0.5}
-                    a={<RequestInspector req={flow.request} flowId={flow.id} />}
+                    a={<RequestInspector req={flow.request} flowId={flow.id} raw={editedRaw ?? requestToRaw(flow.request)} onRawChange={(text) => flow && setRawEdit({ id: flow.id, text })} />}
                     b={<ResponseInspector resp={flow.response} error={flow.error} flowId={flow.id} ws={flow.ws} />}
                   />
                 ) : (

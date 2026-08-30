@@ -45,14 +45,12 @@ type Tab = 'headers' | 'params' | 'pretty' | 'hex' | 'raw' | 'ws'
 export function RequestInspector({
   req,
   flowId,
-  editable,
   raw,
   onRawChange,
 }: {
   req: RequestLike
   flowId?: string
   /** Repeater mode: the Raw tab becomes an editor wired to the parent state */
-  editable?: boolean
   raw?: string
   onRawChange?: (v: string) => void
 }) {
@@ -60,7 +58,7 @@ export function RequestInspector({
   const params = useMemo(() => collectParams(req.url, req.headers, req.body), [req.url, req.headers, req.body])
   const hasBody = (req.body?.length ?? 0) > 0
   const text = useMemo(() => bodyToText(req.body), [req.body])
-  const editableRaw = editable && raw !== undefined && onRawChange
+  const editableRaw = raw !== undefined && onRawChange // any caller passing raw gets an editable buffer
   return (
     <div className="panel" style={{ flex: 1 }}>
       <div className="panel-head">
@@ -97,7 +95,7 @@ export function RequestInspector({
         {tab === 'raw' && editableRaw ? (
           <RawEditor value={raw} onChange={onRawChange} />
         ) : (
-          <TabBody tab={tab} headers={req.headers} params={params} text={text} b64={req.body} kind="request" req={req} curlFlowId={flowId} curlRequest={editable ? req : undefined} />
+          <TabBody tab={tab} headers={req.headers} params={params} text={text} b64={req.body} kind="request" req={req} curlFlowId={flowId} curlRequest={editableRaw ? req : undefined} />
         )}
       </div>
     </div>
@@ -355,18 +353,7 @@ function TabBody({
 }) {
   switch (tab) {
     case 'headers':
-      return (
-        <table className="kv-table">
-          <tbody>
-            {headers.map((h, i) => (
-              <tr key={i}>
-                <td><CopyableText text={h.name} /></td>
-                <td><CopyableText text={h.value} /></td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )
+      return <HeadersTable headers={headers} />
     case 'params':
       return (
         <table className="kv-table">
@@ -610,6 +597,45 @@ function RawLine({ line, n }: { line: string; n: number }) {
       <span className="raw-colon">:</span>
       <CopyableText className="raw-hvalue" text={value.slice(1)} />
     </div>
+  )
+}
+
+/** headers table with per-row context menu + hover copy buttons */
+function HeadersTable({ headers }: { headers: Header[] }) {
+  const [menu, setMenu] = useState<{ x: number; y: number; h: Header } | null>(null)
+  const allText = headers.map((h) => `${h.name}: ${h.value}`).join(String.fromCharCode(10))
+  return (
+    <>
+      <table className="kv-table">
+        <tbody>
+          {headers.map((h, i) => (
+            <tr
+              key={i}
+              onContextMenu={(e) => {
+                e.preventDefault()
+                setMenu({ x: e.clientX, y: e.clientY, h })
+              }}
+              title="Right-click for actions"
+            >
+              <td><CopyableText text={h.name} /></td>
+              <td><CopyableText text={h.value} /></td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {menu && (
+        <ContextMenu
+          x={menu.x}
+          y={menu.y}
+          items={[
+            { icon: 'copy', label: `Copy "${menu.h.name}: ${menu.h.value.slice(0, 24)}${menu.h.value.length > 24 ? '…' : ''}"`, onClick: async () => void (await copyToClipboard(`${menu.h.name}: ${menu.h.value}`)) },
+            { icon: 'copy', label: 'Copy value', onClick: async () => void (await copyToClipboard(menu.h.value)) },
+            { icon: 'copy', label: 'Copy all headers', separatorAfter: true, onClick: async () => void (await copyToClipboard(allText)) },
+          ]}
+          onClose={() => setMenu(null)}
+        />
+      )}
+    </>
   )
 }
 

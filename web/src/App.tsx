@@ -141,12 +141,8 @@ export default function App() {
         e.preventDefault()
         const target = e.target as HTMLElement
         if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') return
-        if (tab === 'proxy' || tab === 'sitemap') {
-          if (pulse.selectedId) void pulse.sendToRepeater(pulse.selectedId)
-        } else {
-          // views with their own notion of "current request" handle it themselves
-          window.dispatchEvent(new CustomEvent('pulse:send-to-repeater'))
-        }
+        // every view owns its notion of "current request" and handles the event
+        window.dispatchEvent(new CustomEvent('pulse:send-to-repeater'))
       }
     }
     window.addEventListener('keydown', onKey)

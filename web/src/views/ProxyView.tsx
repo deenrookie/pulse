@@ -5,6 +5,8 @@ import Split from '../ui/Split'
 import Empty from '../ui/Empty'
 import Icon from '../ui/Icon'
 import { confirm } from '../ui/Confirm'
+import { rawToRequest, requestToRaw } from '../components/RawEditor'
+import { createRepeaterTab } from '../api'
 import HighlightRules, { ruleMatches, type HighlightRule } from '../ui/HighlightRules'
 import FilterDialog, { EMPTY_FILTER, filterActive, passesFilter, type FilterModel } from '../ui/FilterDialog'
 import type { PulseState } from '../state'
@@ -72,6 +74,7 @@ export default function ProxyView({ pulse }: { pulse: PulseState }) {
   const [follow, setFollow] = useState(true)
   const [rules, setRules] = useState<HighlightRule[]>(loadRules)
   const [rulesPos, setRulesPos] = useState<{ x: number; y: number } | null>(null)
+  const [rawEdit, setRawEdit] = useState<{ id: string; text: string } | null>(null)
   const [filter, setFilter] = useState<FilterModel>(loadFilter)
   const [filterOpen, setFilterOpen] = useState(false)
   const searchRef = useRef<HTMLInputElement>(null)
@@ -208,6 +211,39 @@ export default function ProxyView({ pulse }: { pulse: PulseState }) {
   }
 
   const fl = pulse.selectedFlow
+  const editedRaw = fl && rawEdit && rawEdit.id === fl.id ? rawEdit.text : null
+
+  const sendSelected = async () => {
+    if (!fl) return
+    if (editedRaw !== null) {
+      const parsed = rawToRequest(editedRaw, fl.request.url)
+      if ('error' in parsed) {
+        pulse.notify(`Edited request invalid: ${parsed.error}`, 'err')
+        return
+      }
+      try {
+        await createRepeaterTab({ request: parsed })
+        try {
+          localStorage.setItem('pulse.repeater.jumpNewest', '1')
+        } catch {
+          /* ignore */
+        }
+        pulse.notify('Sent edited request to Repeater')
+      } catch (e) {
+        pulse.notify(`Send failed: ${(e as Error).message}`, 'err')
+      }
+      return
+    }
+    void pulse.sendToRepeater(fl.id)
+  }
+
+  useEffect(() => {
+    const onSend = () => void sendSelected()
+    window.addEventListener('pulse:send-to-repeater', onSend)
+    return () => window.removeEventListener('pulse:send-to-repeater', onSend)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fl, editedRaw])
+
   const filtersActive = q.trim() !== '' || method !== 'ANY' || statuses.size > 0 || hideStatic || filterActive(filter)
 
   return (
@@ -325,10 +361,10 @@ export default function ProxyView({ pulse }: { pulse: PulseState }) {
                     className="btn sm"
                     disabled={!fl}
                     title="Copy this request into a new Repeater tab"
-                    onClick={() => fl && pulse.sendToRepeater(fl.id)}
+                    onClick={() => void sendSelected()}
                   >
                     <Icon name="send" size={13} />
-                    Send to Repeater
+                    Send to Repeater{editedRaw !== null ? ' (edited)' : ''}
                   </button>
                   <span className={`method-${fl.request.method} mono`} style={{ fontWeight: 700, fontSize: 12 }}>
                     {fl.request.method}
@@ -370,7 +406,7 @@ export default function ProxyView({ pulse }: { pulse: PulseState }) {
                 dir="h"
                 storageKey="pulse.split.inspector"
                 initial={0.5}
-                a={<RequestInspector req={fl.request} flowId={fl.id} />}
+                a={<RequestInspector req={fl.request} flowId={fl.id} raw={editedRaw ?? requestToRaw(fl.request)} onRawChange={(text) => fl && setRawEdit({ id: fl.id, text })} />}
                 b={<ResponseInspector resp={fl.response} error={fl.error} flowId={fl.id} ws={fl.ws} />}
               />
             ) : (
