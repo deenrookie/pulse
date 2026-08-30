@@ -7,15 +7,35 @@ import { applyFontSize, loadFontSize, FONT_DEFAULT, FONT_MIN, FONT_MAX } from '.
 export default function SettingsView({ pulse }: { pulse: PulseState }) {
   const st = pulse.status
   const [timeoutSec, setTimeoutSec] = useState<number | null>(null)
+  const [memGuard, setMemGuard] = useState<number | null>(null)
+  const [largeBody, setLargeBody] = useState<number | null>(null)
   const [savedAt, setSavedAt] = useState(0)
   const [saveErr, setSaveErr] = useState<string | null>(null)
   const [fontSize, setFontSize] = useState(loadFontSize)
 
   useEffect(() => {
     getSettings()
-      .then((s) => setTimeoutSec(s.responseTimeoutSec))
+      .then((s) => {
+        setTimeoutSec(s.responseTimeoutSec)
+        setMemGuard(s.memoryGuardMB)
+        setLargeBody(s.largeBodyMB)
+      })
       .catch(() => {})
   }, [])
+
+  const saveGuard = async () => {
+    if (memGuard === null || largeBody === null) return
+    setSaveErr(null)
+    try {
+      const s = await putSettings({ memoryGuardMB: memGuard, largeBodyMB: largeBody })
+      setMemGuard(s.memoryGuardMB)
+      setLargeBody(s.largeBodyMB)
+      setSavedAt(Date.now())
+      pulse.notify(`Memory guard: ${s.memoryGuardMB} MB budget, drop binary bodies over ${s.largeBodyMB} MB`)
+    } catch (e) {
+      setSaveErr((e as Error).message)
+    }
+  }
 
   const saveTimeout = async () => {
     if (timeoutSec === null) return
@@ -133,6 +153,54 @@ export default function SettingsView({ pulse }: { pulse: PulseState }) {
             <button className="btn sm" disabled={fontSize === FONT_DEFAULT} onClick={() => setFontSize(applyFontSize(FONT_DEFAULT))}>
               Reset
             </button>
+          </div>
+        </div>
+
+        <div className="card">
+          <h3>
+            <Icon name="shield" size={15} />
+            Memory guard
+          </h3>
+          <div className="sub">
+            Once stored bodies exceed the budget, newly captured <b>binary</b> responses (video, audio, images,
+            octet-stream shards) larger than the drop size are recorded without their body — a YouTube session
+            would otherwise grow the heap into the gigabytes. Text/JSON bodies are always kept. Defaults: 500 MB
+            budget, drop over 3 MB.
+          </div>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+            <input
+              className="input"
+              type="number"
+              min={16}
+              max={65536}
+              style={{ width: 100 }}
+              value={memGuard ?? ''}
+              onChange={(e) => setMemGuard(parseInt(e.target.value, 10) || 0)}
+            />
+            <span className="faint">MB budget · drop binary bodies over</span>
+            <input
+              className="input"
+              type="number"
+              min={1}
+              max={64}
+              style={{ width: 80 }}
+              value={largeBody ?? ''}
+              onChange={(e) => setLargeBody(parseInt(e.target.value, 10) || 0)}
+            />
+            <span className="faint">MB</span>
+            <button
+              className="btn primary sm"
+              onClick={() => void saveGuard()}
+              disabled={!memGuard || !largeBody || memGuard < 16 || memGuard > 65536 || largeBody < 1 || largeBody > 64}
+            >
+              Save
+            </button>
+            {savedAt > 0 && !saveErr && (
+              <span className="faint" key={savedAt} style={{ animation: 'hist-flash 700ms var(--ease-out)' }}>
+                saved
+              </span>
+            )}
+            {saveErr && <span className="err-inline">{saveErr}</span>}
           </div>
         </div>
 

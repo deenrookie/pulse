@@ -300,6 +300,15 @@ func (e *Engine) executeRequest(req *store.Request, respond respondFunc) (*Resul
 		fl.Resp = res.Resp
 	}
 	_ = respond(res.Resp, nil)
+	// memory guard: the client already received the full payload — past the
+	// resident budget, strip oversized binary bodies before they are stored
+	// (video/audio/image shards) so they never stay resident
+	if ct, ok := headerValue(res.Resp.Headers, "Content-Type"); ok {
+		if e.store.ShouldDropBody(ct, len(res.Resp.Body)) {
+			res.Resp.Body = []byte{}
+			res.Resp.Truncated = true
+		}
+	}
 	fl.Resp = res.Resp
 	fl.State = store.StateComplete
 	_ = e.store.Update(fl)
@@ -357,6 +366,12 @@ func (e *Engine) RoundTrip(req *store.Request) *store.Flow {
 		fl.State = store.StateError
 		fl.Error = "101 protocol upgrade is not supported in Repeater"
 	default:
+		if ct, ok := headerValue(res.Resp.Headers, "Content-Type"); ok {
+			if e.store.ShouldDropBody(ct, len(res.Resp.Body)) {
+				res.Resp.Body = []byte{}
+				res.Resp.Truncated = true
+			}
+		}
 		fl.Resp = res.Resp
 		fl.Resp.DurationMs = dur
 		fl.State = store.StateComplete

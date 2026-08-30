@@ -44,6 +44,7 @@ func New(st *store.Store, eng *proxy.Engine, rep *repeater.Manager, auth *certs.
 		return nil, fmt.Errorf("load settings: %w", err)
 	}
 	eng.SetRepeaterTimeout(set.ResponseTimeoutSec)
+	st.SetMemoryGuard(set.MemoryGuardMB, set.LargeBodyMB)
 	return &Server{
 		Version: version, ProxyAddr: proxyAddr, UIAddr: uiAddr, DataDir: dataDir,
 		st: st, eng: eng, rep: rep, auth: auth, bus: bus, rw: rw, plug: plug, set: set,

@@ -97,6 +97,9 @@ export const listPlugins = () => api<{ plugins: PluginInfo[]; dir: string }>('/a
 
 export interface PulseSettings {
   responseTimeoutSec: number
+  /** resident-body budget (MB): past it, new binary bodies > largeBodyMB are dropped */
+  memoryGuardMB: number
+  largeBodyMB: number
 }
 
 export const getSettings = () => api<PulseSettings>('/api/settings')

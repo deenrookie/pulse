@@ -12,16 +12,27 @@ import (
 )
 
 const defaultResponseTimeoutSec = 30
+const defaultMemoryGuardMB = 500
+const defaultLargeBodyMB = 3
 
 type Settings struct {
 	mu sync.Mutex
 	path string
 	// ResponseTimeoutSec bounds reading upstream response heads (>=1).
 	ResponseTimeoutSec int `json:"responseTimeoutSec"`
+	// MemoryGuardMB: once stored bodies exceed this budget, newly captured
+	// binary bodies larger than LargeBodyMB are dropped instead of stored.
+	MemoryGuardMB int `json:"memoryGuardMB"`
+	LargeBodyMB   int `json:"largeBodyMB"`
 }
 
 func LoadSettings(dataDir string) (*Settings, error) {
-	s := &Settings{path: filepath.Join(dataDir, "settings.json"), ResponseTimeoutSec: defaultResponseTimeoutSec}
+	s := &Settings{
+		path:               filepath.Join(dataDir, "settings.json"),
+		ResponseTimeoutSec: defaultResponseTimeoutSec,
+		MemoryGuardMB:      defaultMemoryGuardMB,
+		LargeBodyMB:        defaultLargeBodyMB,
+	}
 	data, err := os.ReadFile(s.path)
 	if os.IsNotExist(err) {
 		if err := s.save(); err != nil {
@@ -37,6 +48,12 @@ func LoadSettings(dataDir string) (*Settings, error) {
 	}
 	if s.ResponseTimeoutSec < 1 {
 		s.ResponseTimeoutSec = defaultResponseTimeoutSec
+	}
+	if s.MemoryGuardMB < 1 {
+		s.MemoryGuardMB = defaultMemoryGuardMB
+	}
+	if s.LargeBodyMB < 1 {
+		s.LargeBodyMB = defaultLargeBodyMB
 	}
 	return s, nil
 }
@@ -64,6 +81,7 @@ func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
 		if s.set.ResponseTimeoutSec > 0 {
 			s.eng.SetRepeaterTimeout(s.set.ResponseTimeoutSec)
 		}
+		s.st.SetMemoryGuard(s.set.MemoryGuardMB, s.set.LargeBodyMB)
 	default:
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 	}
@@ -72,12 +90,18 @@ func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
 func (s *Settings) handleGet(w http.ResponseWriter, r *http.Request) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	writeJSON(w, http.StatusOK, map[string]any{"responseTimeoutSec": s.ResponseTimeoutSec})
+	writeJSON(w, http.StatusOK, map[string]any{
+		"responseTimeoutSec": s.ResponseTimeoutSec,
+		"memoryGuardMB":      s.MemoryGuardMB,
+		"largeBodyMB":        s.LargeBodyMB,
+	})
 }
 
 func (s *Settings) handlePut(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		ResponseTimeoutSec *int `json:"responseTimeoutSec"`
+		MemoryGuardMB      *int `json:"memoryGuardMB"`
+		LargeBodyMB        *int `json:"largeBodyMB"`
 	}
 	if !readJSON(w, r, &body, 1<<16) {
 		return
@@ -91,9 +115,27 @@ func (s *Settings) handlePut(w http.ResponseWriter, r *http.Request) {
 		}
 		s.ResponseTimeoutSec = *body.ResponseTimeoutSec
 	}
+	if body.MemoryGuardMB != nil {
+		if *body.MemoryGuardMB < 16 || *body.MemoryGuardMB > 65536 {
+			writeErr(w, http.StatusBadRequest, "memoryGuardMB must be 16..65536")
+			return
+		}
+		s.MemoryGuardMB = *body.MemoryGuardMB
+	}
+	if body.LargeBodyMB != nil {
+		if *body.LargeBodyMB < 1 || *body.LargeBodyMB > 64 {
+			writeErr(w, http.StatusBadRequest, "largeBodyMB must be 1..64")
+			return
+		}
+		s.LargeBodyMB = *body.LargeBodyMB
+	}
 	if err := s.save(); err != nil {
 		writeErr(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"responseTimeoutSec": s.ResponseTimeoutSec})
+	writeJSON(w, http.StatusOK, map[string]any{
+		"responseTimeoutSec": s.ResponseTimeoutSec,
+		"memoryGuardMB":      s.MemoryGuardMB,
+		"largeBodyMB":        s.LargeBodyMB,
+	})
 }

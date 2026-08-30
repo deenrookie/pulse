@@ -98,6 +98,101 @@ type Store struct {
 	next  int64
 	path  string
 	file  *os.File
+
+	// memory guard: bodyBytes tracks the approximate resident cost of every
+	// stored body (request + response + websocket payloads). Once it crosses
+	// MemoryGuardMB, newly captured binary bodies larger than LargeBodyMB are
+	// dropped instead of stored (media streams would otherwise grow the heap
+	// without bound — video sessions used to reach GBs).
+	bodyBytes      int64
+	guardLimitByte int64 // 0 = default (500 MB)
+	guardOverByte  int64 // 0 = default (3 MB)
+}
+
+const (
+	DefaultMemoryGuardMB = 500
+	DefaultLargeBodyMB   = 3
+)
+
+// SetMemoryGuard configures the drop policy (clamped to sane values; a huge
+// limit effectively disables it).
+func (s *Store) SetMemoryGuard(limitMB, overMB int) {
+	if limitMB < 1 {
+		limitMB = DefaultMemoryGuardMB
+	}
+	if overMB < 1 {
+		overMB = DefaultLargeBodyMB
+	}
+	s.mu.Lock()
+	s.guardLimitByte = int64(limitMB) << 20
+	s.guardOverByte = int64(overMB) << 20
+	s.mu.Unlock()
+}
+
+// BodyBytes reports the approximate resident size of stored bodies.
+func (s *Store) BodyBytes() int64 {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.bodyBytes
+}
+
+// ShouldDropBody reports whether a newly captured response body of the given
+// content-type and size should be skipped: only binary payloads, only once
+// the resident budget is exceeded, and only above the configured size.
+func (s *Store) ShouldDropBody(contentType string, size int) bool {
+	s.mu.RLock()
+	over := s.guardOverByte
+	limit := s.guardLimitByte
+	resident := s.bodyBytes
+	s.mu.RUnlock()
+	if over == 0 {
+		over = int64(DefaultLargeBodyMB) << 20
+	}
+	if limit == 0 {
+		limit = int64(DefaultMemoryGuardMB) << 20
+	}
+	if resident <= limit || int64(size) <= over {
+		return false
+	}
+	return isBinaryContentType(contentType)
+}
+
+// isBinaryContentType: text-bearing types are kept so inspectors stay useful;
+// anything else (video, audio, images, octet-stream, missing type) is binary.
+func isBinaryContentType(ct string) bool {
+	ct = strings.ToLower(strings.TrimSpace(strings.SplitN(ct, ";", 2)[0]))
+	switch ct {
+	case "", "application/octet-stream", "binary/octet-stream":
+		return true
+	}
+	if strings.HasPrefix(ct, "text/") {
+		return false
+	}
+	switch ct {
+	case "application/json", "application/javascript", "application/x-javascript",
+		"application/xml", "application/rss+xml", "application/atom+xml",
+		"application/x-www-form-urlencoded", "application/graphql",
+		"application/manifest+json", "application/yaml", "application/x-yaml":
+		return false
+	}
+	if strings.HasSuffix(ct, "+json") || strings.HasSuffix(ct, "+xml") {
+		return false
+	}
+	return true
+}
+
+func flowBodyBytes(fl *Flow) int64 {
+	if fl == nil {
+		return 0
+	}
+	n := int64(len(fl.Req.Body))
+	if fl.Resp != nil {
+		n += int64(len(fl.Resp.Body))
+	}
+	for _, m := range fl.WSMessages {
+		n += int64(len(m.Data))
+	}
+	return n
 }
 
 func Open(path string) (*Store, error) {
@@ -133,10 +228,13 @@ func (s *Store) load() error {
 		if err := json.Unmarshal([]byte(line), &fl); err != nil {
 			continue // torn last write: skip malformed line
 		}
-		if _, exists := s.flows[fl.ID]; !exists {
+		if old, exists := s.flows[fl.ID]; exists {
+			s.bodyBytes -= flowBodyBytes(old) // replayed update replaces the older line
+		} else {
 			s.order = append(s.order, fl.ID)
 		}
 		s.flows[fl.ID] = &fl
+		s.bodyBytes += flowBodyBytes(&fl)
 		if n := idNumber(fl.ID); n >= s.next {
 			s.next = n + 1
 		}
@@ -170,6 +268,7 @@ func (s *Store) Add(fl *Flow) error {
 	}
 	s.flows[fl.ID] = fl
 	s.order = append(s.order, fl.ID)
+	s.bodyBytes += flowBodyBytes(fl)
 	return s.persist(fl)
 }
 
@@ -178,10 +277,12 @@ func (s *Store) Add(fl *Flow) error {
 func (s *Store) Update(fl *Flow) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if _, ok := s.flows[fl.ID]; !ok {
+	old, ok := s.flows[fl.ID]
+	if !ok {
 		return fmt.Errorf("unknown flow id %s", fl.ID)
 	}
 	s.flows[fl.ID] = fl
+	s.bodyBytes += flowBodyBytes(fl) - flowBodyBytes(old)
 	return s.persist(fl)
 }
 
@@ -286,6 +387,7 @@ func (s *Store) Delete(id string) bool {
 	if _, ok := s.flows[id]; !ok {
 		return false
 	}
+	s.bodyBytes -= flowBodyBytes(s.flows[id])
 	delete(s.flows, id)
 	for i, x := range s.order {
 		if x == id {
@@ -303,6 +405,7 @@ func (s *Store) Clear() error {
 	defer s.mu.Unlock()
 	s.flows = map[string]*Flow{}
 	s.order = nil
+	s.bodyBytes = 0
 	if s.file != nil {
 		old := s.file
 		old.Close()
