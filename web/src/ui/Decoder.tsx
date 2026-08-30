@@ -1,7 +1,7 @@
-// CyberChef-style decoder card: left = input, right = output, middle =
-// searchable operations palette. Clicking operations builds a chained
-// recipe (applied in order, auto-baked); the card is draggable,
-// resizable (corner grip), pinnable/ghost, and fully persistent.
+// XSSor/CyberChef-inspired decoder card: input and output stacked on the
+// left, a grouped operations column on the right. Clicking operations
+// appends them to a chained recipe (auto-baked, reorderable); the card is
+// draggable, resizable, pinnable/ghost, and fully persistent.
 import { useEffect, useRef, useState } from 'react'
 import Icon from './Icon'
 
@@ -9,6 +9,10 @@ interface Op {
   id: string
   label: string
   run: (text: string) => string | null | Promise<string | null>
+}
+interface Group {
+  label: string
+  ops: Op[]
 }
 
 const LS_KEY = 'pulse.decoder2'
@@ -23,7 +27,7 @@ interface Persisted {
   recipe: string[]
 }
 
-const DEFAULTS: Persisted = { x: 140, y: 110, w: 760, h: 430, mode: 'top', input: '', recipe: [] }
+const DEFAULTS: Persisted = { x: 140, y: 110, w: 780, h: 460, mode: 'top', input: '', recipe: [] }
 
 function load(): Persisted {
   try {
@@ -62,6 +66,13 @@ function urlDecode(text: string): string | null {
   }
 }
 
+/** percent-encode everything that is not URI-unreserved */
+function urlEncodeAll(text: string): string {
+  return Array.from(text)
+    .map((c) => (/^[A-Za-z0-9_.~-]$/.test(c) ? c : encodeURIComponent(c)))
+    .join('')
+}
+
 function hexEncode(text: string): string {
   const bytes = new TextEncoder().encode(text)
   return Array.from(bytes)
@@ -91,6 +102,54 @@ function htmlDecode(text: string): string | null {
   return doc.documentElement.textContent
 }
 
+/** \uXXXX escapes (with surrogate pairs) */
+function unicodeEncode(text: string): string {
+  return Array.from(text)
+    .map((c) => {
+      const cp = c.codePointAt(0)!
+      if (cp > 0xffff) {
+        const hi = Math.floor((cp - 0x10000) / 0x400) + 0xd800
+        const lo = ((cp - 0x10000) % 0x400) + 0xdc00
+        return `\\u${hi.toString(16).padStart(4, '0')}\\u${lo.toString(16).padStart(4, '0')}`
+      }
+      return `\\u${cp.toString(16).padStart(4, '0')}`
+    })
+    .join('')
+}
+
+function unicodeDecode(text: string): string | null {
+  if (!/\\u/i.test(text)) return null
+  try {
+    return JSON.parse(`"${text.replace(/"/g, '\\"')}"`)
+  } catch {
+    return null
+  }
+}
+
+/** decimal char codes, comma separated (String.fromCharCode style) */
+function charCodesEncode(text: string): string {
+  return Array.from(text)
+    .map((c) => c.codePointAt(0))
+    .join(',')
+}
+
+function charCodesDecode(text: string): string | null {
+  const parts = text.split(/[\s,]+/).filter(Boolean)
+  if (parts.length === 0 || parts.some((p) => !/^\d+$/.test(p))) return null
+  try {
+    return String.fromCodePoint(...parts.map(Number))
+  } catch {
+    return null
+  }
+}
+
+function rot13(text: string): string {
+  return text.replace(/[a-z]/gi, (c) => {
+    const base = c <= 'Z' ? 65 : 97
+    return String.fromCharCode(((c.charCodeAt(0) - base + 13) % 26) + base)
+  })
+}
+
 async function gzipEncode(text: string): Promise<string | null> {
   try {
     const cs = new CompressionStream('gzip')
@@ -117,6 +176,14 @@ async function gzipDecode(text: string): Promise<string | null> {
   }
 }
 
+async function digest(text: string, algo: 'SHA-1' | 'SHA-256' | 'SHA-512'): Promise<string> {
+  const bytes = new TextEncoder().encode(text)
+  const buf = await crypto.subtle.digest(algo, bytes)
+  return Array.from(new Uint8Array(buf))
+    .map((b) => b.toString(16).padStart(2, '0'))
+    .join('')
+}
+
 /** decode one layer automatically (used by Magic) */
 async function decodeOneLayer(text: string): Promise<{ text: string; label: string } | null> {
   if (/%[0-9a-f]{2}/i.test(text)) {
@@ -138,6 +205,10 @@ async function decodeOneLayer(text: string): Promise<{ text: string; label: stri
     const r = hexDecode(text)
     if (r !== null && r !== text) return { text: r, label: 'Hex' }
   }
+  if (/\\u[0-9a-f]{4}/i.test(text)) {
+    const r = unicodeDecode(text)
+    if (r !== null && r !== text) return { text: r, label: 'Unicode' }
+  }
   return null
 }
 
@@ -151,21 +222,55 @@ async function smartDecode(text: string): Promise<string> {
   return cur
 }
 
-const OPS: Op[] = [
-  { id: 'b64enc', label: 'To Base64', run: (t) => b64encode(t) },
-  { id: 'b64dec', label: 'From Base64', run: (t) => b64decode(t) },
-  { id: 'urlenc', label: 'Encode URL', run: (t) => encodeURIComponent(t) },
-  { id: 'urldec', label: 'Decode URL', run: (t) => urlDecode(t) },
-  { id: 'hexenc', label: 'To Hex', run: (t) => hexEncode(t) },
-  { id: 'hexdec', label: 'From Hex', run: (t) => hexDecode(t) },
-  { id: 'htmlenc', label: 'Encode HTML', run: (t) => htmlEncode(t) },
-  { id: 'htmldec', label: 'Decode HTML', run: (t) => htmlDecode(t) },
-  { id: 'gzenc', label: 'Gzip → Base64', run: (t) => gzipEncode(t) },
-  { id: 'gzdec', label: 'Base64 → Gunzip', run: (t) => gzipDecode(t) },
-  { id: 'magic', label: '✨ Magic (auto)', run: (t) => smartDecode(t) },
+const GROUPS: Group[] = [
+  {
+    label: 'Encode',
+    ops: [
+      { id: 'b64enc', label: 'Base64', run: (t) => b64encode(t) },
+      { id: 'urlenc', label: 'URL', run: (t) => encodeURIComponent(t) },
+      { id: 'urlall', label: 'URL (all)', run: (t) => urlEncodeAll(t) },
+      { id: 'hexenc', label: 'Hex', run: (t) => hexEncode(t) },
+      { id: 'htmlenc', label: 'HTML', run: (t) => htmlEncode(t) },
+      { id: 'unienc', label: 'Unicode', run: (t) => unicodeEncode(t) },
+      { id: 'cdcenc', label: 'Char codes', run: (t) => charCodesEncode(t) },
+      { id: 'gzenc', label: 'Gzip·b64', run: (t) => gzipEncode(t) },
+    ],
+  },
+  {
+    label: 'Decode',
+    ops: [
+      { id: 'b64dec', label: 'Base64', run: (t) => b64decode(t) },
+      { id: 'urldec', label: 'URL', run: (t) => urlDecode(t) },
+      { id: 'hexdec', label: 'Hex', run: (t) => hexDecode(t) },
+      { id: 'htmldec', label: 'HTML', run: (t) => htmlDecode(t) },
+      { id: 'unidec', label: 'Unicode', run: (t) => unicodeDecode(t) },
+      { id: 'cdcdec', label: 'Char codes', run: (t) => charCodesDecode(t) },
+      { id: 'gzdec', label: 'Gunzip·b64', run: (t) => gzipDecode(t) },
+      { id: 'magic', label: '✨ Magic', run: (t) => smartDecode(t) },
+    ],
+  },
+  {
+    label: 'Transform',
+    ops: [
+      { id: 'rot13', label: 'ROT13', run: (t) => rot13(t) },
+      { id: 'reverse', label: 'Reverse', run: (t) => Array.from(t).reverse().join('') },
+      { id: 'upper', label: 'UPPER', run: (t) => t.toUpperCase() },
+      { id: 'lower', label: 'lower', run: (t) => t.toLowerCase() },
+      { id: 'trim', label: 'Trim', run: (t) => t.trim() },
+    ],
+  },
+  {
+    label: 'Hash',
+    ops: [
+      { id: 'sha1', label: 'SHA-1', run: (t) => digest(t, 'SHA-1') },
+      { id: 'sha256', label: 'SHA-256', run: (t) => digest(t, 'SHA-256') },
+      { id: 'sha512', label: 'SHA-512', run: (t) => digest(t, 'SHA-512') },
+    ],
+  },
 ]
 
-const opById = (id: string) => OPS.find((o) => o.id === id)
+const ALL_OPS: Op[] = GROUPS.flatMap((g) => g.ops)
+const opById = (id: string) => ALL_OPS.find((o) => o.id === id)
 
 export default function Decoder({ onClose }: { onClose: () => void }) {
   const [st, setSt] = useState<Persisted>(load)
@@ -193,7 +298,6 @@ export default function Decoder({ onClose }: { onClose: () => void }) {
     }
   }
 
-  // keep the card on screen on first mount
   useEffect(() => {
     const w = window.innerWidth
     const h = window.innerHeight
@@ -238,7 +342,7 @@ export default function Decoder({ onClose }: { onClose: () => void }) {
     }
   }, [st.input, st.recipe])
 
-  // ---- dragging (header) ----
+  // ---- dragging ----
   const dragRef = useRef<{ dx: number; dy: number } | null>(null)
   const [dragging, setDragging] = useState(false)
   const onHeadDown = (e: React.PointerEvent) => {
@@ -260,7 +364,7 @@ export default function Decoder({ onClose }: { onClose: () => void }) {
     persist()
   }
 
-  // ---- resizing (corner grip) ----
+  // ---- resizing ----
   const sizeRef = useRef<{ w: number; h: number; x: number; y: number } | null>(null)
   const [resizing, setResizing] = useState(false)
   const onGripDown = (e: React.PointerEvent) => {
@@ -271,8 +375,8 @@ export default function Decoder({ onClose }: { onClose: () => void }) {
   const onGripMove = (e: React.PointerEvent) => {
     const s = sizeRef.current
     if (!s) return
-    const w = Math.min(Math.max(520, s.w + e.clientX - s.x), window.innerWidth - st.x - 8)
-    const h = Math.min(Math.max(340, s.h + e.clientY - s.y), window.innerHeight - st.y - 8)
+    const w = Math.min(Math.max(560, s.w + e.clientX - s.x), window.innerWidth - st.x - 8)
+    const h = Math.min(Math.max(360, s.h + e.clientY - s.y), window.innerHeight - st.y - 8)
     setSt((prev) => ({ ...prev, w, h }))
   }
   const onGripUp = () => {
@@ -283,7 +387,12 @@ export default function Decoder({ onClose }: { onClose: () => void }) {
   }
 
   // ---- palette / recipe ----
-  const filteredOps = OPS.filter((o) => o.label.toLowerCase().includes(search.trim().toLowerCase()))
+  const needle = search.trim().toLowerCase()
+  const groups = GROUPS.map((g) => ({
+    label: g.label,
+    ops: g.ops.filter((o) => !needle || o.label.toLowerCase().includes(needle)),
+  })).filter((g) => g.ops.length > 0)
+
   const addOp = (id: string) => save({ recipe: [...st.recipe, id] })
   const removeOp = (i: number) => save({ recipe: st.recipe.filter((_, idx) => idx !== i) })
   const moveOp = (i: number, dir: -1 | 1) => {
@@ -323,62 +432,67 @@ export default function Decoder({ onClose }: { onClose: () => void }) {
         </button>
       </div>
 
-      <div className="cyber-body">
-        <div className="cyber-palette">
-          <input
-            className="input cyber-search"
-            placeholder="Search operations…"
-            value={search}
-            spellCheck={false}
-            onChange={(e) => setSearch(e.target.value)}
-          />
-          <div className="cyber-ops">
-            {filteredOps.map((op) => (
-              <button key={op.id} className="cyber-op" onClick={() => addOp(op.id)} title={`Add “${op.label}” to the recipe`}>
-                <Icon name="plus" size={11} />
-                {op.label}
+      <div className="dc-main">
+        <div className="dc-io-col">
+          <div className="dc-io">
+            <span className="dc-label">
+              Input
+              <span className="dc-hint">operations on the right chain into a recipe</span>
+            </span>
+            <textarea
+              value={st.input}
+              spellCheck={false}
+              placeholder="paste text here…"
+              onChange={(e) => save({ input: e.target.value })}
+            />
+          </div>
+          <div className="dc-io">
+            <span className="dc-label">
+              Output
+              {error ? <span className="dc-err">{error}</span> : <span className="dc-hint">auto-baked</span>}
+            </span>
+            <textarea value={output} spellCheck={false} readOnly placeholder="recipe result appears here…" />
+            <div className="dc-out-actions">
+              <button
+                className="mini"
+                disabled={!output}
+                onClick={() => save({ input: output, recipe: [] })}
+                title="Move the output into the input and clear the recipe"
+              >
+                ↻ Output → Input
               </button>
-            ))}
-            {filteredOps.length === 0 && <div className="cyber-ops-empty">No matching operations</div>}
+              <button className="mini" disabled={!output} onClick={() => void navigator.clipboard?.writeText(output)}>
+                Copy
+              </button>
+            </div>
           </div>
         </div>
 
-        <div className="cyber-io">
-          <span className="decoder-label">Input</span>
-          <textarea
-            value={st.input}
-            spellCheck={false}
-            placeholder="paste text here, then chain operations from the left…"
-            onChange={(e) => save({ input: e.target.value })}
-          />
-        </div>
-
-        <div className="cyber-io">
-          <span className="decoder-label">
-            Output {error ? <span style={{ color: 'var(--danger)', textTransform: 'none', letterSpacing: 0 }}>{error}</span> : ''}
-          </span>
-          <textarea value={output} spellCheck={false} readOnly placeholder="recipe result appears here automatically…" />
-          <div className="cyber-out-actions">
-            <button
-              className="mini"
-              disabled={!output}
-              onClick={() => save({ input: output, recipe: [] })}
-              title="Move the output into the input and clear the recipe"
-            >
-              ↻ Output → Input
-            </button>
-            <button className="mini" disabled={!output} onClick={() => void navigator.clipboard?.writeText(output)}>
-              Copy
-            </button>
+        <div className="dc-ops-col">
+          <input className="input dc-search" placeholder="Search operations…" value={search} spellCheck={false} onChange={(e) => setSearch(e.target.value)} />
+          <div className="dc-groups">
+            {groups.map((g) => (
+              <div key={g.label} className="dc-group">
+                <div className="dc-group-label">{g.label}</div>
+                <div className="dc-grid">
+                  {g.ops.map((op) => (
+                    <button key={op.id} className="dc-op" onClick={() => addOp(op.id)} title={`Add “${op.label}” to the recipe`}>
+                      {op.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ))}
+            {groups.length === 0 && <div className="dc-empty">No matching operations</div>}
           </div>
         </div>
       </div>
 
       <div className="cyber-recipe">
-        <span className="decoder-label">Recipe</span>
+        <span className="dc-label" style={{ flex: 'none' }}>Recipe</span>
         {st.recipe.length === 0 ? (
-          <span className="cyber-ops-empty" style={{ padding: 0 }}>
-            click operations on the left to chain them
+          <span className="dc-empty" style={{ padding: 0 }}>
+            click operations on the right to chain them
           </span>
         ) : (
           <>

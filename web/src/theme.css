@@ -1238,76 +1238,85 @@ table.flows tbody tr.hl.selected td { background: var(--accent-bg); box-shadow: 
 .rail.collapsed .rail-mem { justify-content: center; padding: 6px 0; }
 .rail.collapsed .rail-mem .txt { display: none; }
 
-/* ============ 28. CyberChef-style decoder layout ============ */
-.decoder { width: 760px; height: 430px; }
-.cyber-body {
+/* ============ 28. XSSor-style decoder layout ============ */
+.decoder { width: 780px; height: 460px; }
+.dc-main {
   flex: 1; min-height: 0;
-  display: flex; gap: 8px; padding: 10px 10px 0;
+  display: flex; gap: 10px; padding: 10px 10px 0;
 }
-.cyber-palette {
-  width: 172px; flex: none;
-  display: flex; flex-direction: column; min-height: 0;
-}
-.cyber-search { width: 100%; font-size: 11.5px; padding: 4px 8px; margin-bottom: 6px; }
-.cyber-ops {
-  flex: 1; min-height: 0; overflow: auto;
-  display: flex; flex-direction: column; gap: 2px;
-  padding-right: 2px;
-}
-.cyber-op {
-  display: flex; align-items: center; gap: 6px;
-  border: 1px solid transparent; background: none; cursor: pointer;
-  color: var(--text-muted); font: inherit; font-size: 11.5px;
-  font-family: var(--mono);
-  padding: 4px 7px; border-radius: var(--radius-xs); text-align: left;
-  transition: color var(--t-fast) ease, background var(--t-fast) ease, border-color var(--t-fast) ease;
-}
-.cyber-op:hover { color: var(--accent); background: var(--accent-bg); border-color: var(--accent-line); }
-.cyber-ops-empty { color: var(--text-faint); font-size: 11px; padding: 8px 4px; line-height: 1.6; }
-.cyber-io {
+/* left column: input above, output below */
+.dc-io-col {
   flex: 1; min-width: 0;
-  display: flex; flex-direction: column; min-height: 0;
+  display: flex; flex-direction: column; gap: 10px; min-height: 0;
 }
-.cyber-io textarea { flex: 1; min-height: 0; }
-.cyber-out-actions { display: flex; gap: 6px; padding-top: 6px; flex: none; }
-.cyber-out-actions .mini {
+.dc-io {
+  flex: 1; min-height: 0;
+  display: flex; flex-direction: column;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 8px 8px 8px 10px;
+  gap: 5px;
+}
+.dc-io textarea {
+  flex: 1; min-height: 0; resize: none;
+  background: var(--bg-input); color: var(--text);
+  border: 1px solid var(--border); border-radius: var(--radius-xs);
+  padding: 7px 9px; font-family: var(--mono); font-size: 12px; line-height: 1.5;
+  outline: none;
+}
+.dc-io textarea:focus { border-color: var(--accent-dim); box-shadow: 0 0 0 2px var(--glow); }
+.dc-io textarea[readonly] { color: var(--text-muted); }
+.dc-label {
+  font-size: 10px; font-weight: 700; letter-spacing: 0.8px;
+  text-transform: uppercase; color: var(--text-faint);
+  display: flex; align-items: baseline; gap: 8px; flex: none;
+}
+.dc-hint { font-weight: 400; letter-spacing: 0; text-transform: none; font-size: 10px; color: var(--text-faint); opacity: 0.8; }
+.dc-err { font-weight: 400; letter-spacing: 0; text-transform: none; font-size: 10.5px; color: var(--danger); }
+.dc-out-actions { display: flex; gap: 6px; flex: none; }
+.dc-out-actions .mini {
   background: var(--bg-input); color: var(--text-muted);
   border: 1px solid var(--border); border-radius: var(--radius-xs);
-  font: inherit; font-size: 11px; padding: 3px 8px; cursor: pointer;
+  font: inherit; font-size: 10.5px; padding: 3px 8px; cursor: pointer;
   font-family: var(--mono);
 }
-.cyber-out-actions .mini:hover:not(:disabled) { color: var(--accent); border-color: var(--accent-dim); }
-.cyber-out-actions .mini:disabled { opacity: 0.4; cursor: default; }
-.cyber-recipe {
-  flex: none;
-  display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
-  padding: 8px 10px 10px;
-  max-height: 86px; overflow: auto;
+.dc-out-actions .mini:hover:not(:disabled) { color: var(--accent); border-color: var(--accent-dim); }
+.dc-out-actions .mini:disabled { opacity: 0.4; cursor: default; }
+/* right column: grouped operations */
+.dc-ops-col {
+  width: 178px; flex: none;
+  display: flex; flex-direction: column; min-height: 0; gap: 6px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 8px;
 }
-.cyber-chip {
-  display: inline-flex; align-items: center; gap: 4px;
-  font-family: var(--mono); font-size: 11px; font-weight: 600;
-  color: var(--accent);
-  background: var(--accent-bg);
-  border: 1px solid var(--accent-line);
-  border-radius: 999px;
-  padding: 2px 4px 2px 6px;
+.dc-search { width: 100%; font-size: 11px; padding: 4px 8px; flex: none; }
+.dc-groups { flex: 1; min-height: 0; overflow: auto; display: flex; flex-direction: column; gap: 8px; padding-right: 2px; }
+.dc-group-label {
+  font-size: 9.5px; font-weight: 700; letter-spacing: 0.8px;
+  text-transform: uppercase; color: var(--accent);
+  padding: 0 1px 3px;
+  border-bottom: 1px solid var(--border);
 }
-.cyber-chip-move {
-  border: none; background: none; cursor: pointer; padding: 0 2px;
-  color: var(--text-faint); font-size: 8px; line-height: 1;
+.dc-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 3px; }
+.dc-op {
+  border: 1px solid var(--border); background: var(--bg-input);
+  color: var(--text-muted); cursor: pointer;
+  font: inherit; font-size: 10.5px; font-family: var(--mono);
+  padding: 4px 4px; border-radius: var(--radius-xs);
+  text-align: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  transition: color var(--t-fast) ease, border-color var(--t-fast) ease, background var(--t-fast) ease, transform 100ms var(--ease-out);
 }
-.cyber-chip-move:hover:not(:disabled) { color: var(--text); }
-.cyber-chip-move:disabled { opacity: 0.25; cursor: default; }
-.cyber-chip-x {
-  border: none; background: none; cursor: pointer; padding: 1px;
-  display: inline-flex; color: var(--text-faint); border-radius: 50%;
-}
-.cyber-chip-x:hover { color: var(--danger); }
+.dc-op:hover { color: var(--accent); border-color: var(--accent-line); background: var(--accent-bg); }
+.dc-op:active { transform: scale(0.96); }
+.dc-empty { color: var(--text-faint); font-size: 10.5px; padding: 6px 2px; line-height: 1.6; }
+/* recipe chips */
 .cyber-recipe .mini {
   background: var(--bg-input); color: var(--text-muted);
   border: 1px solid var(--border); border-radius: var(--radius-xs);
-  font: inherit; font-size: 11px; padding: 3px 8px; cursor: pointer;
+  font: inherit; font-size: 10.5px; padding: 3px 8px; cursor: pointer;
   font-family: var(--mono);
 }
 .cyber-recipe .mini:hover { color: var(--danger); border-color: rgb(var(--danger-rgb) / 0.4); }
