@@ -535,13 +535,9 @@ function RawView({
     )
   }
 
-  const lines = useMemo(() => {
-    const head: string[] = []
-    if (headLine) head.push(headLine)
-    for (const h of headers) head.push(`${h.name}: ${h.value}`)
-    head.push('')
-    return [...head, ...rawText.split('\n')]
-  }, [headLine, headers, rawText])
+  // fullRaw already contains the start line + header block + body — split it
+  // directly (prepending a separate head block duplicated every header)
+  const lines = useMemo(() => rawText.split('\n'), [rawText])
 
   const menuItems = (): MenuItem[] => [
     ...((flowIdForCurl || curlRequest)
