@@ -17,6 +17,7 @@ import type { Header, WSMessage } from '../types'
 import Icon from '../ui/Icon'
 import ContextMenu, { type MenuItem } from './ContextMenu'
 import RawEditor from './RawEditor'
+import { renderCookieValue, renderJSONKeys } from './rawHighlight'
 import { toCurlRequest } from '../api'
 
 interface RequestLike {
@@ -830,27 +831,62 @@ function RawView({
 
 /** one raw line: header names get their own color (Burp-style), with a
  *  hover copy button on header lines — inHead scopes the coloring to the
- *  header block so body lines containing ':' stay plain */
+ *  header block so body lines containing ':' stay plain. JSON body lines
+ *  get their property keys tinted; Cookie values tint each pair's key. */
 function RawLine({ line, n, inHead }: { line: string; n: number; inHead: boolean }) {
   const idx = line.indexOf(':')
   const isHeader = inHead && idx > 0 && !line.startsWith(' ')
   if (!isHeader) {
+    // body lines (never the request/status line) get JSON key tinting
+    const content = n > 0 && line ? renderJSONKeys(line) : line || ' '
     return (
       <div>
         <span className="ln">{n + 1}</span>
-        {line || ' '}
+        {content}
       </div>
     )
   }
   const name = line.slice(0, idx)
   const value = line.slice(idx + 1)
+  const isCookie = name.toLowerCase() === 'cookie' || name.toLowerCase() === 'set-cookie'
   return (
     <div className="raw-hdr">
       <span className="ln">{n + 1}</span>
       <CopyableText className="raw-hname" text={name} />
       <span className="raw-colon">:</span>
-      <CopyableText className="raw-hvalue" text={value.slice(1)} />
+      {isCookie ? (
+        <CookieValue value={value.slice(1)} />
+      ) : (
+        <CopyableText className="raw-hvalue" text={value.slice(1)} />
+      )}
     </div>
+  )
+}
+
+/** Cookie/Set-Cookie value with per-pair key tinting; hover copies the whole value */
+function CookieValue({ value }: { value: string }) {
+  const [hover, setHover] = useState(false)
+  return (
+    <span
+      className="copyable raw-hvalue"
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      title={value}
+    >
+      {renderCookieValue(value)}
+      {hover && (
+        <button
+          className="copy-mini"
+          title="Copy"
+          onClick={(e) => {
+            e.stopPropagation()
+            void copyToClipboard(value, { silent: true })
+          }}
+        >
+          <Icon name="copy" size={10} />
+        </button>
+      )}
+    </span>
   )
 }
 

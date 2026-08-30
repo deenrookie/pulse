@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { bodyToText, copyToClipboard, encodeBody, toCurlRequest } from '../api'
 import ContextMenu, { type MenuItem } from './ContextMenu'
 import Icon from '../ui/Icon'
+import { renderCookieValue, renderJSONKeys } from './rawHighlight'
 import type { EditableRequest, HttpRequest } from '../types'
 
 /** serialize a captured request into a raw editable buffer */
@@ -332,19 +333,23 @@ export default function RawEditor({
       }
       const idx = line.indexOf(':')
       if (i > 0 && i < headEnd && idx > 0 && !line.startsWith(' ') && !line.startsWith('\t')) {
+        const name = line.slice(0, idx)
+        const value = line.slice(idx + 1)
+        const isCookie = name.toLowerCase() === 'cookie' || name.toLowerCase() === 'set-cookie'
         return (
           <div key={i}>
             {ln}
-            <span className="raw-hname">{line.slice(0, idx)}</span>
+            <span className="raw-hname">{name}</span>
             <span className="raw-colon">:</span>
-            {line.slice(idx + 1) || '\u00a0'}
+            {isCookie ? renderCookieValue(value.trim()) : value || '\u00a0'}
           </div>
         )
       }
+      // body lines get JSON property-key tinting (never the request line)
       return (
         <div key={i}>
           {ln}
-          {line || '\u00a0'}
+          {i > 0 && i > headEnd ? renderJSONKeys(line || '\u00a0') : line || '\u00a0'}
         </div>
       )
     })
