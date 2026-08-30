@@ -504,7 +504,7 @@ export default function SiteMapView({ pulse, goProxy }: { pulse: PulseState; goP
                     dir="v"
                     storageKey="pulse.split.sitemap-inspector"
                     initial={0.5}
-                    a={<RequestInspector req={flow.request} />}
+                    a={<RequestInspector req={flow.request} flowId={flow.id} />}
                     b={<ResponseInspector resp={flow.response} error={flow.error} flowId={flow.id} ws={flow.ws} />}
                   />
                 ) : (

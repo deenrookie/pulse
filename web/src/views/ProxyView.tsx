@@ -370,7 +370,7 @@ export default function ProxyView({ pulse }: { pulse: PulseState }) {
                 dir="h"
                 storageKey="pulse.split.inspector"
                 initial={0.5}
-                a={<RequestInspector req={fl.request} />}
+                a={<RequestInspector req={fl.request} flowId={fl.id} />}
                 b={<ResponseInspector resp={fl.response} error={fl.error} flowId={fl.id} ws={fl.ws} />}
               />
             ) : (

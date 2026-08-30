@@ -1,9 +1,21 @@
 // Structured inspector for one side (request or response) of an HTTP message.
 // Sub-tabs: Headers / Params / Pretty (JSON, text or image) / Hex / Raw.
 import { useEffect, useMemo, useState } from 'react'
-import { bodyToHex, bodyToText, bodyToTextDecoded, copyToClipboard, formatSize, looksBinary, prettyJsonIfPossible } from '../api'
+import {
+  bodyToHex,
+  bodyToText,
+  bodyToTextDecoded,
+  copyToClipboard,
+  formatSize,
+  getFlow,
+  looksBinary,
+  prettyJsonIfPossible,
+  rawOfMessage,
+  toCurl,
+} from '../api'
 import type { Header, WSMessage } from '../types'
 import Icon from '../ui/Icon'
+import ContextMenu, { type MenuItem } from './ContextMenu'
 
 interface RequestLike {
   method: string
@@ -28,7 +40,7 @@ interface ResponseLike {
 
 type Tab = 'headers' | 'params' | 'pretty' | 'hex' | 'raw' | 'ws'
 
-export function RequestInspector({ req }: { req: RequestLike }) {
+export function RequestInspector({ req, flowId }: { req: RequestLike; flowId?: string }) {
   const [tab, setTab] = useState<Tab>('headers')
   const params = useMemo(() => collectParams(req.url, req.headers, req.body), [req.url, req.headers, req.body])
   const hasBody = (req.body?.length ?? 0) > 0
@@ -41,7 +53,12 @@ export function RequestInspector({ req }: { req: RequestLike }) {
           {req.method} {pathOf(req.url)}
         </span>
         <div className="spacer" />
-        <CopyBody b64={req.body} />
+        <CopyRaw
+          text={text}
+          kind="request"
+          headLine={`${req.method} ${pathOf(req.url)} ${req.httpVersion || 'HTTP/1.1'}`}
+          headers={req.headers}
+        />
         {/* Raw (request line + headers + body) is always available — GET and
             other body-less requests still have a raw form */}
         <SubTabs tab={tab} setTab={setTab} hasBody={hasBody} hasParams={params.length > 0} alwaysRaw />
@@ -61,7 +78,7 @@ export function RequestInspector({ req }: { req: RequestLike }) {
         {req.truncated && <span className="warn-inline">⚠ truncated</span>}
       </div>
       <div className="panel-body">
-        <TabBody tab={tab} headers={req.headers} params={params} text={text} b64={req.body} kind="request" req={req} />
+        <TabBody tab={tab} headers={req.headers} params={params} text={text} b64={req.body} kind="request" req={req} curlFlowId={flowId} />
       </div>
     </div>
   )
@@ -133,7 +150,12 @@ export function ResponseInspector({
           {resp.statusCode} {resp.reason}
         </span>
         <div className="spacer" />
-        <CopyBody b64={resp.body} />
+        <CopyRaw
+          text={text}
+          kind="response"
+          headLine={`${resp.httpVersion || 'HTTP/1.1'} ${resp.statusCode} ${resp.reason}`}
+          headers={resp.headers}
+        />
         {flowId && resp.statusCode > 0 && (
           <button
             className="btn ghost sm icon-btn"
@@ -169,7 +191,7 @@ export function ResponseInspector({
         {tab === 'ws' ? (
           <WSPanel ws={ws ?? []} />
         ) : (
-          <TabBody tab={tab} headers={resp.headers} params={params} text={text} b64={resp.body} kind="response" />
+          <TabBody tab={tab} headers={resp.headers} params={params} text={text} b64={resp.body} kind="response" curlFlowId={flowId} />
         )}
       </div>
     </div>
@@ -235,14 +257,19 @@ function WSPanel({ ws }: { ws: WSMessage[] }) {
   )
 }
 
-function CopyBody({ b64 }: { b64: string | null }) {
-  if (!b64) return null
+function CopyRaw({ text, kind, headLine, headers, title }: {
+  text: string
+  kind: 'request' | 'response'
+  headLine: string
+  headers: Header[]
+  title?: string
+}) {
   return (
     <button
       className="btn ghost sm icon-btn"
-      title="Copy body to clipboard"
+      title={title ?? `Copy the complete raw ${kind} to the clipboard`}
       onClick={async () => {
-        await copyToClipboard(bodyToText(b64))
+        await copyToClipboard(rawOfMessage(headLine, headers, text))
       }}
     >
       <Icon name="copy" size={13} />
@@ -292,6 +319,7 @@ function TabBody({
   b64,
   kind,
   req,
+  curlFlowId,
 }: {
   tab: Tab
   headers: Header[]
@@ -300,6 +328,7 @@ function TabBody({
   b64: string | null
   kind: 'request' | 'response'
   req?: RequestLike
+  curlFlowId?: string
 }) {
   switch (tab) {
     case 'headers':
@@ -308,8 +337,8 @@ function TabBody({
           <tbody>
             {headers.map((h, i) => (
               <tr key={i}>
-                <td>{h.name}</td>
-                <td>{h.value}</td>
+                <td><CopyableText text={h.name} /></td>
+                <td><CopyableText text={h.value} /></td>
               </tr>
             ))}
           </tbody>
@@ -342,17 +371,9 @@ function TabBody({
     case 'hex':
       return <pre className="code-view">{bodyToHex(b64)}</pre>
     case 'raw': {
-      const lines = rawView(kind, req, headers, text)
-      return (
-        <pre className="code-view">
-          {lines.map((l, i) => (
-            <div key={i}>
-              <span className="ln">{i + 1}</span>
-              {l}
-            </div>
-          ))}
-        </pre>
-      )
+      const headLine =
+        kind === 'request' && req ? `${req.method} ${pathOf(req.url)} ${req.httpVersion || 'HTTP/1.1'}` : undefined
+      return <RawView headLine={headLine} headers={headers} text={text} flowIdForCurl={curlFlowId} />
     }
   }
 }
@@ -384,16 +405,183 @@ function BinaryNotice({ b64 }: { b64: string | null }) {
   )
 }
 
-function rawView(kind: 'request' | 'response', req: RequestLike | undefined, headers: Header[], bodyText: string): string[] {
-  const head: string[] = []
-  if (kind === 'request' && req) {
-    head.push(`${req.method} ${pathOf(req.url)} ${req.httpVersion || 'HTTP/1.1'}`)
+/** Burp-style raw view: start line, headers with colored names, blank
+ *  line, body — with an in-content search bar and a context menu. */
+function RawView({
+  headLine,
+  headers,
+  text,
+  flowIdForCurl,
+}: {
+  headLine?: string
+  headers: Header[]
+  text: string
+  flowIdForCurl?: string
+}) {
+  const [q, setQ] = useState('')
+  const [menu, setMenu] = useState<{ x: number; y: number } | null>(null)
+
+  const fullRaw = useMemo(
+    () => rawOfMessage(headLine ?? `${headers.length} headers`, headers, text),
+    [headLine, headers, text],
+  )
+
+  const needle = q.trim().toLowerCase()
+  const matches = useMemo(() => {
+    if (!needle) return 0
+    return fullRaw.toLowerCase().split(needle).length - 1
+  }, [fullRaw, needle])
+
+  const renderLine = (line: string, key: number) => {
+    if (!needle || !line.toLowerCase().includes(needle)) {
+      return <RawLine key={key} line={line} n={key} />
+    }
+    // highlight all occurrences
+    const parts: React.ReactNode[] = []
+    let rest = line
+    let idx = 0
+    while (rest) {
+      const hit = rest.toLowerCase().indexOf(needle)
+      if (hit < 0) {
+        parts.push(rest)
+        break
+      }
+      parts.push(rest.slice(0, hit))
+      parts.push(<mark key={`${key}-${idx++}`}>{rest.slice(hit, hit + needle.length)}</mark>)
+      rest = rest.slice(hit + needle.length)
+    }
+    return (
+      <div key={key}>
+        <span className="ln">{key + 1}</span>
+        {parts}
+      </div>
+    )
   }
-  for (const h of headers) head.push(`${h.name}: ${h.value}`)
-  head.push('')
-  const bodyLines = bodyText ? bodyText.split('\n') : []
-  return [...head, ...bodyLines]
+
+  const lines = useMemo(() => {
+    const head: string[] = []
+    if (headLine) head.push(headLine)
+    for (const h of headers) head.push(`${h.name}: ${h.value}`)
+    head.push('')
+    return [...head, ...text.split('\n')]
+  }, [headLine, headers, text])
+
+  const menuItems = (): MenuItem[] => [
+    ...(flowIdForCurl
+      ? [
+          {
+            icon: 'terminal' as const,
+            label: 'Copy as cURL',
+            onClick: async () => {
+              const fl = await getFlow(flowIdForCurl)
+              await copyToClipboard(toCurl(fl))
+            },
+          },
+        ]
+      : []),
+    {
+      icon: 'copy',
+      label: 'Copy raw message',
+      separatorAfter: !!flowIdForCurl,
+      onClick: async () => {
+        await copyToClipboard(fullRaw)
+      },
+    },
+    {
+      icon: 'copy',
+      label: 'Copy headers',
+      onClick: async () => {
+        await copyToClipboard(headers.map((h) => `${h.name}: ${h.value}`).join('\n'))
+      },
+    },
+    {
+      icon: 'copy',
+      label: 'Copy body',
+      onClick: async () => {
+        await copyToClipboard(text)
+      },
+    },
+  ]
+
+  return (
+    <div className="raw-wrap">
+      <pre
+        className="code-view raw-lines"
+        onContextMenu={(e) => {
+          e.preventDefault()
+          setMenu({ x: e.clientX, y: e.clientY })
+        }}
+      >
+        {lines.map((l, i) => renderLine(l, i))}
+      </pre>
+      <div className="raw-search">
+        <Icon name="search" size={11} />
+        <input
+          value={q}
+          spellCheck={false}
+          placeholder="Find in raw…"
+          onChange={(e) => setQ(e.target.value)}
+          onKeyDown={(e) => e.stopPropagation()}
+        />
+        {needle && <span className="count">{matches} match{matches === 1 ? '' : 'es'}</span>}
+      </div>
+      {menu && <ContextMenu x={menu.x} y={menu.y} items={menuItems()} onClose={() => setMenu(null)} />}
+    </div>
+  )
 }
+
+/** one raw line: header names get their own color (Burp-style), with a
+ *  hover copy button on header lines */
+function RawLine({ line, n }: { line: string; n: number }) {
+  const idx = line.indexOf(':')
+  const isHeader = n > 0 && idx > 0 && !line.startsWith(' ')
+  if (!isHeader) {
+    return (
+      <div>
+        <span className="ln">{n + 1}</span>
+        {line || ' '}
+      </div>
+    )
+  }
+  const name = line.slice(0, idx)
+  const value = line.slice(idx + 1)
+  return (
+    <div className="raw-hdr">
+      <span className="ln">{n + 1}</span>
+      <CopyableText className="raw-hname" text={name} />
+      <span className="raw-colon">:</span>
+      <CopyableText className="raw-hvalue" text={value.slice(1)} />
+    </div>
+  )
+}
+
+/** text span with a hover-revealed copy button */
+function CopyableText({ text, className }: { text: string; className?: string }) {
+  const [hover, setHover] = useState(false)
+  return (
+    <span
+      className={`copyable ${className ?? ''}`}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      title={text}
+    >
+      {text}
+      {hover && (
+        <button
+          className="copy-mini"
+          title="Copy"
+          onClick={(e) => {
+            e.stopPropagation()
+            void copyToClipboard(text)
+          }}
+        >
+          <Icon name="copy" size={10} />
+        </button>
+      )}
+    </span>
+  )
+}
+
 
 function collectParams(url: string, headers: Header[], bodyB64: string | null): [string, string, string][] {
   const out: [string, string, string][] = []

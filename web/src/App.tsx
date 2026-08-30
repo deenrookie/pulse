@@ -135,11 +135,21 @@ export default function App() {
         e.preventDefault()
         if (tab !== 'proxy') go('proxy')
         window.dispatchEvent(new CustomEvent('pulse:focus-filter'))
+      } else if (mod && e.key.toLowerCase() === 'r') {
+        // Burp-style Ctrl+R: send the selected flow to Repeater and jump there
+        e.preventDefault()
+        const target = e.target as HTMLElement
+        if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') return
+        if (pulse.selectedId) {
+          void pulse.sendToRepeater(pulse.selectedId).then((ok) => {
+            if (ok) go('repeater')
+          })
+        }
       }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [tab, go])
+  }, [tab, go, pulse.selectedId, pulse])
 
   const view = VIEWS.find((v) => v.id === tab)!
   const repeaterCount = pulse.repeaterTabs.length

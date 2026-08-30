@@ -65,9 +65,11 @@ export function rawToRequest(raw: string, fallbackUrl: string): EditableRequest 
 export default function RawEditor({
   value,
   onChange,
+  note,
 }: {
   value: string
   onChange: (next: string) => void
+  note?: string
 }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
@@ -80,7 +82,7 @@ export default function RawEditor({
       />
       <div className="raw-hint">
         First line <kbd>METHOD path HTTP/1.1</kbd> · the <kbd>Host</kbd> header (or an absolute URL) sets the target ·
-        body after the first blank line · <kbd>Ctrl Enter</kbd> sends
+        body after the first blank line · <kbd>Ctrl Enter</kbd> sends{note ? ' · ' + note : ''}
       </div>
     </div>
   )

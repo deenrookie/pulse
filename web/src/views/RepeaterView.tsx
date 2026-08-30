@@ -66,6 +66,15 @@ export default function RepeaterView({ pulse, goProxy }: { pulse: PulseState; go
     return () => window.removeEventListener('hashchange', apply)
   }, [])
 
+  // entering the Repeater view focuses the newest tab (Ctrl+R lands here)
+  useEffect(() => {
+    if (tabs.length > 0) {
+      const newest = tabs.reduce((a, b) => (a.updatedAt >= b.updatedAt ? a : b))
+      setSelected(newest.id)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   // address bar mirrors the selected tab (replaceState fires no hashchange)
   useEffect(() => {
     const base = '#/repeater'

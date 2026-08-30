@@ -172,10 +172,27 @@ export function bodyToText(b64: string | null | undefined): string {
   return new TextDecoder('utf-8', { fatal: false }).decode(decodeBody(b64))
 }
 
+/** server-side decompression fallback (covers encodings the browser
+ *  runtime lacks, notably br) — POSTs the base64 body to /api/decode */
+export async function serverDecodeBody(b64: string, encoding: string): Promise<Uint8Array | null> {
+  try {
+    const r = await fetch('/api/decode', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ body: b64, encoding }),
+    })
+    if (!r.ok) return null
+    const data = (await r.json()) as { body: string }
+    return decodeBody(data.body)
+  } catch {
+    return null
+  }
+}
+
 /**
- * Decode a (possibly compressed) body to text. gzip/deflate bodies are
- * transparently decompressed via DecompressionStream; br (brotli) is handled
- * where supported. Returns the text plus how it was decoded.
+ * Decode a (possibly compressed) body to text. gzip/deflate decompress
+ * locally via DecompressionStream; br (and any local failure) falls back
+ * to the server-side /api/decode endpoint.
  */
 export async function bodyToTextDecoded(
   b64: string | null | undefined,
@@ -183,24 +200,40 @@ export async function bodyToTextDecoded(
 ): Promise<{ text: string; encoding: string; decodedBytes: number }> {
   const bytes = decodeBody(b64)
   const enc = (contentEncoding || '').trim().toLowerCase()
-  const formats: Record<string, 'gzip' | 'deflate' | 'deflate-raw' | 'br'> = {
+  const formats: Record<string, 'gzip' | 'deflate' | 'br'> = {
     gzip: 'gzip',
     xgzip: 'gzip',
     deflate: 'deflate',
     br: 'br',
   }
   const fmt = formats[enc.replace(/[^a-z]/g, '')]
-  if (bytes.length > 0 && fmt && (fmt === 'br' ? 'br' in DecompressionStream.prototype || true : true) && typeof DecompressionStream !== 'undefined') {
+  if (bytes.length > 0 && fmt && typeof DecompressionStream !== 'undefined') {
     try {
-      const stream = new Response(new Blob([bytes as unknown as BlobPart]).stream().pipeThrough(new DecompressionStream(fmt as CompressionFormat)))
-      const out = new Uint8Array(await stream.arrayBuffer())
-      return {
-        text: new TextDecoder('utf-8', { fatal: false }).decode(out),
-        encoding: enc,
-        decodedBytes: out.length,
+      const ok =
+        fmt === 'br'
+          ? await (async () => {
+              // probe br support with an empty stream
+              try {
+                await new Response(new Blob([]).stream().pipeThrough(new DecompressionStream('br' as CompressionFormat))).arrayBuffer()
+                return true
+              } catch {
+                return false
+              }
+            })()
+          : true
+      if (ok) {
+        const stream = new Response(new Blob([bytes as unknown as BlobPart]).stream().pipeThrough(new DecompressionStream(fmt as CompressionFormat)))
+        const out = new Uint8Array(await stream.arrayBuffer())
+        return { text: new TextDecoder('utf-8', { fatal: false }).decode(out), encoding: enc, decodedBytes: out.length }
       }
     } catch {
-      // fall through: show raw bytes as text (already-lossy) — Hex remains exact
+      // fall through to the server fallback below
+    }
+  }
+  if (bytes.length > 0 && fmt && b64) {
+    const out = await serverDecodeBody(b64, enc.replace(/[^a-z]/g, '') === 'xgzip' ? 'gzip' : fmt)
+    if (out) {
+      return { text: new TextDecoder('utf-8', { fatal: false }).decode(out), encoding: enc, decodedBytes: out.length }
     }
   }
   return {
@@ -208,6 +241,16 @@ export async function bodyToTextDecoded(
     encoding: enc && fmt ? enc : '',
     decodedBytes: bytes.length,
   }
+}
+
+/** serialize one side of a message into Burp-style raw text */
+export function rawOfMessage(
+  head: string, // request/status line
+  headers: { name: string; value: string }[],
+  bodyText: string,
+): string {
+  const lines = [head, ...headers.map((h) => `${h.name}: ${h.value}`), '', bodyText]
+  return lines.join('\n')
 }
 
 export function bodyToHex(b64: string | null | undefined, limit = 4096): string {

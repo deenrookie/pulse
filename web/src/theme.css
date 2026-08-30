@@ -1353,3 +1353,48 @@ table.flows tbody tr.hl.selected td { background: var(--accent-bg); box-shadow: 
 }
 .decoder-grip:hover, .decoder-grip.active { background:
     linear-gradient(135deg, transparent 50%, var(--accent-dim) 50%, var(--accent-dim) 62%, transparent 62%, transparent 74%, var(--accent-dim) 74%, var(--accent-dim) 86%, transparent 86%); }
+
+/* ============ 29. Raw view: search bar, header styling, hover copy ============ */
+.raw-wrap { display: flex; flex-direction: column; height: 100%; min-height: 0; }
+.raw-wrap .raw-lines { flex: 1; min-height: 0; overflow: auto; }
+.raw-wrap mark {
+  background: rgb(var(--warn-rgb) / 0.4);
+  color: var(--text);
+  border-radius: 2px;
+  padding: 0 1px;
+}
+.raw-search {
+  flex: none;
+  display: flex; align-items: center; gap: 7px;
+  padding: 5px 10px;
+  border-top: 1px solid var(--border);
+  background: var(--bg-raised);
+  color: var(--text-faint);
+}
+.raw-search input {
+  flex: 1; min-width: 0;
+  background: none; border: none; outline: none;
+  color: var(--text); font-family: var(--mono); font-size: 11.5px;
+}
+.raw-search input::placeholder { color: var(--text-faint); }
+.raw-search .count { font-size: 10.5px; font-family: var(--mono); flex: none; }
+
+/* header lines in raw view: names colored (Burp-style) */
+.raw-hdr { display: flex; align-items: baseline; }
+.raw-hname { color: var(--accent); flex: none; }
+.raw-colon { color: var(--text-faint); flex: none; }
+.raw-hvalue { color: var(--text); }
+
+/* hover-revealed copy button on names/values (raw + headers table) */
+.copyable { position: relative; padding-right: 4px; min-width: 0; }
+.copy-mini {
+  position: absolute; right: -2px; top: 50%; transform: translateY(-54%);
+  border: 1px solid var(--border-strong); background: var(--bg-raised);
+  color: var(--text-muted); cursor: pointer; padding: 1px;
+  display: inline-flex; border-radius: 3px; z-index: 2;
+  opacity: 0; transition: opacity var(--t-fast) ease, color var(--t-fast) ease;
+}
+.copyable:hover .copy-mini { opacity: 1; }
+.copy-mini:hover { color: var(--accent); border-color: var(--accent-line); }
+/* headers kv table: name cell already colored; value gets hover button too */
+.kv-table td .copyable { word-break: break-all; }

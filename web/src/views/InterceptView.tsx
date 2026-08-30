@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import RequestEditor, { editorStateFrom, editorToRequest, type EditorState } from '../components/RequestEditor'
+import RawEditor, { requestToRaw, rawToRequest } from '../components/RawEditor'
 import * as api from '../api'
 import Icon from '../ui/Icon'
 import Empty from '../ui/Empty'
@@ -164,7 +164,7 @@ export default function InterceptView({ pulse }: { pulse: PulseState }) {
   const pending = pulse.intercept.pending
   const [selectedPending, setSelectedPending] = useState<string | null>(null)
   const [heldFull, setHeldFull] = useState<HttpRequest | null>(null)
-  const [editor, setEditor] = useState<EditorState | null>(null)
+  const [raw, setRaw] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
   const [rules, setRules] = useState<HoldRule[]>(loadRules)
@@ -206,7 +206,7 @@ export default function InterceptView({ pulse }: { pulse: PulseState }) {
   useEffect(() => {
     if (!currentId) {
       setHeldFull(null)
-      setEditor(null)
+      setRaw(null)
       return
     }
     let alive = true
@@ -215,7 +215,7 @@ export default function InterceptView({ pulse }: { pulse: PulseState }) {
       .then((req) => {
         if (!alive) return
         setHeldFull(req)
-        setEditor(editorStateFrom(req))
+        setRaw(requestToRaw(req))
         setErr(null)
       })
       .catch((e) => alive && setErr(String(e)))
@@ -231,7 +231,7 @@ export default function InterceptView({ pulse }: { pulse: PulseState }) {
       await fn()
       setSelectedPending(null)
       setHeldFull(null)
-      setEditor(null)
+      setRaw(null)
     } catch (e) {
       setErr((e as Error).message)
     } finally {
@@ -240,8 +240,8 @@ export default function InterceptView({ pulse }: { pulse: PulseState }) {
   }
 
   const onForward = () => {
-    if (!currentId || !editor) return
-    const req = editorToRequest(editor)
+    if (!currentId || raw === null || !heldFull) return
+    const req = rawToRequest(raw, heldFull.url)
     if ('error' in req) {
       setErr(req.error)
       return
@@ -271,7 +271,7 @@ export default function InterceptView({ pulse }: { pulse: PulseState }) {
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [busy, currentId, editor])
+  }, [busy, currentId, raw, heldFull])
 
   const queueMenu = (p: PendingItem): MenuItem[] => [
     {
@@ -409,11 +409,10 @@ export default function InterceptView({ pulse }: { pulse: PulseState }) {
           {heldFull && <span className="meta">{heldFull.id}</span>}
         </div>
         <div className="panel-body" style={{ display: 'flex', flexDirection: 'column' }}>
-          {editor ? (
-            <RequestEditor
-              state={editor}
-              onChange={setEditor}
-              note="Edits are sent upstream when you press Forward. Drop answers the client with 502."
+          {raw !== null ? (
+            <RawEditor
+              value={raw}
+              onChange={setRaw}
             />
           ) : (
             <Empty icon="hand" title="Nothing is being held">
