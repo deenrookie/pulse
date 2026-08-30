@@ -1,6 +1,6 @@
 // Burp-style raw request editor: one monospace buffer holding the request
 // line, headers and body — parsed back into an EditableRequest on send.
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { bodyToText, copyToClipboard, encodeBody, toCurlRequest } from '../api'
 import ContextMenu, { type MenuItem } from './ContextMenu'
 import type { EditableRequest, HttpRequest } from '../types'
@@ -73,6 +73,35 @@ export function rawToRequest(raw: string, fallbackUrl: string): EditableRequest 
   }
 }
 
+
+/** shared wrap state: persisted + synced across all raw views via event */
+function useRawWrap(): [boolean, () => void] {
+  const [wrap, setWrap] = useState(() => {
+    try {
+      return localStorage.getItem('pulse.rawwrap') === '1'
+    } catch {
+      return false
+    }
+  })
+  useEffect(() => {
+    const onSync = (e: Event) => setWrap((e as CustomEvent<string>).detail === '1')
+    window.addEventListener('pulse:rawwrap', onSync)
+    return () => window.removeEventListener('pulse:rawwrap', onSync)
+  }, [])
+  const toggle = () =>
+    setWrap((w) => {
+      const next = w ? '0' : '1'
+      try {
+        localStorage.setItem('pulse.rawwrap', next)
+      } catch {
+        /* ignore */
+      }
+      window.dispatchEvent(new CustomEvent('pulse:rawwrap', { detail: next }))
+      return !w
+    })
+  return [wrap, toggle]
+}
+
 export default function RawEditor({
   value,
   onChange,
@@ -82,13 +111,7 @@ export default function RawEditor({
   onChange: (next: string) => void
   note?: string
 }) {
-  const [wrap, setWrap] = useState(() => {
-    try {
-      return localStorage.getItem('pulse.rawwrap') === '1'
-    } catch {
-      return false
-    }
-  })
+  const [wrap, toggleWrap] = useRawWrap()
   const mirrorRef = useRef<HTMLPreElement>(null)
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null)
 
@@ -123,15 +146,6 @@ export default function RawEditor({
       { icon: 'copy', label: 'Copy body', onClick: async () => void (await copyToClipboard(bodyText)) },
     ]
   }, [value])
-  const toggleWrap = () =>
-    setWrap((w) => {
-      try {
-        localStorage.setItem('pulse.rawwrap', w ? '0' : '1')
-      } catch {
-        /* ignore */
-      }
-      return !w
-    })
 
   // highlight mirror: header names colored like the read-only RawView.
   // The textarea above it is transparent-text; both share exact metrics.
@@ -186,12 +200,12 @@ export default function RawEditor({
           onScroll={syncScroll}
           placeholder={'GET /path HTTP/1.1' + String.fromCharCode(10) + 'Host: example.com' + String.fromCharCode(10) + String.fromCharCode(10) + 'body'}
         />
-      </div>
-      {menu && <ContextMenu x={menu.x} y={menu.y} items={menuItems} onClose={() => setMenu(null)} />}
-      <div className="raw-hint">
-        <button className="mini" style={{ marginRight: 8 }} title="Toggle soft wrap of long lines" onClick={toggleWrap}>
-          {wrap ? '[x] Wrap' : '[ ] Wrap'}
+        {menu && <ContextMenu x={menu.x} y={menu.y} items={menuItems} onClose={() => setMenu(null)} />}
+        <button className="wrap-btn" title="Toggle soft wrap of long lines" onClick={toggleWrap}>
+          {wrap ? '⏳ Wrap' : '⏩ Wrap'}
         </button>
+      </div>
+      <div className="raw-hint">
         First line <kbd>METHOD path HTTP/1.1</kbd> · the <kbd>Host</kbd> header (or an absolute URL) sets the target ·
         body after the first blank line · <kbd>Ctrl Enter</kbd> sends{note ? ' · ' + note : ''}
       </div>

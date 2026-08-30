@@ -54,7 +54,7 @@ export function RequestInspector({
   raw?: string
   onRawChange?: (v: string) => void
 }) {
-  const [tab, setTab] = useState<Tab>('headers')
+  const [tab, setTab] = useState<Tab>('raw')
   const params = useMemo(() => collectParams(req.url, req.headers, req.body), [req.url, req.headers, req.body])
   const hasBody = (req.body?.length ?? 0) > 0
   const text = useMemo(() => bodyToText(req.body), [req.body])
@@ -75,7 +75,7 @@ export function RequestInspector({
         />
         {/* Raw (request line + headers + body) is always available — GET and
             other body-less requests still have a raw form */}
-        <SubTabs tab={tab} setTab={setTab} hasBody={hasBody} hasParams={params.length > 0} alwaysRaw />
+        <SubTabs tab={tab} setTab={setTab} hasBody={hasBody} alwaysRaw />
       </div>
       <div className="summary-strip">
         <span>
@@ -113,7 +113,7 @@ export function ResponseInspector({
   flowId?: string
   ws?: WSMessage[]
 }) {
-  const [tab, setTab] = useState<Tab>('headers')
+  const [tab, setTab] = useState<Tab>('raw')
   // transparently decompress gzip/deflate/br response bodies for display
   const contentEncoding = (resp?.headers ?? []).find((h) => h.name.toLowerCase() === 'content-encoding')?.value ?? ''
   const [decoded, setDecoded] = useState<{ text: string; encoding: string; decodedBytes: number } | null>(null)
@@ -183,7 +183,7 @@ export function ResponseInspector({
             <Icon name="external" size={13} />
           </button>
         )}
-        <SubTabs tab={tab} setTab={setTab} hasBody={hasBody} hasParams={false} alwaysRaw wsCount={ws?.length ?? 0} />
+        <SubTabs tab={tab} setTab={setTab} hasBody={hasBody} alwaysRaw wsCount={ws?.length ?? 0} />
       </div>
       <div className="summary-strip">
         <span>
@@ -299,22 +299,18 @@ function SubTabs({
   tab,
   setTab,
   hasBody,
-  hasParams,
   alwaysRaw,
   wsCount,
 }: {
   tab: Tab
   setTab: (t: Tab) => void
   hasBody: boolean
-  hasParams: boolean
   /** show Raw (start line + headers + body) even when there is no body */
   alwaysRaw?: boolean
   wsCount?: number
 }) {
   const tabs: [Tab, string][] = [
-    ['headers', 'Headers'],
-    ...(hasParams ? ([['params', 'Params']] as [Tab, string][]) : []),
-    ...(alwaysRaw || hasBody ? ([['raw', 'Raw']] as [Tab, string][]) : []),
+    ...(alwaysRaw || hasBody ? ([['raw', 'Raw']] as [Tab, string][]) : [['headers', 'Headers']] as [Tab, string][]),
     ...(hasBody ? ([['pretty', 'Pretty'], ['hex', 'Hex']] as [Tab, string][]) : []),
     ...(wsCount ? ([['ws', `WebSocket (${wsCount})`]] as [Tab, string][]) : []),
   ]
@@ -415,6 +411,35 @@ function BinaryNotice({ b64 }: { b64: string | null }) {
   )
 }
 
+
+/** shared wrap state: persisted + synced across all raw views via event */
+function useRawWrap(): [boolean, () => void] {
+  const [wrap, setWrap] = useState(() => {
+    try {
+      return localStorage.getItem('pulse.rawwrap') === '1'
+    } catch {
+      return false
+    }
+  })
+  useEffect(() => {
+    const onSync = (e: Event) => setWrap((e as CustomEvent<string>).detail === '1')
+    window.addEventListener('pulse:rawwrap', onSync)
+    return () => window.removeEventListener('pulse:rawwrap', onSync)
+  }, [])
+  const toggle = () =>
+    setWrap((w) => {
+      const next = w ? '0' : '1'
+      try {
+        localStorage.setItem('pulse.rawwrap', next)
+      } catch {
+        /* ignore */
+      }
+      window.dispatchEvent(new CustomEvent('pulse:rawwrap', { detail: next }))
+      return !w
+    })
+  return [wrap, toggle]
+}
+
 /** Burp-style raw view: start line, headers with colored names, blank
  *  line, body — with an in-content search bar and a context menu. */
 function RawView({
@@ -433,6 +458,7 @@ function RawView({
   const [q, setQ] = useState('')
   const [hit, setHit] = useState(0)
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null)
+  const [wrap, toggleWrap] = useRawWrap()
 
   const fullRaw = useMemo(
     () => rawOfMessage(headLine ?? `${headers.length} headers`, headers, text),
@@ -529,8 +555,11 @@ function RawView({
 
   return (
     <div className="raw-wrap">
+      <button className="wrap-btn" title="Toggle soft wrap of long lines" onClick={toggleWrap}>
+        {wrap ? '⏳ Wrap' : '⏩ Wrap'}
+      </button>
       <pre
-        className="code-view raw-lines"
+        className={`code-view raw-lines ${wrap ? '' : 'no-wrap'}`}
         onContextMenu={(e) => {
           e.preventDefault()
           setMenu({ x: e.clientX, y: e.clientY })
