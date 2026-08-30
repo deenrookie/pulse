@@ -1421,3 +1421,32 @@ table.flows tbody tr.hl.selected td { background: var(--accent-bg); box-shadow: 
   font-family: var(--mono);
 }
 .raw-hint .mini:hover { color: var(--accent); border-color: var(--accent-line); }
+
+/* editable raw: transparent textarea over a highlighted mirror */
+.raw-edit-stack { position: relative; flex: 1; min-height: 0; display: block; }
+.raw-mirror,
+textarea.editor.raw.over-mirror {
+  position: absolute; inset: 0;
+  margin: 0; padding: 8px 10px;
+  font-family: var(--mono); font-size: 12.5px; line-height: 1.6;
+  border: 1px solid var(--border); border-radius: var(--radius-sm);
+  overflow: auto;
+  tab-size: 4;
+}
+.raw-mirror {
+  color: var(--text);
+  background: var(--bg-input);
+  pointer-events: none;
+  white-space: inherit;
+}
+.raw-mirror div { min-height: 1.6em; }
+textarea.editor.raw.over-mirror {
+  background: transparent;
+  color: transparent;
+  caret-color: var(--accent);
+  resize: none;
+  outline: none;
+}
+textarea.editor.raw.over-mirror::selection { background: rgba(52, 211, 192, 0.25); }
+textarea.editor.raw.over-mirror::placeholder { color: var(--text-faint); }
+textarea.editor.raw.over-mirror:focus { border-color: var(--accent-dim); box-shadow: 0 0 0 2px var(--glow); }

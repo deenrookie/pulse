@@ -1,6 +1,6 @@
 // Burp-style raw request editor: one monospace buffer holding the request
 // line, headers and body — parsed back into an EditableRequest on send.
-import { useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import { bodyToText, encodeBody } from '../api'
 import type { EditableRequest, HttpRequest } from '../types'
 
@@ -79,6 +79,7 @@ export default function RawEditor({
       return false
     }
   })
+  const mirrorRef = useRef<HTMLPreElement>(null)
   const toggleWrap = () =>
     setWrap((w) => {
       try {
@@ -88,16 +89,54 @@ export default function RawEditor({
       }
       return !w
     })
+
+  // highlight mirror: header names colored like the read-only RawView.
+  // The textarea above it is transparent-text; both share exact metrics.
+  const mirror = useMemo(() => {
+    return value.split('\n').map((line, i) => {
+      const idx = line.indexOf(':')
+      if (i > 0 && idx > 0 && !line.startsWith(' ') && !line.startsWith('\t')) {
+        return (
+          <div key={i}>
+            <span className="raw-hname">{line.slice(0, idx)}</span>
+            <span className="raw-colon">:</span>
+            {line.slice(idx + 1) || '\u00a0'}
+          </div>
+        )
+      }
+      return <div key={i}>{line || '\u00a0'}</div>
+    })
+  }, [value])
+
+  const syncScroll = (e: React.UIEvent<HTMLTextAreaElement>) => {
+    if (mirrorRef.current) {
+      mirrorRef.current.scrollTop = e.currentTarget.scrollTop
+      mirrorRef.current.scrollLeft = e.currentTarget.scrollLeft
+    }
+  }
+
+  const sharedText: React.CSSProperties = {
+    whiteSpace: wrap ? 'pre-wrap' : 'pre',
+    overflowWrap: wrap ? 'anywhere' : 'normal',
+    wordBreak: wrap ? 'break-all' : 'normal',
+  }
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
-      <textarea
-        className="editor raw"
-        style={{ whiteSpace: wrap ? 'pre-wrap' : 'pre', overflowWrap: wrap ? 'anywhere' : 'normal' }}
-        value={value}
-        spellCheck={false}
-        onChange={(e) => onChange(e.target.value)}
-        placeholder={'GET /path HTTP/1.1' + String.fromCharCode(10) + 'Host: example.com' + String.fromCharCode(10) + String.fromCharCode(10) + 'body'}
-      />
+      <div className="raw-edit-stack" style={sharedText}>
+        <pre className="raw-mirror" ref={mirrorRef} aria-hidden="true">
+          {mirror}
+        </pre>
+        <textarea
+          className="editor raw over-mirror"
+          style={sharedText}
+          value={value}
+          spellCheck={false}
+          onChange={(e) => onChange(e.target.value)}
+          onScroll={syncScroll}
+          placeholder={'GET /path HTTP/1.1' + String.fromCharCode(10) + 'Host: example.com' + String.fromCharCode(10) + String.fromCharCode(10) + 'body'}
+        />
+      </div>
       <div className="raw-hint">
         <button className="mini" style={{ marginRight: 8 }} title="Toggle soft wrap of long lines" onClick={toggleWrap}>
           {wrap ? '[x] Wrap' : '[ ] Wrap'}
