@@ -77,11 +77,18 @@ export interface InterceptSummary {
   pending: PendingItem[]
 }
 
+export interface RepeaterHistoryEntry {
+  response?: HttpResponse
+  error?: string
+  at: string
+}
+
 export interface RepeaterTab {
   id: string
   title: string
   request: HttpRequest
   lastResponse?: HttpResponse
+  history?: RepeaterHistoryEntry[]
   updatedAt: string
 }
 

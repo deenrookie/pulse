@@ -12,12 +12,21 @@ import (
 	"pulse/internal/store"
 )
 
+// HistoryEntry is the outcome of one send: a response or an error.
+type HistoryEntry struct {
+	Resp *store.Response `json:"response,omitempty"`
+	Err  string          `json:"error,omitempty"`
+	At   time.Time       `json:"at"`
+}
+
 type Tab struct {
 	ID           string           `json:"id"`
 	Title        string           `json:"title"`
 	Request      store.Request    `json:"request"`
 	LastResponse *store.Response  `json:"lastResponse,omitempty"`
-	UpdatedAt    time.Time        `json:"updatedAt"`
+	// History holds the outcomes of recent sends, oldest first (max 20).
+	History   []HistoryEntry `json:"history,omitempty"`
+	UpdatedAt time.Time      `json:"updatedAt"`
 }
 
 // Manager keeps tabs in memory and mirrors them to a JSON file.
@@ -115,12 +124,17 @@ func (m *Manager) Delete(id string) bool {
 	return false
 }
 
-// SetLastResponse records the outcome of a send.
-func (m *Manager) SetLastResponse(id string, resp *store.Response) {
+// SetLastResponse records the outcome of a send into the history (capped)
+// and mirrors it into LastResponse for compatibility.
+func (m *Manager) SetLastResponse(id string, resp *store.Response, sendErr string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	for _, t := range m.tabs {
 		if t.ID == id {
+			t.History = append(t.History, HistoryEntry{Resp: resp, Err: sendErr, At: time.Now()})
+			if n := len(t.History); n > 20 {
+				t.History = t.History[n-20:]
+			}
 			t.LastResponse = resp
 			t.UpdatedAt = time.Now()
 			_ = m.save()

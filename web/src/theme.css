@@ -1450,3 +1450,8 @@ textarea.editor.raw.over-mirror {
 textarea.editor.raw.over-mirror::selection { background: rgba(52, 211, 192, 0.25); }
 textarea.editor.raw.over-mirror::placeholder { color: var(--text-faint); }
 textarea.editor.raw.over-mirror:focus { border-color: var(--accent-dim); box-shadow: 0 0 0 2px var(--glow); }
+
+/* repeater response-history navigation */
+.hist-nav { display: inline-flex; align-items: center; gap: 2px; }
+.hist-nav { animation: hist-flash 600ms var(--ease-out); }
+@keyframes hist-flash { 0% { background: var(--accent-bg); border-radius: 4px; } 100% { background: transparent; } }

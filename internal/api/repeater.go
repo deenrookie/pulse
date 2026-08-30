@@ -112,10 +112,16 @@ func (s *Server) handleRepeaterID(w http.ResponseWriter, r *http.Request) {
 		}
 		req.Source = "repeater"
 		fl := s.eng.RoundTrip(&req)
+		var respCopy *store.Response
 		if fl.Resp != nil {
-			respCopy := *fl.Resp
-			s.rep.SetLastResponse(id, &respCopy)
+			c := *fl.Resp
+			respCopy = &c
 		}
+		sendErr := ""
+		if fl.State == store.StateError {
+			sendErr = fl.Error
+		}
+		s.rep.SetLastResponse(id, respCopy, sendErr)
 		writeJSON(w, http.StatusOK, map[string]any{"flow": fl})
 	default:
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)

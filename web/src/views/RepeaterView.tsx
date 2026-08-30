@@ -45,6 +45,9 @@ export default function RepeaterView({ pulse, goProxy }: { pulse: PulseState; go
   // raw request buffer, tagged with the tab it belongs to so switching tabs
   // reloads it while typing in the same tab does not
   const [raw, setRaw] = useState<{ text: string; __id: string | null } | null>(null)
+  // response history navigation (Burp-style): index into tab.history; null = latest
+  const [histIdx, setHistIdx] = useState<number | null>(null)
+  const [sentAt, setSentAt] = useState<number>(0)
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
 
@@ -122,6 +125,7 @@ export default function RepeaterView({ pulse, goProxy }: { pulse: PulseState; go
   }, [currentId])
 
   useEffect(() => {
+    setHistIdx(null)
     if (!tab) {
       setRaw(null)
       return
@@ -145,8 +149,10 @@ export default function RepeaterView({ pulse, goProxy }: { pulse: PulseState; go
     const req = rawToRequest(raw.text, tab.request.url)
     setBusy(true)
     setErr(null)
+    setSentAt(Date.now())
     try {
       await pulse.repeaterSend(currentId, req)
+      setHistIdx(null) // follow the newest response
     } catch (e) {
       setErr((e as Error).message)
     } finally {
@@ -254,7 +260,11 @@ export default function RepeaterView({ pulse, goProxy }: { pulse: PulseState; go
     },
   ]
 
-  const resp = tab?.lastResponse
+  const hist = tab?.history ?? []
+  const shownIdx = histIdx === null ? hist.length - 1 : histIdx
+  const entry = hist.length > 0 ? hist[shownIdx] : null
+  const resp = entry ? entry.response : tab?.lastResponse
+  const respError = entry && !entry.response ? entry.error : undefined
   const currentMark = currentId ? marks[currentId] : undefined
 
   // parse the edited raw into a request-like object for the shared inspector
@@ -431,6 +441,29 @@ export default function RepeaterView({ pulse, goProxy }: { pulse: PulseState; go
                 </span>
               )}
               <span className="meta">{tab ? tab.id : ''}</span>
+              {hist.length > 0 && (
+                <span className="hist-nav" key={sentAt}>
+                  <button
+                    className="btn ghost sm icon-btn"
+                    title="Previous response"
+                    disabled={shownIdx <= 0}
+                    onClick={() => setHistIdx(Math.max(0, shownIdx - 1))}
+                  >
+                    <Icon name="chevronsLeft" size={12} />
+                  </button>
+                  <span className="mono" style={{ fontSize: 10.5, color: 'var(--text-faint)' }}>
+                    {shownIdx + 1}/{hist.length}
+                  </span>
+                  <button
+                    className="btn ghost sm icon-btn"
+                    title="Next response"
+                    disabled={histIdx === null}
+                    onClick={() => setHistIdx(shownIdx + 1 >= hist.length ? null : shownIdx + 1)}
+                  >
+                    <Icon name="chevronRight" size={12} />
+                  </button>
+                </span>
+              )}
               {tab && (
                 <button
                   className="btn ghost sm icon-btn"
@@ -460,7 +493,7 @@ export default function RepeaterView({ pulse, goProxy }: { pulse: PulseState; go
                       />
                     ) : null
                   }
-                  b={<ResponseInspector resp={resp} />}
+                  b={<ResponseInspector resp={resp} error={respError} />}
                 />
               ) : (
                 <Empty icon="repeat" title="Create a tab first">

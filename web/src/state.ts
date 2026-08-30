@@ -227,11 +227,22 @@ export function usePulse() {
     }
   }, [notify])
 
-  const repeaterSend = useCallback(async (id: string, request?: EditableRequest) => {
-    await api.sendRepeaterTab(id, request)
-    const r = await api.listRepeater()
-    setRepeaterTabs(r.tabs)
-  }, [])
+  const repeaterSend = useCallback(
+    async (id: string, request?: EditableRequest) => {
+      const r0 = await api.sendRepeaterTab(id, request)
+      const fl = r0.flow
+      if (fl.state === 'error') {
+        notify(`Send failed: ${fl.error ?? 'unknown error'}`, 'err')
+      } else if (fl.response) {
+        notify(`Sent · ${fl.response.statusCode} ${fl.response.reason || ''} · ${fl.response.durationMs}ms`)
+      } else {
+        notify('Sent · no response')
+      }
+      const r = await api.listRepeater()
+      setRepeaterTabs(r.tabs)
+    },
+    [notify],
+  )
 
   const repeaterSave = useCallback(async (id: string, request: EditableRequest) => {
     await api.updateRepeaterTab(id, request)
