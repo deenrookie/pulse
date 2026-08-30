@@ -38,6 +38,8 @@ interface ResponseLike {
   truncated: boolean
   timestamp: string
   durationMs: number
+  bodyDropped?: boolean
+  droppedSize?: number
 }
 
 type Tab = 'headers' | 'params' | 'pretty' | 'hex' | 'raw' | 'ws'
@@ -105,6 +107,29 @@ export function RequestInspector({
   )
 }
 
+/** placeholder shown where a memory-guarded body would render */
+export function droppedBodyNotice(size: number | undefined): string {
+  return `[body not stored — ${size ? formatSize(size) + ' ' : ''}binary dropped by the memory guard to protect memory]`
+}
+
+/** full-pane notice for Pretty/Hex when the body was guard-dropped */
+function DroppedNotice({ size }: { size?: number }) {
+  return (
+    <div className="empty">
+      <div className="glyph">
+        <Icon name="shield" size={22} />
+      </div>
+      <b>Body not stored</b>
+      <div>
+        {size ? `${formatSize(size)} binary response dropped` : 'Binary response dropped'} by the memory guard to
+        protect memory.
+        <br />
+        The request/response record is kept — adjust the budget in Settings.
+      </div>
+    </div>
+  )
+}
+
 export function ResponseInspector({
   resp,
   error,
@@ -119,17 +144,18 @@ export function ResponseInspector({
   const [tab, setTab] = useState<Tab>('raw')
   // transparently decompress gzip/deflate/br response bodies for display
   const contentEncoding = (resp?.headers ?? []).find((h) => h.name.toLowerCase() === 'content-encoding')?.value ?? ''
+  const dropped = !!resp?.bodyDropped
   const [decoded, setDecoded] = useState<{ text: string; encoding: string; decodedBytes: number } | null>(null)
   useEffect(() => {
     let alive = true
     setDecoded(null)
-    if (resp?.body) {
+    if (resp?.body && !dropped) {
       void bodyToTextDecoded(resp.body, contentEncoding).then((d) => alive && setDecoded(d))
     }
     return () => {
       alive = false
     }
-  }, [resp?.body, contentEncoding, resp])
+  }, [resp?.body, contentEncoding, resp, dropped])
   const text = decoded?.text ?? ''
   const wasDecompressed = !!decoded && decoded.decodedBytes > 0 && !!contentEncoding
   if (!resp) {
@@ -161,7 +187,7 @@ export function ResponseInspector({
       </div>
     )
   }
-  const hasBody = (resp.body?.length ?? 0) > 0
+  const hasBody = (resp.body?.length ?? 0) > 0 || dropped
   const params: [string, string, string][] = []
   return (
     <div className="panel" style={{ flex: 1 }}>
@@ -172,7 +198,7 @@ export function ResponseInspector({
         </span>
         <div className="spacer" />
         <CopyRaw
-          text={text}
+          text={dropped ? droppedBodyNotice(resp.droppedSize) : text}
           kind="response"
           headLine={`${resp.httpVersion || 'HTTP/1.1'} ${resp.statusCode} ${resp.reason}`}
           headers={resp.headers}
@@ -199,8 +225,14 @@ export function ResponseInspector({
           time <b>{resp.durationMs}ms</b>
         </span>
         <span>
-          size <b>{formatSize(Math.floor(((resp.body?.length ?? 0) * 3) / 4))}</b>
+          size{' '}
+          <b>{formatSize(dropped ? resp.droppedSize || 0 : Math.floor(((resp.body?.length ?? 0) * 3) / 4))}</b>
         </span>
+        {dropped && (
+          <span className="warn-inline" title="Binary body dropped by the memory guard — record kept, body not stored">
+            ⛨ body not stored (memory guard)
+          </span>
+        )}
         {resp.truncated && <span className="warn-inline">⚠ truncated</span>}
         {wasDecompressed && (
           <span className="warn-inline" title="Body was compressed in transit; shown decompressed">
@@ -211,8 +243,20 @@ export function ResponseInspector({
       <div className="panel-body">
         {tab === 'ws' ? (
           <WSPanel ws={ws ?? []} />
+        ) : dropped && (tab === 'pretty' || tab === 'hex') ? (
+          <DroppedNotice size={resp.droppedSize} />
         ) : (
-          <TabBody tab={tab} headers={resp.headers} params={params} text={text} b64={resp.body} kind="response" curlFlowId={flowId} decompressed={wasDecompressed} statusLine={`${resp.httpVersion || 'HTTP/1.1'} ${resp.statusCode} ${resp.reason}`} />
+          <TabBody
+            tab={tab}
+            headers={resp.headers}
+            params={params}
+            text={dropped ? droppedBodyNotice(resp.droppedSize) : text}
+            b64={resp.body}
+            kind="response"
+            curlFlowId={flowId}
+            decompressed={wasDecompressed}
+            statusLine={`${resp.httpVersion || 'HTTP/1.1'} ${resp.statusCode} ${resp.reason}`}
+          />
         )}
       </div>
     </div>

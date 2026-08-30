@@ -36,6 +36,11 @@ type Response struct {
 	Headers     []Header  `json:"headers"`
 	Body        []byte    `json:"body"`
 	Truncated   bool      `json:"truncated"`
+	// BodyDropped: the memory guard discarded this body instead of storing
+	// it (media/stream shards past the drop size); DroppedSize is how many
+	// bytes the client received.
+	BodyDropped bool      `json:"bodyDropped,omitempty"`
+	DroppedSize int       `json:"droppedSize,omitempty"`
 	Timestamp   time.Time `json:"timestamp"`
 	DurationMs  int64     `json:"durationMs"`
 }
@@ -137,8 +142,11 @@ func (s *Store) BodyBytes() int64 {
 }
 
 // ShouldDropBody reports whether a newly captured response body of the given
-// content-type and size should be skipped: only binary payloads, only once
-// the resident budget is exceeded, and only above the configured size.
+// content-type and size should be skipped. Media streams (video, audio,
+// YouTube's vnd.yt-ump shards) are dropped as soon as they exceed the drop
+// size — a video session must not eat the budget first. Other binary types
+// (octet-stream downloads, images, unknown) are only dropped once the
+// resident budget is exceeded.
 func (s *Store) ShouldDropBody(contentType string, size int) bool {
 	s.mu.RLock()
 	over := s.guardOverByte
@@ -151,10 +159,27 @@ func (s *Store) ShouldDropBody(contentType string, size int) bool {
 	if limit == 0 {
 		limit = int64(DefaultMemoryGuardMB) << 20
 	}
-	if resident <= limit || int64(size) <= over {
+	if int64(size) <= over {
 		return false
 	}
-	return isBinaryContentType(contentType)
+	if isMediaContentType(contentType) {
+		return true
+	}
+	return resident > limit && isBinaryContentType(contentType)
+}
+
+// isMediaContentType: streaming payloads that are never worth keeping whole.
+func isMediaContentType(ct string) bool {
+	ct = strings.ToLower(strings.TrimSpace(strings.SplitN(ct, ";", 2)[0]))
+	if strings.HasPrefix(ct, "video/") || strings.HasPrefix(ct, "audio/") {
+		return true
+	}
+	switch ct {
+	case "application/vnd.yt-ump", "application/vnd.yt-ump-pf",
+		"application/x-mpegurl", "application/vnd.apple.mpegurl":
+		return true
+	}
+	return false
 }
 
 // isBinaryContentType: text-bearing types are kept so inspectors stay useful;
@@ -345,6 +370,9 @@ func metaOf(fl *Flow) FlowMeta {
 		m.StatusCode = fl.Resp.StatusCode
 		m.DurationMs = fl.Resp.DurationMs
 		m.RespSize = len(fl.Resp.Body)
+		if fl.Resp.BodyDropped {
+			m.RespSize = fl.Resp.DroppedSize // list shows the real wire size
+		}
 		for _, h := range fl.Resp.Headers {
 			if strings.EqualFold(h.Name, "Content-Type") {
 				m.ContentType = h.Value

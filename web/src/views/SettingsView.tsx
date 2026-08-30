@@ -50,8 +50,9 @@ export default function SettingsView({ pulse }: { pulse: PulseState }) {
     }
   }
   return (
-    <div className="settings-wrap">
-      <div className="settings">
+    <div className="view">
+      <div className="settings-wrap">
+        <div className="settings">
         <div className="card">
           <h3>
             <Icon name="lock" size={15} />
@@ -263,6 +264,7 @@ export default function SettingsView({ pulse }: { pulse: PulseState }) {
             <div className="v">drag the splitters · double-click to reset</div>
           </div>
         </div>
+      </div>
       </div>
     </div>
   )

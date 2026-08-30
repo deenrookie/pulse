@@ -24,6 +24,10 @@ export interface HttpResponse {
   headers: Header[]
   body: string | null // base64
   truncated: boolean
+  /** memory guard discarded the body instead of storing it (media shards) */
+  bodyDropped?: boolean
+  /** wire size of the dropped body, for display */
+  droppedSize?: number
   timestamp: string
   durationMs: number
 }

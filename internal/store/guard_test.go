@@ -70,12 +70,22 @@ func TestShouldDropBody(t *testing.T) {
 	s.SetMemoryGuard(1, 1) // 1 MB budget, drop binaries over 1 MB for the test
 
 	big := 2 << 20
-	if s.ShouldDropBody("video/mp4", big) {
-		t.Fatal("dropped below budget — guard must stay idle until the budget is exceeded")
-	}
-	// push the store past its 1 MB budget with stored bodies
-	s.Add(flowWith("req-big", nil, make([]byte, big)))
+	// media types drop immediately — they must not eat the budget first
 	if !s.ShouldDropBody("video/mp4", big) {
+		t.Fatal("large video must be dropped even below budget")
+	}
+	if !s.ShouldDropBody("application/vnd.yt-ump", big) {
+		t.Fatal("large vnd.yt-ump (YouTube shards) must be dropped even below budget")
+	}
+	if s.ShouldDropBody("video/mp4", 1<<10) {
+		t.Fatal("small media below the drop size must be kept")
+	}
+	// other binaries wait for the budget
+	if s.ShouldDropBody("application/octet-stream", big) {
+		t.Fatal("non-media binary dropped below budget — must stay idle until the budget is exceeded")
+	}
+	s.Add(flowWith("req-big", nil, make([]byte, big)))
+	if !s.ShouldDropBody("application/octet-stream", big) {
 		t.Fatal("large binary above budget must be dropped")
 	}
 	if s.ShouldDropBody("application/json", big) {

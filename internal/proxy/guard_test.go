@@ -32,14 +32,7 @@ func TestMemoryGuardDropsLargeBinaryResponses(t *testing.T) {
 	pool := x509.NewCertPool()
 	pool.AddCert(up.Certificate())
 	eng.SetUpstreamTLS(&tls.Config{RootCAs: pool})
-	st.SetMemoryGuard(1, 1) // 1 MB budget, drop binaries over 1 MB
-	// push the store past its budget so the guard is armed
-	st.Add(&store.Flow{
-		ID:    "req-seed",
-		Req:   store.Request{ID: "req-seed", Timestamp: time.Now()},
-		Resp:  &store.Response{Body: make([]byte, 2<<20)},
-		State: store.StateComplete,
-	})
+	st.SetMemoryGuard(500, 1) // media drops immediately over 1 MB; other binaries wait for the budget
 	client := proxiedClient(addr, &tls.Config{RootCAs: eng.CAPool()})
 
 	// binary response: delivered to the client in full, dropped from storage
@@ -59,8 +52,8 @@ func TestMemoryGuardDropsLargeBinaryResponses(t *testing.T) {
 		t.Fatal("video flow never completed")
 	}
 	fl := latestFlow(t, st)
-	if len(fl.Resp.Body) != 0 || !fl.Resp.Truncated {
-		t.Fatalf("video body must be dropped (len=%d truncated=%v)", len(fl.Resp.Body), fl.Resp.Truncated)
+	if len(fl.Resp.Body) != 0 || !fl.Resp.BodyDropped || fl.Resp.DroppedSize != len(big) {
+		t.Fatalf("video body must be dropped (len=%d dropped=%v size=%d)", len(fl.Resp.Body), fl.Resp.BodyDropped, fl.Resp.DroppedSize)
 	}
 
 	// same size, text content type: stored intact

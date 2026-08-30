@@ -300,13 +300,15 @@ func (e *Engine) executeRequest(req *store.Request, respond respondFunc) (*Resul
 		fl.Resp = res.Resp
 	}
 	_ = respond(res.Resp, nil)
-	// memory guard: the client already received the full payload — past the
-	// resident budget, strip oversized binary bodies before they are stored
-	// (video/audio/image shards) so they never stay resident
+	// memory guard: the client already received the full payload — strip
+	// oversized media/binary bodies before they are stored so they never
+	// stay resident (the flow keeps its metadata plus a drop notice)
 	if ct, ok := headerValue(res.Resp.Headers, "Content-Type"); ok {
 		if e.store.ShouldDropBody(ct, len(res.Resp.Body)) {
+			res.Resp.DroppedSize = len(res.Resp.Body)
+			res.Resp.BodyDropped = true
 			res.Resp.Body = []byte{}
-			res.Resp.Truncated = true
+			res.Resp.Truncated = false
 		}
 	}
 	fl.Resp = res.Resp
@@ -368,8 +370,10 @@ func (e *Engine) RoundTrip(req *store.Request) *store.Flow {
 	default:
 		if ct, ok := headerValue(res.Resp.Headers, "Content-Type"); ok {
 			if e.store.ShouldDropBody(ct, len(res.Resp.Body)) {
+				res.Resp.DroppedSize = len(res.Resp.Body)
+				res.Resp.BodyDropped = true
 				res.Resp.Body = []byte{}
-				res.Resp.Truncated = true
+				res.Resp.Truncated = false
 			}
 		}
 		fl.Resp = res.Resp
