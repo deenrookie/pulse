@@ -1472,3 +1472,21 @@ textarea.editor.raw.over-mirror:focus { border-color: var(--accent-dim); box-sha
 .code-view.raw-lines.no-wrap { white-space: pre; overflow: auto; }
 .code-view.raw-lines.no-wrap > div { white-space: pre; }
 .raw-edit-stack { position: relative; }
+
+/* method filter select: fits 'All methods' comfortably */
+.select.method-select { width: 122px; flex: none; padding-right: 22px; }
+
+/* back-to-top on the traffic table */
+.to-top {
+  position: absolute; right: 22px; bottom: 40px; z-index: 4;
+  width: 30px; height: 30px; border-radius: 50%;
+  border: 1px solid var(--border-strong);
+  background: var(--bg-raised);
+  color: var(--text-muted); cursor: pointer;
+  display: grid; place-items: center;
+  box-shadow: var(--shadow);
+  opacity: 0.92;
+  transition: color var(--t-fast) ease, border-color var(--t-fast) ease, transform 140ms var(--ease-out);
+}
+.to-top:hover { color: var(--accent); border-color: var(--accent-line); }
+.to-top:active { transform: scale(0.92); }

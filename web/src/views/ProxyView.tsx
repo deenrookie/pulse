@@ -272,7 +272,7 @@ export default function ProxyView({ pulse }: { pulse: PulseState }) {
                   {label}
                 </button>
               ))}
-              <select className="select" style={{ width: 92 }} value={method} onChange={(e) => setMethod(e.target.value)}>
+              <select className="select method-select" value={method} onChange={(e) => setMethod(e.target.value)} title="Filter by method">
                 {METHODS.map((m) => (
                   <option key={m} value={m}>
                     {m === 'ANY' ? 'All methods' : m}

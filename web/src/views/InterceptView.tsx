@@ -261,6 +261,30 @@ export default function InterceptView({ pulse }: { pulse: PulseState }) {
     act(() => pulse.dropPending(currentId))
   }
 
+  // copy the currently held request into a Repeater tab (parity with Live Traffic)
+  const sendHeldToRepeater = async () => {
+    if (!heldFull) return
+    try {
+      const tab = await api.createRepeaterTab({
+        request: {
+          method: heldFull.method,
+          url: heldFull.url,
+          httpVersion: heldFull.httpVersion,
+          headers: heldFull.headers,
+          body: heldFull.body ?? '',
+        },
+      })
+      try {
+        localStorage.setItem('pulse.repeater.jumpNewest', '1')
+      } catch {
+        /* ignore */
+      }
+      pulse.notify(`Sent to Repeater (${tab.id})`)
+    } catch (e) {
+      pulse.notify(`Send failed: ${(e as Error).message}`, 'err')
+    }
+  }
+
   // Ctrl+R (global): copy the currently held request into a Repeater tab
   useEffect(() => {
     const onSend = () => {
@@ -424,6 +448,10 @@ export default function InterceptView({ pulse }: { pulse: PulseState }) {
             {busy ? <span className="spinner" /> : <Icon name="play" size={13} />}
             Forward
             <kbd>F</kbd>
+          </button>
+          <button className="btn sm" disabled={!heldFull} onClick={() => void sendHeldToRepeater()} title="Copy this held request into a Repeater tab">
+            <Icon name="send" size={13} />
+            Send to Repeater
           </button>
           <button className="btn danger" disabled={!currentId || busy} onClick={onDrop} title="Drop (D)">
             <Icon name="x" size={13} />

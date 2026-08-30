@@ -189,6 +189,10 @@ export default function FlowTable({
     if (el) setScrollTop(el.scrollTop)
   }
 
+  const toTop = () => {
+    if (wrapRef.current) wrapRef.current.scrollTop = 0
+  }
+
   const copy = async (label: string, getText: () => Promise<string> | string) => {
     try {
       const text = await getText()
@@ -438,6 +442,11 @@ export default function FlowTable({
           </table>
         )}
       </div>
+      {scrollTop > 400 && (
+        <button className="to-top" title="Back to top" onClick={toTop}>
+          <Icon name="arrowUp" size={13} />
+        </button>
+      )}
       {menu && <ContextMenu x={menu.x} y={menu.y} items={menuItems(menu.flow)} onClose={() => setMenu(null)} />}
     </div>
   )
