@@ -1,23 +1,29 @@
-// Burp-style decoder card: draggable, pinnable (always-on-top) or ghost
-// (semi-transparent, raises on hover), manually closable, and persistent —
-// input, transform history, position and mode survive close/reopen.
+// CyberChef-style decoder card: left = input, right = output, middle =
+// searchable operations palette. Clicking operations builds a chained
+// recipe (applied in order, auto-baked); the card is draggable,
+// resizable (corner grip), pinnable/ghost, and fully persistent.
 import { useEffect, useRef, useState } from 'react'
 import Icon from './Icon'
 
-type Step = { label: string; text: string }
+interface Op {
+  id: string
+  label: string
+  run: (text: string) => string | null | Promise<string | null>
+}
 
-const LS_KEY = 'pulse.decoder'
+const LS_KEY = 'pulse.decoder2'
 
 interface Persisted {
   x: number
   y: number
+  w: number
+  h: number
   mode: 'top' | 'ghost'
   input: string
-  steps: Step[]
-  selected: number | null
+  recipe: string[]
 }
 
-const DEFAULTS: Persisted = { x: 120, y: 120, mode: 'top', input: '', steps: [], selected: null }
+const DEFAULTS: Persisted = { x: 140, y: 110, w: 760, h: 430, mode: 'top', input: '', recipe: [] }
 
 function load(): Persisted {
   try {
@@ -46,10 +52,6 @@ function b64decode(text: string): string | null {
   } catch {
     return null
   }
-}
-
-function urlEncode(text: string): string {
-  return encodeURIComponent(text)
 }
 
 function urlDecode(text: string): string | null {
@@ -115,80 +117,65 @@ async function gzipDecode(text: string): Promise<string | null> {
   }
 }
 
-type Transform = {
-  label: string
-  run: (text: string) => string | null | Promise<string | null>
+/** decode one layer automatically (used by Magic) */
+async function decodeOneLayer(text: string): Promise<{ text: string; label: string } | null> {
+  if (/%[0-9a-f]{2}/i.test(text)) {
+    const r = urlDecode(text)
+    if (r !== null && r !== text) return { text: r, label: 'URL' }
+  }
+  const compact = text.replace(/\s+/g, '')
+  if (/^[A-Za-z0-9+/]+={0,2}$/.test(compact) && compact.length % 4 === 0 && compact.length >= 8) {
+    const g = await gzipDecode(compact)
+    if (g !== null && g !== text) return { text: g, label: 'Gzip' }
+    const r = b64decode(compact)
+    if (r !== null && r !== text && /[\x20-\x7e]/.test(r)) return { text: r, label: 'Base64' }
+  }
+  if (/&(#x?[0-9a-f]+|[a-z]+);/i.test(text)) {
+    const r = htmlDecode(text)
+    if (r !== null && r !== text) return { text: r, label: 'HTML' }
+  }
+  if (/^\s*([0-9a-f]{2}[\s,]+)+[0-9a-f]{2}\s*$/i.test(text)) {
+    const r = hexDecode(text)
+    if (r !== null && r !== text) return { text: r, label: 'Hex' }
+  }
+  return null
 }
 
-const TRANSFORMS: Transform[] = [
-  { label: 'Encode → Base64', run: (t) => b64encode(t) },
-  { label: 'Decode → Base64', run: (t) => b64decode(t) },
-  { label: 'Encode → URL', run: (t) => urlEncode(t) },
-  { label: 'Decode → URL', run: (t) => urlDecode(t) },
-  { label: 'Encode → Hex', run: (t) => hexEncode(t) },
-  { label: 'Decode → Hex', run: (t) => hexDecode(t) },
-  { label: 'Encode → HTML', run: (t) => htmlEncode(t) },
-  { label: 'Decode → HTML', run: (t) => htmlDecode(t) },
-  { label: 'Encode → Gzip·b64', run: (t) => gzipEncode(t) },
-  { label: 'Decode → Gzip·b64', run: (t) => gzipDecode(t) },
+async function smartDecode(text: string): Promise<string> {
+  let cur = text
+  for (let depth = 0; depth < 6; depth++) {
+    const layer = await decodeOneLayer(cur)
+    if (!layer) break
+    cur = layer.text
+  }
+  return cur
+}
+
+const OPS: Op[] = [
+  { id: 'b64enc', label: 'To Base64', run: (t) => b64encode(t) },
+  { id: 'b64dec', label: 'From Base64', run: (t) => b64decode(t) },
+  { id: 'urlenc', label: 'Encode URL', run: (t) => encodeURIComponent(t) },
+  { id: 'urldec', label: 'Decode URL', run: (t) => urlDecode(t) },
+  { id: 'hexenc', label: 'To Hex', run: (t) => hexEncode(t) },
+  { id: 'hexdec', label: 'From Hex', run: (t) => hexDecode(t) },
+  { id: 'htmlenc', label: 'Encode HTML', run: (t) => htmlEncode(t) },
+  { id: 'htmldec', label: 'Decode HTML', run: (t) => htmlDecode(t) },
+  { id: 'gzenc', label: 'Gzip → Base64', run: (t) => gzipEncode(t) },
+  { id: 'gzdec', label: 'Base64 → Gunzip', run: (t) => gzipDecode(t) },
+  { id: 'magic', label: '✨ Magic (auto)', run: (t) => smartDecode(t) },
 ]
 
-/** apply transforms one by one while their output looks like another layer */
-async function smartDecode(text: string): Promise<{ text: string; chain: string[] }> {
-  let cur = text
-  const chain: string[] = []
-  for (let depth = 0; depth < 6; depth++) {
-    let matched = false
-    // url
-    if (/%[0-9a-f]{2}/i.test(cur)) {
-      const r = urlDecode(cur)
-      if (r !== null && r !== cur) {
-        cur = r
-        chain.push('URL')
-        matched = true
-      }
-    } else if (/^\s*[A-Za-z0-9+/]+={0,2}\s*$/.test(cur) && cur.replace(/\s/g, '').length % 4 === 0 && cur.replace(/\s/g, '').length >= 8) {
-      const r = b64decode(cur)
-      if (r !== null && r !== cur && /[\x20-\x7e]/.test(r)) {
-        // could be gzip base64 too — prefer gunzip when it works
-        const g = await gzipDecode(cur.replace(/\s+/g, ''))
-        if (g !== null && g !== cur) {
-          cur = g
-          chain.push('Gzip')
-        } else {
-          cur = r
-          chain.push('Base64')
-        }
-        matched = true
-      }
-    } else if (/&(#x?[0-9a-f]+|[a-z]+);/i.test(cur)) {
-      const r = htmlDecode(cur)
-      if (r !== null && r !== cur) {
-        cur = r
-        chain.push('HTML')
-        matched = true
-      }
-    } else if (/^\s*([0-9a-f]{2}[\s,]+)+[0-9a-f]{2}\s*$/i.test(cur)) {
-      const r = hexDecode(cur)
-      if (r !== null && r !== cur) {
-        cur = r
-        chain.push('Hex')
-        matched = true
-      }
-    }
-    if (!matched) break
-  }
-  return { text: cur, chain }
-}
+const opById = (id: string) => OPS.find((o) => o.id === id)
 
 export default function Decoder({ onClose }: { onClose: () => void }) {
-  const [state, setState] = useState<Persisted>(load)
-  const [busy, setBusy] = useState(false)
-  const dragRef = useRef<{ dx: number; dy: number } | null>(null)
-  const [dragging, setDragging] = useState(false)
+  const [st, setSt] = useState<Persisted>(load)
+  const [search, setSearch] = useState('')
+  const [output, setOutput] = useState('')
+  const [error, setError] = useState<string | null>(null)
+  const bakeToken = useRef(0)
 
   const save = (patch: Partial<Persisted>) =>
-    setState((prev) => {
+    setSt((prev) => {
       const next = { ...prev, ...patch }
       try {
         localStorage.setItem(LS_KEY, JSON.stringify(next))
@@ -198,76 +185,126 @@ export default function Decoder({ onClose }: { onClose: () => void }) {
       return next
     })
 
-  // keep the card on screen
+  const persist = () => {
+    try {
+      localStorage.setItem(LS_KEY, JSON.stringify(st))
+    } catch {
+      /* ignore */
+    }
+  }
+
+  // keep the card on screen on first mount
   useEffect(() => {
     const w = window.innerWidth
     const h = window.innerHeight
-    if (state.x > w - 120 || state.y > h - 80 || state.x < 0 || state.y < 0) {
-      save({ x: Math.min(Math.max(8, state.x), w - 200), y: Math.min(Math.max(8, state.y), h - 120) })
+    if (st.x > w - 120 || st.y > h - 80 || st.x < 0 || st.y < 0) {
+      save({ x: Math.min(Math.max(8, st.x), w - 200), y: Math.min(Math.max(8, st.y), h - 120) })
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  // ---- auto-bake: input → recipe chain → output ----
+  useEffect(() => {
+    const token = ++bakeToken.current
+    let cancelled = false
+    const bake = async () => {
+      setError(null)
+      let cur = st.input
+      for (const id of st.recipe) {
+        const op = opById(id)
+        if (!op) continue
+        try {
+          const out = await op.run(cur)
+          if (out === null) {
+            if (!cancelled && token === bakeToken.current) {
+              setError(`“${op.label}” cannot parse this input`)
+              setOutput(cur)
+            }
+            return
+          }
+          cur = out
+        } catch (e) {
+          if (!cancelled && token === bakeToken.current) {
+            setError(`“${op.label}” failed: ${(e as Error).message}`)
+          }
+          return
+        }
+      }
+      if (!cancelled && token === bakeToken.current) setOutput(cur)
+    }
+    void bake()
+    return () => {
+      cancelled = true
+    }
+  }, [st.input, st.recipe])
+
+  // ---- dragging (header) ----
+  const dragRef = useRef<{ dx: number; dy: number } | null>(null)
+  const [dragging, setDragging] = useState(false)
   const onHeadDown = (e: React.PointerEvent) => {
     if ((e.target as HTMLElement).closest('button')) return
     ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
-    dragRef.current = { dx: e.clientX - state.x, dy: e.clientY - state.y }
+    dragRef.current = { dx: e.clientX - st.x, dy: e.clientY - st.y }
     setDragging(true)
   }
   const onHeadMove = (e: React.PointerEvent) => {
     if (!dragRef.current) return
     const x = Math.min(Math.max(0, e.clientX - dragRef.current.dx), window.innerWidth - 100)
     const y = Math.min(Math.max(0, e.clientY - dragRef.current.dy), window.innerHeight - 60)
-    setState((prev) => ({ ...prev, x, y }))
+    setSt((prev) => ({ ...prev, x, y }))
   }
   const onHeadUp = () => {
     if (!dragRef.current) return
     dragRef.current = null
     setDragging(false)
-    try {
-      localStorage.setItem(LS_KEY, JSON.stringify(state))
-    } catch {
-      /* ignore */
-    }
+    persist()
   }
 
-  const applyTransform = async (t: Transform) => {
-    setBusy(true)
-    try {
-      const out = await t.run(state.input)
-      if (out === null) {
-        return
-      }
-      save({ steps: [...state.steps, { label: t.label, text: out }], selected: state.steps.length })
-    } finally {
-      setBusy(false)
-    }
+  // ---- resizing (corner grip) ----
+  const sizeRef = useRef<{ w: number; h: number; x: number; y: number } | null>(null)
+  const [resizing, setResizing] = useState(false)
+  const onGripDown = (e: React.PointerEvent) => {
+    ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
+    sizeRef.current = { w: st.w, h: st.h, x: e.clientX, y: e.clientY }
+    setResizing(true)
+  }
+  const onGripMove = (e: React.PointerEvent) => {
+    const s = sizeRef.current
+    if (!s) return
+    const w = Math.min(Math.max(520, s.w + e.clientX - s.x), window.innerWidth - st.x - 8)
+    const h = Math.min(Math.max(340, s.h + e.clientY - s.y), window.innerHeight - st.y - 8)
+    setSt((prev) => ({ ...prev, w, h }))
+  }
+  const onGripUp = () => {
+    if (!sizeRef.current) return
+    sizeRef.current = null
+    setResizing(false)
+    persist()
   }
 
-  const applySmart = async () => {
-    setBusy(true)
-    try {
-      const { text, chain } = await smartDecode(state.input)
-      if (chain.length === 0) return
-      save({ steps: [...state.steps, { label: `Smart (${chain.join(' → ')})`, text }], selected: state.steps.length })
-    } finally {
-      setBusy(false)
-    }
+  // ---- palette / recipe ----
+  const filteredOps = OPS.filter((o) => o.label.toLowerCase().includes(search.trim().toLowerCase()))
+  const addOp = (id: string) => save({ recipe: [...st.recipe, id] })
+  const removeOp = (i: number) => save({ recipe: st.recipe.filter((_, idx) => idx !== i) })
+  const moveOp = (i: number, dir: -1 | 1) => {
+    const next = [...st.recipe]
+    const j = i + dir
+    if (j < 0 || j >= next.length) return
+    ;[next[i], next[j]] = [next[j], next[i]]
+    save({ recipe: next })
   }
-
-  const selectedStep = state.selected !== null ? state.steps[state.selected] : null
 
   return (
     <div
-      className={`decoder ${state.mode === 'ghost' ? 'ghost' : ''} ${dragging ? 'dragging' : ''}`}
-      style={{ left: state.x, top: state.y }}
+      className={`decoder ${st.mode === 'ghost' ? 'ghost' : ''} ${dragging || resizing ? 'dragging' : ''}`}
+      style={{ left: st.x, top: st.y, width: st.w, height: st.h }}
     >
       <div
         className="decoder-head"
         onPointerDown={onHeadDown}
         onPointerMove={onHeadMove}
         onPointerUp={onHeadUp}
-        title="Drag to move"
+        title="Drag to move · corner grip resizes"
       >
         <span className="title">
           <Icon name="terminal" size={14} />
@@ -276,78 +313,106 @@ export default function Decoder({ onClose }: { onClose: () => void }) {
         <span className="spacer" />
         <button
           className="btn ghost sm icon-btn"
-          title={state.mode === 'top' ? 'Pinned on top — click for ghost mode (fades, hover to focus)' : 'Ghost mode — click to pin on top'}
-          onClick={() => save({ mode: state.mode === 'top' ? 'ghost' : 'top' })}
+          title={st.mode === 'top' ? 'Pinned on top — click for ghost mode (fades, hover to focus)' : 'Ghost mode — click to pin on top'}
+          onClick={() => save({ mode: st.mode === 'top' ? 'ghost' : 'top' })}
         >
-          <Icon name={state.mode === 'top' ? 'shield' : 'circle'} size={13} />
+          <Icon name={st.mode === 'top' ? 'shield' : 'circle'} size={13} />
         </button>
-        <button className="btn ghost sm icon-btn" title="Close (input and history are kept)" onClick={onClose}>
+        <button className="btn ghost sm icon-btn" title="Close (input, recipe, size and position are kept)" onClick={onClose}>
           <Icon name="x" size={13} />
         </button>
       </div>
-      <div className="decoder-body">
-        <span className="decoder-label">Input</span>
-        <textarea
-          value={state.input}
-          spellCheck={false}
-          placeholder="paste text to encode or decode…"
-          onChange={(e) => save({ input: e.target.value })}
-        />
-        <div className="decoder-actions">
-          {TRANSFORMS.map((t) => (
-            <button key={t.label} className="mini" disabled={busy} onClick={() => void applyTransform(t)}>
-              {t.label}
-            </button>
-          ))}
-          <button className="mini" disabled={busy} onClick={() => void applySmart()} title="Auto-detect and decode repeatedly">
-            ✨ Smart decode
-          </button>
-        </div>
-        <span className="decoder-label">Output</span>
-        <textarea
-          value={selectedStep ? selectedStep.text : ''}
-          spellCheck={false}
-          readOnly
-          placeholder="transform results appear here…"
-        />
-        {state.steps.length > 0 && (
-          <div className="decoder-history">
-            {state.steps
-              .map((st, i) => (
-                <div
-                  key={i}
-                  className={`decoder-step ${state.selected === i ? 'on' : ''}`}
-                  onClick={() => save({ selected: i })}
-                  title={st.text.slice(0, 200)}
-                >
-                  <span className="n">{i + 1}</span> {st.label}
-                  <span className="grow" style={{ flex: 1 }} />
-                  <span className="n">{st.text.length} ch</span>
-                </div>
-              ))
-              .reverse()}
+
+      <div className="cyber-body">
+        <div className="cyber-palette">
+          <input
+            className="input cyber-search"
+            placeholder="Search operations…"
+            value={search}
+            spellCheck={false}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+          <div className="cyber-ops">
+            {filteredOps.map((op) => (
+              <button key={op.id} className="cyber-op" onClick={() => addOp(op.id)} title={`Add “${op.label}” to the recipe`}>
+                <Icon name="plus" size={11} />
+                {op.label}
+              </button>
+            ))}
+            {filteredOps.length === 0 && <div className="cyber-ops-empty">No matching operations</div>}
           </div>
-        )}
-        <div className="decoder-actions">
-          <button
-            className="mini"
-            disabled={!selectedStep}
-            onClick={() => selectedStep && save({ input: selectedStep.text, steps: [], selected: null })}
-          >
-            ↻ Use output as input
-          </button>
-          <button className="mini" onClick={() => save({ steps: [], selected: null })} disabled={state.steps.length === 0}>
-            Clear history
-          </button>
-          <button
-            className="mini"
-            disabled={!selectedStep}
-            onClick={() => selectedStep && void navigator.clipboard?.writeText(selectedStep.text)}
-          >
-            Copy output
-          </button>
+        </div>
+
+        <div className="cyber-io">
+          <span className="decoder-label">Input</span>
+          <textarea
+            value={st.input}
+            spellCheck={false}
+            placeholder="paste text here, then chain operations from the left…"
+            onChange={(e) => save({ input: e.target.value })}
+          />
+        </div>
+
+        <div className="cyber-io">
+          <span className="decoder-label">
+            Output {error ? <span style={{ color: 'var(--danger)', textTransform: 'none', letterSpacing: 0 }}>{error}</span> : ''}
+          </span>
+          <textarea value={output} spellCheck={false} readOnly placeholder="recipe result appears here automatically…" />
+          <div className="cyber-out-actions">
+            <button
+              className="mini"
+              disabled={!output}
+              onClick={() => save({ input: output, recipe: [] })}
+              title="Move the output into the input and clear the recipe"
+            >
+              ↻ Output → Input
+            </button>
+            <button className="mini" disabled={!output} onClick={() => void navigator.clipboard?.writeText(output)}>
+              Copy
+            </button>
+          </div>
         </div>
       </div>
+
+      <div className="cyber-recipe">
+        <span className="decoder-label">Recipe</span>
+        {st.recipe.length === 0 ? (
+          <span className="cyber-ops-empty" style={{ padding: 0 }}>
+            click operations on the left to chain them
+          </span>
+        ) : (
+          <>
+            {st.recipe.map((id, i) => {
+              const op = opById(id)
+              return (
+                <span key={`${id}-${i}`} className="cyber-chip">
+                  <button className="cyber-chip-move" title="Move earlier" disabled={i === 0} onClick={() => moveOp(i, -1)}>
+                    ▲
+                  </button>
+                  <button className="cyber-chip-move" title="Move later" disabled={i === st.recipe.length - 1} onClick={() => moveOp(i, 1)}>
+                    ▼
+                  </button>
+                  {op?.label ?? id}
+                  <button className="cyber-chip-x" title="Remove" onClick={() => removeOp(i)}>
+                    <Icon name="x" size={10} />
+                  </button>
+                </span>
+              )
+            })}
+            <button className="mini" onClick={() => save({ recipe: [] })}>
+              Clear
+            </button>
+          </>
+        )}
+      </div>
+
+      <div
+        className={`decoder-grip ${resizing ? 'active' : ''}`}
+        onPointerDown={onGripDown}
+        onPointerMove={onGripMove}
+        onPointerUp={onGripUp}
+        title="Drag to resize"
+      />
     </div>
   )
 }
