@@ -107,6 +107,17 @@ export function shellQuote(s: string): string {
   return "'" + s.replace(/'/g, `'\\''`) + "'"
 }
 
+/** Build a curl command from an ad-hoc request (Repeater/Intercept). */
+export function toCurlRequest(method: string, url: string, headers: { name: string; value: string }[], bodyText: string): string {
+  const parts = [`curl -X ${shellQuote(method)}`, shellQuote(url)]
+  for (const h of headers) {
+    if (['host', 'content-length', 'connection', 'proxy-connection'].includes(h.name.toLowerCase())) continue
+    parts.push(`-H ${shellQuote(`${h.name}: ${h.value}`)}`)
+  }
+  if (bodyText) parts.push(`--data-raw ${shellQuote(bodyText)}`)
+  return parts.join(' \\\n  ')
+}
+
 /** Build a curl command from a captured flow. */
 export function toCurl(flow: Flow): string {
   const r = flow.request

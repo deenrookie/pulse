@@ -46,7 +46,7 @@ export default function MarkEditor({
         <Icon name="tag" size={14} />
         Mark tab
       </h4>
-      <div className="sub">A label only you see — great for “auth done”, “RCE found”, “TODO retest”.</div>
+      <div className="sub">Label optional — a color alone works as an eye-catching marker.</div>
       <input
         className="input"
         style={{ width: '100%' }}
@@ -83,7 +83,7 @@ export default function MarkEditor({
         <button className="btn sm" onClick={onClose}>
           Cancel
         </button>
-        <button className="btn primary sm" disabled={!text.trim()} onClick={() => onSave({ text: text.trim(), color })}>
+        <button className="btn primary sm" onClick={() => onSave({ text: text.trim(), color })}>
           Save mark
         </button>
       </div>

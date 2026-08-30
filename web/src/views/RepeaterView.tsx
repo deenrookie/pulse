@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
-import RawEditor, { rawToRequest, requestToRaw } from '../components/RawEditor'
+import { rawToRequest, requestToRaw } from '../components/RawEditor'
+import { RequestInspector } from '../components/MessageViewer'
 import { ResponseInspector } from '../components/MessageViewer'
 import Split from '../ui/Split'
 import Icon from '../ui/Icon'
@@ -7,7 +8,7 @@ import Empty from '../ui/Empty'
 import ContextMenu, { type MenuItem } from '../components/ContextMenu'
 import MarkEditor, { type Mark } from '../ui/MarkEditor'
 import { colorTriplet } from '../ui/palette'
-import { copyToClipboard } from '../api'
+import { copyToClipboard, createRepeaterTab, listRepeater } from '../api'
 import type { PulseState } from '../state'
 import type { RepeaterTab } from '../types'
 
@@ -30,7 +31,8 @@ function viewParam(name: string): string | null {
 }
 
 export default function RepeaterView({ pulse, goProxy }: { pulse: PulseState; goProxy: () => void }) {
-  const tabs = pulse.repeaterTabs
+  const [tabsMirror, setRepeaterTabsDirect] = useState<RepeaterTab[] | null>(null)
+  const tabs = tabsMirror ?? pulse.repeaterTabs
   const [selected, setSelected] = useState<string | null>(null)
   const [search, setSearch] = useState('')
   const [marks, setMarks] = useState<Record<string, Mark>>(loadMarks)
@@ -54,6 +56,11 @@ export default function RepeaterView({ pulse, goProxy }: { pulse: PulseState; go
       /* ignore */
     }
   }
+
+  // keep the mirror in sync; pulse updates (delete/send) reset it
+  useEffect(() => {
+    setRepeaterTabsDirect((m) => (m && m.length !== pulse.repeaterTabs.length ? null : m))
+  }, [pulse.repeaterTabs])
 
   // deep link: #/repeater?tab=<id>
   useEffect(() => {
@@ -158,18 +165,29 @@ export default function RepeaterView({ pulse, goProxy }: { pulse: PulseState; go
     if (selected === id) setSelected(null)
   }
 
-  // Ctrl/Cmd+Enter sends from anywhere in this view
+  // Ctrl/Cmd+Enter sends; Ctrl+R duplicates the current tab into a new one
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
         e.preventDefault()
         void send()
+      } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'r' && raw && tab) {
+        e.preventDefault()
+        e.stopPropagation()
+        const parsed = rawToRequest(raw.text, tab.request.url)
+        if ('error' in parsed) return
+        void createRepeaterTab({ request: parsed }).then(async (t) => {
+          const r = await listRepeater()
+          setRepeaterTabsDirect(r.tabs)
+          setSelected(t.id)
+          pulse.notify(`Duplicated to ${t.id}`)
+        })
       }
     }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
+    window.addEventListener('keydown', onKey, true) // capture: wins over the global handler
+    return () => window.removeEventListener('keydown', onKey, true)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentId, raw, busy])
+  }, [currentId, raw, busy, tab])
 
   const markPosOf = (id: string) => {
     const el = document.querySelector(`[data-tab-id="${id}"]`)
@@ -234,6 +252,24 @@ export default function RepeaterView({ pulse, goProxy }: { pulse: PulseState; go
 
   const resp = tab?.lastResponse
   const currentMark = currentId ? marks[currentId] : undefined
+
+  // parse the edited raw into a request-like object for the shared inspector
+  const reqView = useMemo(() => {
+    if (!raw || !tab) return tab ? tab.request : null
+    const parsed = rawToRequest(raw.text, tab.request.url)
+    if ('error' in parsed) return tab.request // fall back to the saved shape while typing
+    return {
+      method: parsed.method,
+      url: parsed.url,
+      httpVersion: parsed.httpVersion,
+      headers: parsed.headers,
+      body: parsed.body,
+      truncated: false,
+      timestamp: tab.request.timestamp,
+      id: tab.request.id,
+      source: tab.request.source,
+    }
+  }, [raw, tab])
 
   return (
     <div className="view padded row">
@@ -304,7 +340,7 @@ export default function RepeaterView({ pulse, goProxy }: { pulse: PulseState; go
                         mark
                           ? ({
                               '--hl-bar': mark.color,
-                              background: `rgb(${colorTriplet(mark.color)} / 0.08)`,
+                              background: `rgb(${colorTriplet(mark.color)} / ${mark.text ? 0.1 : 0.22})`,
                             } as React.CSSProperties)
                           : undefined
                       }
@@ -330,7 +366,8 @@ export default function RepeaterView({ pulse, goProxy }: { pulse: PulseState; go
                         )}
                         <span className="grow" />
                         {mark && (
-                          <span className="mark-mini" style={{ color: mark.color }} title={mark.text}>
+                          <span className="mark-mini" title={mark.text || 'marked'}>
+                            <span className="hl-dot" style={{ background: mark.color, margin: 0 }} />
                             {mark.text}
                           </span>
                         )}
@@ -373,14 +410,13 @@ export default function RepeaterView({ pulse, goProxy }: { pulse: PulseState; go
                 <span
                   className="mark-chip"
                   style={{
-                    color: currentMark.color,
-                    background: `rgb(${colorTriplet(currentMark.color)} / 0.12)`,
-                    border: `1px solid rgb(${colorTriplet(currentMark.color)} / 0.35)`,
+                    background: `rgb(${colorTriplet(currentMark.color)} / 0.22)`,
+                    border: `1px solid ${currentMark.color}`,
                   }}
-                  title="Tab mark"
+                  title={currentMark.text || 'marked'}
                 >
                   <span className="hl-dot" style={{ background: currentMark.color, margin: 0 }} />
-                  {currentMark.text}
+                  {currentMark.text || 'marked'}
                 </span>
               )}
               <div className="spacer" />
@@ -411,7 +447,16 @@ export default function RepeaterView({ pulse, goProxy }: { pulse: PulseState; go
                   dir="v"
                   storageKey="pulse.split.repeater"
                   initial={0.55}
-                  a={<RawEditor value={raw.text} onChange={(text) => setRaw({ text, __id: currentId })} />}
+                  a={
+                    reqView ? (
+                      <RequestInspector
+                        req={reqView}
+                        editable
+                        raw={raw.text}
+                        onRawChange={(text) => setRaw({ text, __id: currentId })}
+                      />
+                    ) : null
+                  }
                   b={<ResponseInspector resp={resp} />}
                 />
               ) : (

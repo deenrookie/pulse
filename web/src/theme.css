@@ -1378,6 +1378,16 @@ table.flows tbody tr.hl.selected td { background: var(--accent-bg); box-shadow: 
 }
 .raw-search input::placeholder { color: var(--text-faint); }
 .raw-search .count { font-size: 10.5px; font-family: var(--mono); flex: none; }
+.raw-search .mini {
+  background: none; border: 1px solid var(--border); color: var(--text-muted);
+  border-radius: 3px; cursor: pointer; padding: 0 5px; font-size: 9px; line-height: 15px;
+}
+.raw-search .mini:hover:not(:disabled) { color: var(--accent); border-color: var(--accent-line); }
+.raw-search .mini:disabled { opacity: 0.35; cursor: default; }
+.raw-lines mark.cur { background: rgb(var(--danger-rgb) / 0.55); color: #fff; }
+/* mark chips: color communicates via dot + tinted bg, text stays neutral */
+.mark-mini { color: var(--text-muted); }
+.mark-chip { color: var(--text); }
 
 /* header lines in raw view: names colored (Burp-style) */
 .raw-hdr { display: flex; align-items: baseline; }

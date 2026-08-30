@@ -16,6 +16,8 @@ import {
 import type { Header, WSMessage } from '../types'
 import Icon from '../ui/Icon'
 import ContextMenu, { type MenuItem } from './ContextMenu'
+import RawEditor from './RawEditor'
+import { toCurlRequest } from '../api'
 
 interface RequestLike {
   method: string
@@ -40,11 +42,25 @@ interface ResponseLike {
 
 type Tab = 'headers' | 'params' | 'pretty' | 'hex' | 'raw' | 'ws'
 
-export function RequestInspector({ req, flowId }: { req: RequestLike; flowId?: string }) {
+export function RequestInspector({
+  req,
+  flowId,
+  editable,
+  raw,
+  onRawChange,
+}: {
+  req: RequestLike
+  flowId?: string
+  /** Repeater mode: the Raw tab becomes an editor wired to the parent state */
+  editable?: boolean
+  raw?: string
+  onRawChange?: (v: string) => void
+}) {
   const [tab, setTab] = useState<Tab>('headers')
   const params = useMemo(() => collectParams(req.url, req.headers, req.body), [req.url, req.headers, req.body])
   const hasBody = (req.body?.length ?? 0) > 0
   const text = useMemo(() => bodyToText(req.body), [req.body])
+  const editableRaw = editable && raw !== undefined && onRawChange
   return (
     <div className="panel" style={{ flex: 1 }}>
       <div className="panel-head">
@@ -78,7 +94,11 @@ export function RequestInspector({ req, flowId }: { req: RequestLike; flowId?: s
         {req.truncated && <span className="warn-inline">⚠ truncated</span>}
       </div>
       <div className="panel-body">
-        <TabBody tab={tab} headers={req.headers} params={params} text={text} b64={req.body} kind="request" req={req} curlFlowId={flowId} />
+        {tab === 'raw' && editableRaw ? (
+          <RawEditor value={raw} onChange={onRawChange} />
+        ) : (
+          <TabBody tab={tab} headers={req.headers} params={params} text={text} b64={req.body} kind="request" req={req} curlFlowId={flowId} curlRequest={editable ? req : undefined} />
+        )}
       </div>
     </div>
   )
@@ -320,6 +340,7 @@ function TabBody({
   kind,
   req,
   curlFlowId,
+  curlRequest,
 }: {
   tab: Tab
   headers: Header[]
@@ -329,6 +350,8 @@ function TabBody({
   kind: 'request' | 'response'
   req?: RequestLike
   curlFlowId?: string
+  /** ad-hoc request (Repeater) — enables Copy as cURL without a stored flow */
+  curlRequest?: RequestLike
 }) {
   switch (tab) {
     case 'headers':
@@ -373,7 +396,7 @@ function TabBody({
     case 'raw': {
       const headLine =
         kind === 'request' && req ? `${req.method} ${pathOf(req.url)} ${req.httpVersion || 'HTTP/1.1'}` : undefined
-      return <RawView headLine={headLine} headers={headers} text={text} flowIdForCurl={curlFlowId} />
+      return <RawView headLine={headLine} headers={headers} text={text} flowIdForCurl={curlFlowId} curlRequest={curlRequest} />
     }
   }
 }
@@ -412,13 +435,16 @@ function RawView({
   headers,
   text,
   flowIdForCurl,
+  curlRequest,
 }: {
   headLine?: string
   headers: Header[]
   text: string
   flowIdForCurl?: string
+  curlRequest?: RequestLike
 }) {
   const [q, setQ] = useState('')
+  const [hit, setHit] = useState(0)
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null)
 
   const fullRaw = useMemo(
@@ -431,6 +457,15 @@ function RawView({
     if (!needle) return 0
     return fullRaw.toLowerCase().split(needle).length - 1
   }, [fullRaw, needle])
+  const clampHit = (n: number) => (matches > 0 ? ((n % matches) + matches) % matches : 0)
+  const step = (dir: 1 | -1) => {
+    const next = clampHit(hit + dir)
+    setHit(next)
+    document.querySelectorAll('.raw-lines mark.cur')?.forEach((m) => m.classList.remove('cur'))
+    const els = document.querySelectorAll('.raw-lines mark')
+    els[next]?.classList.add('cur')
+    els[next]?.scrollIntoView({ block: 'center' })
+  }
 
   const renderLine = (line: string, key: number) => {
     if (!needle || !line.toLowerCase().includes(needle)) {
@@ -467,14 +502,16 @@ function RawView({
   }, [headLine, headers, text])
 
   const menuItems = (): MenuItem[] => [
-    ...(flowIdForCurl
+    ...((flowIdForCurl || curlRequest)
       ? [
           {
             icon: 'terminal' as const,
             label: 'Copy as cURL',
             onClick: async () => {
-              const fl = await getFlow(flowIdForCurl)
-              await copyToClipboard(toCurl(fl))
+              const cmd = flowIdForCurl
+                ? toCurl(await getFlow(flowIdForCurl))
+                : toCurlRequest(curlRequest!.method, curlRequest!.url, curlRequest!.headers, bodyToText(curlRequest!.body))
+              await copyToClipboard(cmd)
             },
           },
         ]
@@ -520,10 +557,31 @@ function RawView({
           value={q}
           spellCheck={false}
           placeholder="Find in raw…"
-          onChange={(e) => setQ(e.target.value)}
-          onKeyDown={(e) => e.stopPropagation()}
+          onChange={(e) => {
+            setQ(e.target.value)
+            setHit(0)
+          }}
+          onKeyDown={(e) => {
+            e.stopPropagation()
+            if (e.key === 'Enter') {
+              e.preventDefault()
+              step(e.shiftKey ? -1 : 1)
+            }
+          }}
         />
-        {needle && <span className="count">{matches} match{matches === 1 ? '' : 'es'}</span>}
+        {needle && (
+          <>
+            <span className="count">
+              {matches > 0 ? `${clampHit(hit) + 1}/${matches}` : '0'}
+            </span>
+            <button className="mini" title="Previous match (Shift+Enter)" disabled={matches < 2} onClick={() => step(-1)}>
+              ▲
+            </button>
+            <button className="mini" title="Next match (Enter)" disabled={matches < 2} onClick={() => step(1)}>
+              ▼
+            </button>
+          </>
+        )}
       </div>
       {menu && <ContextMenu x={menu.x} y={menu.y} items={menuItems()} onClose={() => setMenu(null)} />}
     </div>

@@ -254,6 +254,30 @@ export default function InterceptView({ pulse }: { pulse: PulseState }) {
     act(() => pulse.dropPending(currentId))
   }
 
+  // Ctrl+R (global): copy the currently held request into a Repeater tab
+  useEffect(() => {
+    const onSend = () => {
+      if (!heldFull) return
+      void api.createRepeaterTab({
+        request: {
+          method: heldFull.method,
+          url: heldFull.url,
+          httpVersion: heldFull.httpVersion,
+          headers: heldFull.headers,
+          body: heldFull.body ?? '',
+        },
+      }).then(() => {
+        try {
+          localStorage.setItem('pulse.repeater.jumpNewest', '1')
+        } catch {
+          /* ignore */
+        }
+      })
+    }
+    window.addEventListener('pulse:send-to-repeater', onSend)
+    return () => window.removeEventListener('pulse:send-to-repeater', onSend)
+  }, [heldFull])
+
   // F / D forward & drop the held request — but never while typing
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
