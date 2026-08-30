@@ -931,6 +931,53 @@ textarea.editor.raw {
   margin-top: 7px; word-break: break-all;
 }
 
+/* plugins: directory config + online editor + samples */
+.plugin-dir-row {
+  display: flex; align-items: center; gap: 8px;
+  padding: 9px 16px; border-bottom: 1px solid var(--border); flex: none;
+}
+.plugin-dir-row .lbl, .fixture-head .lbl { font-size: 12px; color: var(--text-muted); flex: none; }
+.plugin-editor {
+  flex: 1; min-height: 0; display: flex; flex-direction: column;
+}
+.editor-toolbar {
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 16px; border-bottom: 1px solid var(--border); flex: none; flex-wrap: wrap;
+}
+.plugin-src {
+  flex: 1.4; min-height: 160px; resize: none;
+  padding: 10px 14px; border: none; outline: none;
+  background: var(--bg-input); color: var(--text);
+  font-family: var(--mono); font-size: 12.5px; line-height: 1.6;
+  white-space: pre; overflow: auto; border-bottom: 1px solid var(--border);
+}
+.plugin-status { font-size: 11.5px; font-family: var(--mono); word-break: break-all; }
+.plugin-status.ok { color: var(--ok, #3fb950); }
+.plugin-status.err { color: var(--danger); }
+.plugin-status.warn { color: var(--warn); flex: none; }
+.editor-toolbar .plugin-status { flex: none; }
+.plugin-fixture {
+  flex: 1; min-height: 120px; display: flex; flex-direction: column;
+}
+.fixture-head {
+  display: flex; align-items: center; gap: 12px;
+  padding: 7px 16px 6px; flex: none;
+}
+.plugin-fixture-src {
+  flex: 1; min-height: 80px; resize: none;
+  padding: 8px 14px; border: none; outline: none; border-top: 1px solid var(--border);
+  background: var(--bg); color: var(--text-muted);
+  font-family: var(--mono); font-size: 11.5px; line-height: 1.55;
+  white-space: pre; overflow: auto;
+}
+.plugin-test-result { padding: 8px 16px 12px; border-top: 1px solid var(--border); flex: none; max-height: 220px; overflow: auto; }
+.sample-card { border-bottom: 1px solid var(--border); padding: 13px 16px; }
+.sample-card .head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.sample-card .name { font-weight: 600; font-size: 12.5px; color: var(--text); }
+.sample-card .grow { flex: 1; }
+/* samples are reference material — show the full source, no height cap */
+.sample-card .plugin-log { max-height: none; }
+
 /* ============ 15. Settings ============ */
 .settings-wrap { flex: 1; overflow: auto; padding: 24px 20px; display: flex; justify-content: center; align-items: flex-start; }
 .settings { width: 760px; max-width: 100%; display: flex; flex-direction: column; gap: 14px; }

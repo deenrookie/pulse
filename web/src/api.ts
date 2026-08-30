@@ -6,9 +6,12 @@ import type {
   HttpRequest,
   InterceptSummary,
   PluginInfo,
+  PluginInspection,
+  PluginTestResult,
   RepeaterTab,
   RewriteRule,
   Status,
+  TestMessage,
 } from './types'
 
 async function api<T>(path: string, init?: RequestInit): Promise<T> {
@@ -93,6 +96,32 @@ export const deleteRewriteRule = (id: string) =>
 
 export const listPlugins = () => api<{ plugins: PluginInfo[]; dir: string }>('/api/plugins')
 
+export const reloadPlugins = () => api<{ plugins: PluginInfo[]; dir: string }>('/api/plugins/reload', { method: 'POST', body: '{}' })
+
+export const setPluginEnabled = (file: string, enabled: boolean) =>
+  api<{ ok: boolean }>(`/api/plugins/${encodeURIComponent(file)}`, { method: 'PUT', body: JSON.stringify({ enabled }) })
+
+export const getPluginSource = (file: string) =>
+  api<{ file: string; src: string }>(`/api/plugins/source/${encodeURIComponent(file)}`)
+
+/** save source into the plugin directory; compile errors come back as `error` */
+export const savePluginSource = (file: string, src: string) =>
+  api<{ file: string; error?: string; plugins: PluginInfo[]; dir: string }>(`/api/plugins/source/${encodeURIComponent(file)}`, {
+    method: 'PUT',
+    body: JSON.stringify({ src }),
+  })
+
+export const deletePluginSource = (file: string) =>
+  api<{ ok: boolean; plugins: PluginInfo[]; dir: string }>(`/api/plugins/source/${encodeURIComponent(file)}`, { method: 'DELETE' })
+
+/** dry-compile source without writing anything */
+export const validatePlugin = (src: string) =>
+  api<PluginInspection>('/api/plugins/validate', { method: 'POST', body: JSON.stringify({ src }) })
+
+/** run one hook against a fixture inside the sandbox VM — zero traffic */
+export const testPlugin = (payload: { src: string; hook: 'request' | 'response'; request: TestMessage; response?: TestMessage }) =>
+  api<PluginTestResult>('/api/plugins/test', { method: 'POST', body: JSON.stringify(payload) })
+
 // ---------- settings ----------
 
 export interface PulseSettings {
@@ -100,17 +129,14 @@ export interface PulseSettings {
   /** resident-body budget (MB): past it, new binary bodies > largeBodyMB are dropped */
   memoryGuardMB: number
   largeBodyMB: number
+  /** live plugin directory (absolute path); PUT with '' to reset to default */
+  pluginsDir: string
 }
 
 export const getSettings = () => api<PulseSettings>('/api/settings')
 
 export const putSettings = (patch: Partial<PulseSettings>) =>
   api<PulseSettings>('/api/settings', { method: 'PUT', body: JSON.stringify(patch) })
-
-export const reloadPlugins = () => api<{ plugins: PluginInfo[]; dir: string }>('/api/plugins/reload', { method: 'POST', body: '{}' })
-
-export const setPluginEnabled = (file: string, enabled: boolean) =>
-  api<{ ok: boolean }>(`/api/plugins/${encodeURIComponent(file)}`, { method: 'PUT', body: JSON.stringify({ enabled }) })
 
 // ---------- context-menu helpers ----------
 

@@ -120,6 +120,210 @@ func TestPluginsAPIAndLiveEffect(t *testing.T) {
 	}
 }
 
+func TestPluginEditorAPI(t *testing.T) {
+	e := newEnv(t)
+	var sawHeader string
+	up := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		sawHeader = r.Header.Get("X-Editor-Plugin")
+		w.Write([]byte("ok"))
+	}))
+	defer up.Close()
+
+	// validate: good source reports hooks; bad source reports the error
+	good := `plugin = { name: "Ed", version: "2.0" };
+function onRequest(ctx) { ctx.request.headers.push({ name: "X-Editor-Plugin", value: "on" }); pulse.log("hi " + ctx.request.method); }`
+	resp, data := e.do(t, "POST", "/api/plugins/validate", map[string]any{"src": good})
+	if resp.StatusCode != 200 {
+		t.Fatalf("validate good = %d %s", resp.StatusCode, data)
+	}
+	var insp plugins.Inspection
+	json.Unmarshal(data, &insp)
+	if insp.Error != "" || insp.Name != "Ed" || len(insp.Hooks) != 1 || insp.Hooks[0] != "request" {
+		t.Fatalf("validate good = %+v", insp)
+	}
+	_, data = e.do(t, "POST", "/api/plugins/validate", map[string]any{"src": "function ("})
+	json.Unmarshal(data, &insp)
+	if insp.Error == "" {
+		t.Fatalf("validate bad src should error, got %+v", insp)
+	}
+
+	// write via API → plugin live on proxied traffic, source readable back
+	resp, data = e.do(t, "PUT", "/api/plugins/source/edited.js", map[string]any{"src": good})
+	if resp.StatusCode != 200 {
+		t.Fatalf("save = %d %s", resp.StatusCode, data)
+	}
+	var saved struct {
+		Error   string          `json:"error"`
+		Plugins []plugins.Plugin `json:"plugins"`
+	}
+	json.Unmarshal(data, &saved)
+	if saved.Error != "" || len(saved.Plugins) != 1 {
+		t.Fatalf("save result error=%q plugins=%+v", saved.Error, saved.Plugins)
+	}
+	_, data = e.do(t, "GET", "/api/plugins/source/edited.js", nil)
+	var got struct {
+		Src string `json:"src"`
+	}
+	json.Unmarshal(data, &got)
+	if got.Src != good {
+		t.Fatalf("source round-trip failed: %q", got.Src)
+	}
+	if _, err := proxiedClient(e.proxyAddr).Get(up.URL + "/e"); err != nil {
+		t.Fatalf("proxied get: %v", err)
+	}
+	if sawHeader != "on" {
+		t.Fatalf("edited plugin not applied: %q", sawHeader)
+	}
+
+	// writing broken source succeeds on disk but surfaces the compile error
+	resp, data = e.do(t, "PUT", "/api/plugins/source/edited.js", map[string]any{"src": "function ("})
+	if resp.StatusCode != 200 {
+		t.Fatalf("save broken = %d %s", resp.StatusCode, data)
+	}
+	json.Unmarshal(data, &saved)
+	if saved.Error == "" {
+		t.Fatal("broken source should report a compile error")
+	}
+
+	// invalid file names are rejected
+	resp, _ = e.do(t, "PUT", "/api/plugins/source/..%2Fescape.js", map[string]any{"src": "x"})
+	if resp.StatusCode == 200 {
+		t.Fatal("path traversal should be rejected")
+	}
+
+	// delete → gone
+	resp, _ = e.do(t, "DELETE", "/api/plugins/source/edited.js", nil)
+	if resp.StatusCode != 200 {
+		t.Fatalf("delete = %d", resp.StatusCode)
+	}
+	resp, _ = e.do(t, "GET", "/api/plugins/source/edited.js", nil)
+	if resp.StatusCode != 404 {
+		t.Fatalf("get after delete = %d", resp.StatusCode)
+	}
+}
+
+func TestPluginTestRun(t *testing.T) {
+	e := newEnv(t)
+	src := `function onRequest(ctx) {
+  ctx.request.headers.push({ name: "X-Test", value: "1" });
+  pulse.log("url=" + ctx.request.url);
+  pulse.log("missing=" + ctx.request.nope.deep); // throws
+}`
+	resp, data := e.do(t, "POST", "/api/plugins/test", map[string]any{
+		"src": src, "hook": "request",
+		"request": map[string]any{
+			"method": "GET", "url": "http://example.com/x",
+			"headers": []map[string]string{{"name": "Host", "value": "example.com"}},
+			"body":    "",
+		},
+	})
+	if resp.StatusCode != 200 {
+		t.Fatalf("test = %d %s", resp.StatusCode, data)
+	}
+	var out struct {
+		Logs    []string `json:"logs"`
+		Error   string   `json:"error"`
+		Changed bool     `json:"changed"`
+		Request struct {
+			Headers []store.Header `json:"headers"`
+		} `json:"request"`
+	}
+	json.Unmarshal(data, &out)
+	if len(out.Logs) != 1 || out.Logs[0] != "url=http://example.com/x" {
+		t.Fatalf("logs = %+v", out.Logs)
+	}
+	if out.Error == "" {
+		t.Fatal("runtime error should be reported")
+	}
+	if out.Changed {
+		t.Fatal("throwing hook must not count as changed")
+	}
+
+	// happy path: response hook sees and rewrites the body
+	src2 := `function onResponse(ctx) {
+  ctx.response.body = ctx.response.body.replace("secret", "[REDACTED]");
+  pulse.log("redacted");
+}`
+	_, data = e.do(t, "POST", "/api/plugins/test", map[string]any{
+		"src": src2, "hook": "response",
+		"request":  map[string]any{"method": "GET", "url": "http://example.com/x"},
+		"response": map[string]any{"status": 200, "body": "a secret here"},
+	})
+	json.Unmarshal(data, &out)
+	if out.Error != "" || !out.Changed {
+		t.Fatalf("response test error=%q changed=%v logs=%v", out.Error, out.Changed, out.Logs)
+	}
+	var out2 struct {
+		Response struct {
+			Body string `json:"body"`
+		} `json:"response"`
+		Logs []string `json:"logs"`
+	}
+	json.Unmarshal(data, &out2)
+	if out2.Response.Body != "a [REDACTED] here" || len(out2.Logs) != 1 {
+		t.Fatalf("response body = %q logs = %v", out2.Response.Body, out2.Logs)
+	}
+}
+
+func TestPluginsDirChange(t *testing.T) {
+	e := newEnv(t)
+
+	// change the directory via settings
+	newDir := filepath.Join(e.dir, "custom-plugins")
+	resp, data := e.do(t, "PUT", "/api/settings", map[string]any{"pluginsDir": newDir})
+	if resp.StatusCode != 200 {
+		t.Fatalf("set dir = %d %s", resp.StatusCode, data)
+	}
+	var set struct {
+		PluginsDir string `json:"pluginsDir"`
+	}
+	json.Unmarshal(data, &set)
+	if set.PluginsDir != newDir {
+		t.Fatalf("pluginsDir = %q", set.PluginsDir)
+	}
+	if _, err := os.Stat(newDir); err != nil {
+		t.Fatalf("new dir not created: %v", err)
+	}
+
+	// a plugin written there goes live
+	src := `function onRequest(ctx) { ctx.request.headers.push({ name: "X-Dir", value: "custom" }); }`
+	resp, _ = e.do(t, "PUT", "/api/plugins/source/in-new-dir.js", map[string]any{"src": src})
+	if resp.StatusCode != 200 {
+		t.Fatalf("write to new dir = %d", resp.StatusCode)
+	}
+	_, data = e.do(t, "GET", "/api/plugins", nil)
+	var list struct {
+		Dir     string          `json:"dir"`
+		Plugins []plugins.Plugin `json:"plugins"`
+	}
+	json.Unmarshal(data, &list)
+	if list.Dir != newDir || len(list.Plugins) != 1 || list.Plugins[0].File != "in-new-dir.js" {
+		t.Fatalf("after dir change: dir=%q plugins=%+v", list.Dir, list.Plugins)
+	}
+
+	// the setting survives a settings GET (live value) and an unwritable path
+	// is rejected without being persisted
+	_, data = e.do(t, "GET", "/api/settings", nil)
+	var cur struct {
+		PluginsDir string `json:"pluginsDir"`
+	}
+	json.Unmarshal(data, &cur)
+	if cur.PluginsDir != newDir {
+		t.Fatalf("settings pluginsDir = %q", cur.PluginsDir)
+	}
+	bad := filepath.Join(e.dir, "file.txt", "sub") // a file blocks MkdirAll
+	os.WriteFile(filepath.Join(e.dir, "file.txt"), []byte("x"), 0o644)
+	resp, data = e.do(t, "PUT", "/api/settings", map[string]any{"pluginsDir": bad})
+	if resp.StatusCode != 400 {
+		t.Fatalf("bad dir should 400, got %d %s", resp.StatusCode, data)
+	}
+	_, data = e.do(t, "GET", "/api/settings", nil)
+	json.Unmarshal(data, &cur)
+	if cur.PluginsDir != newDir {
+		t.Fatalf("bad dir persisted: %q", cur.PluginsDir)
+	}
+}
+
 func TestFlowRenderEndpoint(t *testing.T) {
 	e := newEnv(t)
 	up := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

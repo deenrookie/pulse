@@ -4,9 +4,12 @@ Pulse 插件是一个放在数据目录 `plugins/` 下的 **JavaScript 文件**�
 
 ## 快速开始
 
-1. 把 `examples/plugins/` 里的示例复制到你的插件目录（Settings → Runtime 可见数据目录；Extensions → Plugins 面板也直接显示插件目录路径）。
-2. 打开 **Extensions → Plugins → Reload**。
-3. 浏览器经代理访问任意站点，插件立即生效。
+两种方式任选：
+
+- **在线编辑（推荐）**：打开 **Extensions → Plugins → Editor** 标签，写代码、`Check` 校验、`Test run` 沙箱试跑、`Save to disk` 直接写入插件目录并立即生效。
+- **手动放置**：把 `examples/plugins/` 里的示例复制到插件目录（Installed 标签顶部可查看并**修改目录路径**），然后点 Reload。
+
+浏览器经代理访问任意站点，插件立即生效。**Samples** 标签里有可直接借鉴的样例代码（可一键复制或载入编辑器）。
 
 ## 插件结构
 
@@ -67,6 +70,29 @@ function onResponse(ctx) {
 | `pulse.log(msg)` | 输出一行日志（显示在 Plugins 面板，保留最近 60 行） |
 | `pulse.version` | Pulse 版本号 |
 
+## 插件目录
+
+默认是 `<数据目录>/plugins`。在 **Extensions → Plugins → Installed** 标签顶部的 *Plugin directory* 输入框里可以改成任意路径（回车或 Apply 生效，目录不存在会自动创建；Reset 恢复默认）。配置持久化在 `settings.json`（`pluginsDir` 字段），重启后仍然生效。
+
+## 在线编辑器（Editor 标签）
+
+| 动作 | 说明 |
+| --- | --- |
+| **Check** | 干跑编译：不落盘，立即报告语法/加载错误与检测到的钩子（含 `plugin` 元数据） |
+| **Test run** | 沙箱试跑：用下方可编辑的 JSON 夹具（请求/响应）执行钩子，显示 `pulse.log` 输出、抛错、以及修改后的报文——**不产生任何真实流量** |
+| **Save to disk** | 写入插件目录并热加载（`Ctrl+S` 同）。若代码有编译错误：文件照写、错误就地显示、插件保持不生效，修好再存即可 |
+| **Delete** | 从插件目录删除该文件 |
+
+## 如何保证写对 / 如何调试 / 如何及时发现错误
+
+1. **写时**：`Check` 干跑编译，语法错误精确到 `行:列`；能立即看到钩子是否被识别（`hooks: request, response`）。
+2. **改前**：`Test run` 用自定义夹具试跑 —— 看日志（`pulse.log`）、看修改后的报文、看抛错，全程零流量，不会污染真实请求。
+3. **运行中**：
+   - 加载错误（语法/顶层抛错）显示在插件卡片的红色错误条上；
+   - 钩子内运行时抛错只影响当次调用，错误与 `pulse.log` 输出实时显示在插件卡片（面板每 4 秒刷新）；
+   - 每次钩子执行都有 2 秒超时，死循环不会拖垮代理。
+4. **禁用即止血**：插件卡片上的开关可立即停用某个插件，不影响其他插件。
+
 ## 运行规则（与安全）
 
 - **执行顺序**：`onRequest` 钩子按文件名顺序执行 → Match & Replace 规则 → Intercept（你在拦截面板里看到的是最终形态）→ 上游。响应方向：`onResponse` → 响应规则 → 客户端。
@@ -83,7 +109,7 @@ function onResponse(ctx) {
 
 ## 示例
 
-仓库 `examples/plugins/`：
+仓库 `examples/plugins/`（同样内容也内置在 **Extensions → Plugins → Samples** 标签，可一键复制或载入编辑器）：
 
 | 文件 | 作用 |
 | --- | --- |

@@ -143,3 +143,31 @@ export interface PluginInfo {
   error?: string
   log?: string[]
 }
+
+/** dry-compile result from POST /api/plugins/validate */
+export interface PluginInspection {
+  name: string
+  version: string
+  hooks: string[]
+  error?: string
+}
+
+/** sandbox hook run result from POST /api/plugins/test */
+export interface PluginTestResult {
+  logs: string[]
+  error?: string
+  changed: boolean
+  request: TestMessage
+  response: TestMessage | null
+}
+
+/** plain-string mirror of a request/response used as a test fixture */
+export interface TestMessage {
+  method?: string
+  url?: string
+  httpVersion?: string
+  status?: number
+  reason?: string
+  headers?: { name: string; value: string }[]
+  body?: string
+}

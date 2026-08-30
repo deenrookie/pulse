@@ -101,6 +101,12 @@
 插件字段：`name`、`version`、`file`、`enabled`、`hooks`（`["request","response"]`）、`hits`、`error?`、`log?`（最近 60 行）。
 ### `POST /api/plugins/reload` → 重扫插件目录并返回新列表
 ### `PUT /api/plugins/{file}` `{"enabled":bool}` → 启停单个插件
+### `GET /api/plugins/source/{file}` → `{"file","src"}` 读取插件源码
+### `PUT /api/plugins/source/{file}` `{"src":"..."}` → 写入插件目录并热加载；编译错误不拒绝写入，而是返回 `{"error":"compile: ..."}`（文件已落盘、插件不生效）
+### `DELETE /api/plugins/source/{file}` → 删除插件文件并重扫
+### `POST /api/plugins/validate` `{"src":"..."}` → 干跑编译，返回 `{"name","version","hooks":[...],"error?"}`
+### `POST /api/plugins/test` `{"src","hook":"request|response","request":{...},"response":{...}?}` → 沙箱试跑钩子（零流量），返回 `{"logs":[...],"error?","changed",​"request":{...},"response":{...}|null}`；夹具字段与 Request 对象同构（`body` 为字符串，响应用 `status/reason`）
+### `PUT /api/settings` 增补 `{"pluginsDir":"..."}` → 切换插件目录（自动创建；空串恢复默认 `<data-dir>/plugins`；校验失败返回 400 且不落盘）
 
 ## Request 对象结构（提交类接口通用）
 ```json

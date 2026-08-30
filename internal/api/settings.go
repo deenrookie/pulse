@@ -24,6 +24,9 @@ type Settings struct {
 	// binary bodies larger than LargeBodyMB are dropped instead of stored.
 	MemoryGuardMB int `json:"memoryGuardMB"`
 	LargeBodyMB   int `json:"largeBodyMB"`
+	// PluginsDir is where *.js plugins are loaded from; empty means the
+	// default <data-dir>/plugins.
+	PluginsDir string `json:"pluginsDir"`
 }
 
 func LoadSettings(dataDir string) (*Settings, error) {
@@ -70,72 +73,89 @@ func (s *Settings) save() error {
 	return os.Rename(tmp, s.path)
 }
 
-// handleSettings: GET returns the settings, PUT updates them (applying
-// the new timeout to the live engine immediately).
 func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodGet:
-		s.set.handleGet(w, r)
+		s.set.mu.Lock()
+		defer s.set.mu.Unlock()
+		writeJSON(w, http.StatusOK, map[string]any{
+			"responseTimeoutSec": s.set.ResponseTimeoutSec,
+			"memoryGuardMB":      s.set.MemoryGuardMB,
+			"largeBodyMB":        s.set.LargeBodyMB,
+			"pluginsDir":         s.plug.Dir(),
+		})
 	case http.MethodPut:
-		s.set.handlePut(w, r)
-		if s.set.ResponseTimeoutSec > 0 {
-			s.eng.SetRepeaterTimeout(s.set.ResponseTimeoutSec)
-		}
-		s.st.SetMemoryGuard(s.set.MemoryGuardMB, s.set.LargeBodyMB)
+		s.handlePutSettings(w, r)
 	default:
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 	}
 }
 
-func (s *Settings) handleGet(w http.ResponseWriter, r *http.Request) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	writeJSON(w, http.StatusOK, map[string]any{
-		"responseTimeoutSec": s.ResponseTimeoutSec,
-		"memoryGuardMB":      s.MemoryGuardMB,
-		"largeBodyMB":        s.LargeBodyMB,
-	})
-}
-
-func (s *Settings) handlePut(w http.ResponseWriter, r *http.Request) {
+// handlePutSettings applies setting changes. The plugins directory is
+// switched (and validated by actually rescanning it) before anything is
+// persisted, so a bad path never reaches settings.json.
+func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 	var body struct {
-		ResponseTimeoutSec *int `json:"responseTimeoutSec"`
-		MemoryGuardMB      *int `json:"memoryGuardMB"`
-		LargeBodyMB        *int `json:"largeBodyMB"`
+		ResponseTimeoutSec *int    `json:"responseTimeoutSec"`
+		MemoryGuardMB      *int    `json:"memoryGuardMB"`
+		LargeBodyMB        *int    `json:"largeBodyMB"`
+		PluginsDir         *string `json:"pluginsDir"`
 	}
 	if !readJSON(w, r, &body, 1<<16) {
 		return
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
+
+	set := s.set
+	set.mu.Lock()
+	defer set.mu.Unlock()
+
+	if body.PluginsDir != nil {
+		dir := *body.PluginsDir
+		if dir == "" { // empty resets to the default location
+			dir = filepath.Join(s.DataDir, "plugins")
+		}
+		if dir != s.plug.Dir() {
+			if err := s.plug.SetDir(dir); err != nil {
+				writeErr(w, http.StatusBadRequest, "pluginsDir: "+err.Error())
+				return
+			}
+		}
+		set.PluginsDir = s.plug.Dir()
+	}
+
 	if body.ResponseTimeoutSec != nil {
 		if *body.ResponseTimeoutSec < 1 || *body.ResponseTimeoutSec > 600 {
 			writeErr(w, http.StatusBadRequest, "responseTimeoutSec must be 1..600")
 			return
 		}
-		s.ResponseTimeoutSec = *body.ResponseTimeoutSec
+		set.ResponseTimeoutSec = *body.ResponseTimeoutSec
 	}
 	if body.MemoryGuardMB != nil {
 		if *body.MemoryGuardMB < 16 || *body.MemoryGuardMB > 65536 {
 			writeErr(w, http.StatusBadRequest, "memoryGuardMB must be 16..65536")
 			return
 		}
-		s.MemoryGuardMB = *body.MemoryGuardMB
+		set.MemoryGuardMB = *body.MemoryGuardMB
 	}
 	if body.LargeBodyMB != nil {
 		if *body.LargeBodyMB < 1 || *body.LargeBodyMB > 64 {
 			writeErr(w, http.StatusBadRequest, "largeBodyMB must be 1..64")
 			return
 		}
-		s.LargeBodyMB = *body.LargeBodyMB
+		set.LargeBodyMB = *body.LargeBodyMB
 	}
-	if err := s.save(); err != nil {
+	if err := set.save(); err != nil {
 		writeErr(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	if set.ResponseTimeoutSec > 0 {
+		s.eng.SetRepeaterTimeout(set.ResponseTimeoutSec)
+	}
+	s.st.SetMemoryGuard(set.MemoryGuardMB, set.LargeBodyMB)
 	writeJSON(w, http.StatusOK, map[string]any{
-		"responseTimeoutSec": s.ResponseTimeoutSec,
-		"memoryGuardMB":      s.MemoryGuardMB,
-		"largeBodyMB":        s.LargeBodyMB,
+		"responseTimeoutSec": set.ResponseTimeoutSec,
+		"memoryGuardMB":      set.MemoryGuardMB,
+		"largeBodyMB":        set.LargeBodyMB,
+		"pluginsDir":         s.plug.Dir(),
 	})
 }

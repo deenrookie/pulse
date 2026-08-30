@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"regexp"
 	"sort"
 	"strings"
 	"sync"
@@ -88,7 +89,7 @@ func (r *Runtime) load() error {
 		if v, ok := enabled[e.Name()]; ok {
 			p.Enabled = v
 		}
-		r.compile(p)
+		compile(p)
 		list = append(list, p)
 	}
 	sort.Slice(list, func(i, j int) bool { return list[i].File < list[j].File })
@@ -111,7 +112,7 @@ func (r *Runtime) saveState() error {
 
 // compile builds the program and extracts metadata; failures are recorded on
 // the plugin instead of aborting the load.
-func (r *Runtime) compile(p *Plugin) {
+func compile(p *Plugin) {
 	p.Error = ""
 	p.Hooks = nil
 	prog, err := goja.Compile(p.File, p.src, false)
@@ -153,6 +154,12 @@ func (r *Runtime) compile(p *Plugin) {
 func (r *Runtime) Reload() error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	return r.loadPreservingLogs()
+}
+
+// loadPreservingLogs rescans and keeps each plugin's log tail across reloads.
+// Callers must hold r.mu.
+func (r *Runtime) loadPreservingLogs() error {
 	oldLogs := map[string][]string{}
 	for _, p := range r.plugins {
 		oldLogs[p.File] = p.Log
@@ -192,6 +199,134 @@ func (r *Runtime) SetEnabled(file string, enabled bool) bool {
 		}
 	}
 	return false
+}
+
+// SetDir switches the plugins directory at runtime, rescanning it.
+func (r *Runtime) SetDir(dir string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if dir == r.dir {
+		return nil
+	}
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return fmt.Errorf("create plugins dir: %w", err)
+	}
+	r.dir = dir
+	return r.loadPreservingLogs()
+}
+
+// Source returns the on-disk source of a loaded plugin.
+func (r *Runtime) Source(file string) (string, bool) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	for _, p := range r.plugins {
+		if p.File == file {
+			return p.src, true
+		}
+	}
+	return "", false
+}
+
+var fileRe = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.-]*\.js$`)
+
+// Write saves a plugin file into the directory (atomic replace) and rescans.
+// Compile failures are not rejected here — the file is written and the load
+// error is reported on the plugin so the UI can show it inline.
+func (r *Runtime) Write(file, src string) error {
+	if !fileRe.MatchString(file) {
+		return fmt.Errorf("invalid plugin file name (want name.js, no path separators)")
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	tmp := filepath.Join(r.dir, file+".tmp")
+	if err := os.WriteFile(tmp, []byte(src), 0o644); err != nil {
+		return fmt.Errorf("write plugin: %w", err)
+	}
+	if err := os.Rename(tmp, filepath.Join(r.dir, file)); err != nil {
+		return fmt.Errorf("rename plugin: %w", err)
+	}
+	return r.loadPreservingLogs()
+}
+
+// Delete removes a plugin file and rescans.
+func (r *Runtime) Delete(file string) bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if !fileRe.MatchString(file) {
+		return false
+	}
+	if err := os.Remove(filepath.Join(r.dir, file)); err != nil {
+		return false
+	}
+	_ = r.loadPreservingLogs()
+	return true
+}
+
+// Inspection is the result of compiling plugin source without side effects.
+type Inspection struct {
+	Name    string   `json:"name"`
+	Version string   `json:"version"`
+	Hooks   []string `json:"hooks"`
+	Error   string   `json:"error,omitempty"`
+}
+
+// Inspect compiles src in a throwaway VM and reports metadata, detected hooks
+// and any compile/load error — used by the editor's Check action.
+func Inspect(src string) Inspection {
+	var in Inspection
+	p := &Plugin{File: "check.js", Enabled: true, src: src}
+	compile(p)
+	in.Error = p.Error
+	in.Name = p.Name
+	in.Version = p.Version
+	in.Hooks = p.Hooks
+	return in
+}
+
+// TestOutcome is a sandbox hook run against caller-supplied messages.
+type TestOutcome struct {
+	Logs    []string        `json:"logs"`
+	Error   string          `json:"error,omitempty"`
+	Changed bool            `json:"changed"`
+	Request *store.Request  `json:"request"`
+	Resp    *store.Response `json:"response,omitempty"`
+}
+
+// TestRun compiles src and runs the named hook against copies of req/resp in
+// the same isolated VM the proxy uses, returning logs, errors and the
+// transformed messages — a dry run with zero traffic.
+func TestRun(src, hook string, req *store.Request, resp *store.Response, timeout time.Duration) TestOutcome {
+	out := TestOutcome{Logs: []string{}, Request: req}
+	if hook != requestHook && hook != responseHook {
+		out.Error = "hook must be onRequest or onResponse"
+		return out
+	}
+	p := &Plugin{File: "test.js", Enabled: true, src: src}
+	compile(p)
+	if p.Error != "" {
+		out.Error = p.Error
+		return out
+	}
+	internal := "request"
+	if hook == responseHook {
+		internal = "response"
+	}
+	if !hasHook(p, internal) {
+		out.Error = "plugin does not define " + hook + "(ctx)"
+		return out
+	}
+	changed, logs, err := (&Runtime{timeout: timeout}).runHook(p, hook, req, resp, timeout)
+	if logs != nil {
+		out.Logs = logs
+	}
+	out.Changed = changed
+	if resp != nil {
+		out.Resp = resp
+	}
+	if err != nil {
+		out.Error = err.Error()
+	}
+	return out
 }
 
 // Dir returns the plugins directory (for the UI hint).

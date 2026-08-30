@@ -26,7 +26,7 @@ v0.3 对控制台做了整体重设计（对标 Caido 的工作台形态）并�
 | **Intercept** | 请求挂起队列，改方法/URL/头/体后放行或丢弃（502），键盘 `F`/`D` 快捷操作 |
 | **Site Map** | 全部捕获端点聚合为 host→path→method 树（状态着色、计数、搜索、`Ctrl+6`），点击叶子检查最新请求/响应，右键联动 Repeater / Live Traffic |
 | **Repeater** | 历史流量一键送入重放标签（持久化），**Burp 式 raw 编辑器**（请求行+头+体单缓冲区），空白标签一键新建，改包重发（`Ctrl+Enter`），标签搜索/标记/快速删除，响应即查 |
-| **Extensions** | **Match & Replace**（5 作用域、正则/字面量、命中计数、持久化）；**JS 插件**（onRequest/onResponse 钩子，隔离 VM + 超时保护，热重载，日志面板） |
+| **Extensions** | **Match & Replace**（5 作用域、正则/字面量、命中计数、持久化）；**JS 插件**（onRequest/onResponse 钩子，隔离 VM + 超时保护，热重载，日志面板；**插件目录可配置**，**在线编辑器**写入/Check 校验/沙箱 Test run，内置 **Samples** 样例代码） |
 | **Settings** | CA 证书下载与各平台安装指引、运行状态与指纹、快捷键速查 |
 
 WebSocket 已支持帧级捕获（非 WebSocket 的其他 Upgrade 协议仍为透明隧道）。

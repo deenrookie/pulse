@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net"
 	"net/http"
 	"strings"
@@ -43,6 +44,14 @@ func New(st *store.Store, eng *proxy.Engine, rep *repeater.Manager, auth *certs.
 	if err != nil {
 		return nil, fmt.Errorf("load settings: %w", err)
 	}
+	// apply a persisted non-default plugins directory; a broken path falls
+	// back to the default dir with a warning instead of refusing to start
+	if set.PluginsDir != "" && set.PluginsDir != plug.Dir() {
+		if err := plug.SetDir(set.PluginsDir); err != nil {
+			log.Printf("WARN: pluginsDir %s unusable (%v) — keeping %s", set.PluginsDir, err, plug.Dir())
+			set.PluginsDir = plug.Dir()
+		}
+	}
 	eng.SetRepeaterTimeout(set.ResponseTimeoutSec)
 	st.SetMemoryGuard(set.MemoryGuardMB, set.LargeBodyMB)
 	return &Server{
@@ -70,6 +79,9 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/api/rewrite/", s.handleRewriteID)
 	mux.HandleFunc("/api/plugins", s.handlePlugins)
 	mux.HandleFunc("/api/plugins/reload", s.handlePluginsReload)
+	mux.HandleFunc("/api/plugins/validate", s.handlePluginsValidate)
+	mux.HandleFunc("/api/plugins/test", s.handlePluginsTest)
+	mux.HandleFunc("/api/plugins/source/", s.handlePluginsSource)
 	mux.HandleFunc("/api/plugins/", s.handlePluginFile)
 	mux.HandleFunc("/", s.handleStatic)
 	return s.checkHost(mux)
