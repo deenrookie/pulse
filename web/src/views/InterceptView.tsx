@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState } from 'react'
-import RawEditor, { requestToRaw, rawToRequest } from '../components/RawEditor'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { requestToRaw, rawToRequest } from '../components/RawEditor'
+import { RequestInspector } from '../components/MessageViewer'
 import * as api from '../api'
 import Icon from '../ui/Icon'
 import Empty from '../ui/Empty'
@@ -165,6 +166,16 @@ export default function InterceptView({ pulse }: { pulse: PulseState }) {
   const [selectedPending, setSelectedPending] = useState<string | null>(null)
   const [heldFull, setHeldFull] = useState<HttpRequest | null>(null)
   const [raw, setRaw] = useState<string | null>(null)
+
+  // request-like view for the shared inspector: parse the edited raw when it
+  // is valid, otherwise fall back to the held shape
+  const reqView = useMemo(() => {
+    if (!heldFull) return null
+    if (raw === null) return heldFull
+    const parsed = rawToRequest(raw, heldFull.url)
+    if ('error' in parsed) return heldFull
+    return { ...heldFull, method: parsed.method, url: parsed.url, httpVersion: parsed.httpVersion, headers: parsed.headers, body: parsed.body }
+  }, [heldFull, raw])
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
   const [rules, setRules] = useState<HoldRule[]>(loadRules)
@@ -433,11 +444,15 @@ export default function InterceptView({ pulse }: { pulse: PulseState }) {
           {heldFull && <span className="meta">{heldFull.id}</span>}
         </div>
         <div className="panel-body" style={{ display: 'flex', flexDirection: 'column' }}>
-          {raw !== null ? (
-            <RawEditor
-              value={raw}
-              onChange={setRaw}
-            />
+          {reqView && raw !== null ? (
+            <div style={{ display: 'flex', flex: 1, minHeight: 0 }}>
+              <RequestInspector
+                req={reqView}
+                editable
+                raw={raw}
+                onRawChange={setRaw}
+              />
+            </div>
           ) : (
             <Empty icon="hand" title="Nothing is being held">
               Enable Intercept, then trigger a request to catch it here.

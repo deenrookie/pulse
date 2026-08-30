@@ -93,7 +93,7 @@ export function RequestInspector({
         )}
         {req.truncated && <span className="warn-inline">⚠ truncated</span>}
       </div>
-      <div className="panel-body">
+      <div className={`panel-body ${tab === 'raw' && editableRaw ? 'io-flex' : ''}`}>
         {tab === 'raw' && editableRaw ? (
           <RawEditor value={raw} onChange={onRawChange} />
         ) : (

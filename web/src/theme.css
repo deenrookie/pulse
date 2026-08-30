@@ -1410,3 +1410,14 @@ table.flows tbody tr.hl.selected td { background: var(--accent-bg); box-shadow: 
 .copy-mini:hover { color: var(--accent); border-color: var(--accent-line); }
 /* headers kv table: name cell already colored; value gets hover button too */
 .kv-table td .copyable { word-break: break-all; }
+
+/* editable raw fills its pane (no dead space before the response pane) */
+.panel-body.io-flex { display: flex; flex-direction: column; }
+.panel-body.io-flex > * { flex: 1; min-height: 0; }
+.raw-hint .mini {
+  background: var(--bg-input); color: var(--text-muted);
+  border: 1px solid var(--border); border-radius: 3px;
+  font: inherit; font-size: 10px; padding: 1px 7px; cursor: pointer;
+  font-family: var(--mono);
+}
+.raw-hint .mini:hover { color: var(--accent); border-color: var(--accent-line); }

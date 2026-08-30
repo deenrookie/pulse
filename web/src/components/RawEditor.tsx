@@ -1,5 +1,6 @@
 // Burp-style raw request editor: one monospace buffer holding the request
 // line, headers and body — parsed back into an EditableRequest on send.
+import { useState } from 'react'
 import { bodyToText, encodeBody } from '../api'
 import type { EditableRequest, HttpRequest } from '../types'
 
@@ -71,16 +72,36 @@ export default function RawEditor({
   onChange: (next: string) => void
   note?: string
 }) {
+  const [wrap, setWrap] = useState(() => {
+    try {
+      return localStorage.getItem('pulse.rawwrap') === '1'
+    } catch {
+      return false
+    }
+  })
+  const toggleWrap = () =>
+    setWrap((w) => {
+      try {
+        localStorage.setItem('pulse.rawwrap', w ? '0' : '1')
+      } catch {
+        /* ignore */
+      }
+      return !w
+    })
   return (
     <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
       <textarea
         className="editor raw"
+        style={{ whiteSpace: wrap ? 'pre-wrap' : 'pre', overflowWrap: wrap ? 'anywhere' : 'normal' }}
         value={value}
         spellCheck={false}
         onChange={(e) => onChange(e.target.value)}
-        placeholder={'GET /path HTTP/1.1\nHost: example.com\n\nbody'}
+        placeholder={'GET /path HTTP/1.1' + String.fromCharCode(10) + 'Host: example.com' + String.fromCharCode(10) + String.fromCharCode(10) + 'body'}
       />
       <div className="raw-hint">
+        <button className="mini" style={{ marginRight: 8 }} title="Toggle soft wrap of long lines" onClick={toggleWrap}>
+          {wrap ? '[x] Wrap' : '[ ] Wrap'}
+        </button>
         First line <kbd>METHOD path HTTP/1.1</kbd> · the <kbd>Host</kbd> header (or an absolute URL) sets the target ·
         body after the first blank line · <kbd>Ctrl Enter</kbd> sends{note ? ' · ' + note : ''}
       </div>
