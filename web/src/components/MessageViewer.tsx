@@ -209,7 +209,7 @@ export function ResponseInspector({
         {tab === 'ws' ? (
           <WSPanel ws={ws ?? []} />
         ) : (
-          <TabBody tab={tab} headers={resp.headers} params={params} text={text} b64={resp.body} kind="response" curlFlowId={flowId} decompressed={wasDecompressed} />
+          <TabBody tab={tab} headers={resp.headers} params={params} text={text} b64={resp.body} kind="response" curlFlowId={flowId} decompressed={wasDecompressed} statusLine={`${resp.httpVersion || 'HTTP/1.1'} ${resp.statusCode} ${resp.reason}`} />
         )}
       </div>
     </div>
@@ -336,6 +336,7 @@ function TabBody({
   curlFlowId,
   curlRequest,
   decompressed,
+  statusLine,
 }: {
   tab: Tab
   headers: Header[]
@@ -350,6 +351,8 @@ function TabBody({
   decompressed?: boolean
   /** ad-hoc request (Repeater) — enables Copy as cURL without a stored flow */
   curlRequest?: RequestLike
+  /** response status line (e.g. "HTTP/1.1 200 OK") */
+  statusLine?: string
 }) {
   switch (tab) {
     case 'headers':
@@ -382,7 +385,9 @@ function TabBody({
       return <pre className="code-view">{bodyToHex(b64)}</pre>
     case 'raw': {
       const headLine =
-        kind === 'request' && req ? `${req.method} ${pathOf(req.url)} ${req.httpVersion || 'HTTP/1.1'}` : undefined
+        kind === 'request' && req
+          ? `${req.method} ${pathOf(req.url)} ${req.httpVersion || 'HTTP/1.1'}`
+          : statusLine
       return <RawView headLine={headLine} headers={headers} text={text} flowIdForCurl={curlFlowId} curlRequest={curlRequest} />
     }
   }
@@ -484,7 +489,7 @@ function RawView({
   const [wrap, toggleWrap] = useRawWrap()
 
   const fullRaw = useMemo(
-    () => rawOfMessage(headLine ?? `${headers.length} headers`, headers, text),
+    () => rawOfMessage(headLine ?? '', headers, text),
     [headLine, headers, text],
   )
 
