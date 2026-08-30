@@ -142,9 +142,23 @@ export function toCurl(flow: Flow): string {
   return parts.join(' \\\n  ')
 }
 
-export async function copyToClipboard(text: string): Promise<boolean> {
+/** copy text to the clipboard with a toast confirming success/failure.
+ *  opts.label customizes the message ("Copied URL"); opts.silent disables it
+ *  for callers that provide their own feedback. */
+export async function copyToClipboard(text: string, opts?: { label?: string; silent?: boolean }): Promise<boolean> {
+  const notify = (ok: boolean) => {
+    if (opts?.silent) return
+    window.dispatchEvent(
+      new CustomEvent('pulse:notify', {
+        detail: ok
+          ? { text: opts?.label ? `Copied ${opts.label}` : 'Copied to clipboard' }
+          : { text: 'Copy failed — clipboard unavailable', kind: 'err' },
+      }),
+    )
+  }
   try {
     await navigator.clipboard.writeText(text)
+    notify(true)
     return true
   } catch {
     try {
@@ -156,8 +170,10 @@ export async function copyToClipboard(text: string): Promise<boolean> {
       ta.select()
       const ok = document.execCommand('copy')
       ta.remove()
+      notify(ok)
       return ok
     } catch {
+      notify(false)
       return false
     }
   }

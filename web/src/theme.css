@@ -1446,12 +1446,19 @@ textarea.editor.raw.over-mirror {
   position: absolute; left: 0; width: 30px;
   text-align: right; color: var(--text-faint); user-select: none;
 }
+/* find-in-raw highlights in the editor mirror — NO horizontal padding so
+   the highlighted line keeps byte-exact textarea metrics (0 vs 1px drift) */
+.raw-mirror mark { padding: 0; border-radius: 2px; background: rgb(var(--warn-rgb) / .4); color: var(--text); }
+.raw-mirror mark.cur { background: rgb(var(--danger-rgb) / 0.55); color: #fff; }
 textarea.editor.raw.over-mirror {
   background: transparent;
   color: transparent;
   caret-color: var(--accent);
   resize: none;
   outline: none;
+  /* the base .raw rule's min-height would push the textarea past its
+     absolute inset:0 box and cover the find bar below the stack */
+  min-height: 0;
   /* 10px base padding + 42px gutter — matches the mirror line padding */
   padding-left: 52px;
 }

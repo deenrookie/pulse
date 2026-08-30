@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { bodyToText, copyToClipboard, encodeBody, toCurlRequest } from '../api'
 import ContextMenu, { type MenuItem } from './ContextMenu'
+import Icon from '../ui/Icon'
 import type { EditableRequest, HttpRequest } from '../types'
 
 /** serialize a captured request into a raw editable buffer */
@@ -113,14 +114,143 @@ export default function RawEditor({
 }) {
   const [wrap, toggleWrap] = useRawWrap()
   const mirrorRef = useRef<HTMLPreElement>(null)
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null)
+  // active selection at context-menu time (drives the Cut/Copy/Paste group)
+  const [sel, setSel] = useState<{ start: number; end: number; text: string } | null>(null)
+  // Chrome collapses the textarea selection on right-button mousedown before
+  // contextmenu fires — snapshot it in mousedown so the menu can still act on
+  // it (Burp-style: selection survives a right-click anywhere in the editor)
+  const lastSelRef = useRef<{ start: number; end: number; text: string } | null>(null)
 
-  const menuItems = useMemo<MenuItem[]>(() => {
+  const readSel = () => {
+    const ta = textareaRef.current
+    if (!ta || ta.selectionStart === ta.selectionEnd) return null
+    return { start: ta.selectionStart, end: ta.selectionEnd, text: ta.value.slice(ta.selectionStart, ta.selectionEnd) }
+  }
+
+  // ---- find in raw (mirror highlights + native selection over the match) ----
+  const [q, setQ] = useState('')
+  const [hit, setHit] = useState(0)
+  const needle = q.trim().toLowerCase()
+  const offsets = useMemo<[number, number][]>(() => {
+    if (!needle) return []
+    const hay = value.toLowerCase()
+    const out: [number, number][] = []
+    let i = hay.indexOf(needle)
+    while (i >= 0) {
+      out.push([i, i + needle.length])
+      i = hay.indexOf(needle, i + needle.length)
+    }
+    return out
+  }, [value, needle])
+  const matches = offsets.length
+  const clampHit = (n: number) => (matches > 0 ? ((n % matches) + matches) % matches : 0)
+
+  const applyCur = (idx: number, scroll: boolean) => {
+    const mirrorEl = mirrorRef.current
+    if (!mirrorEl) return
+    mirrorEl.querySelectorAll('mark.cur').forEach((m) => m.classList.remove('cur'))
+    const el = mirrorEl.querySelectorAll('mark')[idx]
+    const ta = textareaRef.current
+    if (!el || !ta) return
+    el.classList.add('cur')
+    if (scroll) el.scrollIntoView({ block: 'center' })
+    // keep the textarea viewport glued to the mirror (it normally drives it)
+    ta.scrollTop = mirrorEl.scrollTop
+    ta.scrollLeft = mirrorEl.scrollLeft
+    // native selection overlay on the match — caret lands there for editing
+    ta.focus({ preventScroll: true })
+    const m = offsets[idx]
+    if (m) ta.setSelectionRange(m[0], m[1])
+  }
+
+  const step = (dir: 1 | -1) => {
+    if (matches === 0) return
+    const next = clampHit(hit + dir)
+    setHit(next)
+    requestAnimationFrame(() => applyCur(next, true))
+  }
+
+  // typing a needle: land on the first match immediately
+  useEffect(() => {
+    if (!needle) return
+    requestAnimationFrame(() => applyCur(0, true))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [needle])
+
+  // buffer edited under the same needle: repaint the marker, keep scroll
+  useEffect(() => {
+    if (!needle) return
+    requestAnimationFrame(() => applyCur(clampHit(hit), false))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [value])
+
+  // replace the buffer and land the caret where the edit happened
+  const applyEdit = (next: string, caret: number) => {
+    onChange(next)
+    requestAnimationFrame(() => {
+      const ta = textareaRef.current
+      if (!ta) return
+      ta.focus()
+      ta.setSelectionRange(caret, caret)
+    })
+  }
+
+  const menuItems = (): MenuItem[] => {
     const parsed = rawToRequest(value, 'https://example.com/')
     const ok = !(parsed instanceof Object && 'error' in parsed)
     const headers = ok ? parsed.headers : []
     const bodyText = ok ? bodyToText(parsed.body) : ''
     return [
+      // selection group (Burp-style): edit ops on the selected range
+      ...(sel
+        ? ([
+            {
+              label: 'Cut',
+              hint: '⌃X',
+              onClick: async () => {
+                await copyToClipboard(sel.text)
+                applyEdit(value.slice(0, sel.start) + value.slice(sel.end), sel.start)
+              },
+            },
+            {
+              label: 'Copy',
+              hint: '⌃C',
+              onClick: async () => {
+                await copyToClipboard(sel.text)
+              },
+            },
+            {
+              label: 'Paste',
+              hint: '⌃V',
+              onClick: async () => {
+                try {
+                  const clip = await navigator.clipboard.readText()
+                  applyEdit(value.slice(0, sel.start) + clip + value.slice(sel.end), sel.start + clip.length)
+                } catch {
+                  window.dispatchEvent(
+                    new CustomEvent('pulse:notify', { detail: { text: 'Clipboard read was blocked — press Ctrl+V instead', kind: 'err' } }),
+                  )
+                }
+              },
+            },
+            {
+              label: 'Delete',
+              hint: '⌫',
+              onClick: () => applyEdit(value.slice(0, sel.start) + value.slice(sel.end), sel.start),
+            },
+            {
+              icon: 'terminal' as const,
+              label: 'Send to Decoder',
+              hint: '⌃⇧D',
+              separatorAfter: true,
+              onClick: () => {
+                window.dispatchEvent(new CustomEvent('pulse:send-to-decoder', { detail: sel.text }))
+              },
+            },
+          ] as MenuItem[])
+        : []),
       {
         icon: 'send',
         label: 'Send to Repeater',
@@ -134,7 +264,7 @@ export default function RawEditor({
         icon: 'copy',
         label: 'Copy URL',
         onClick: async () => {
-          await copyToClipboard(parsed.url)
+          await copyToClipboard(parsed.url, { label: 'URL' })
         },
       },
       ...(ok
@@ -144,26 +274,54 @@ export default function RawEditor({
               label: 'Copy as cURL',
               separatorAfter: true,
               onClick: async () => {
-                await copyToClipboard(toCurlRequest(parsed.method, parsed.url, headers, bodyText))
+                await copyToClipboard(toCurlRequest(parsed.method, parsed.url, headers, bodyText), { label: 'cURL' })
               },
             },
           ]
         : []),
-      { icon: 'copy', label: 'Copy raw request', separatorAfter: true, onClick: async () => void (await copyToClipboard(value)) },
-      { icon: 'copy', label: 'Copy headers', onClick: async () => void (await copyToClipboard(headers.map((h) => h.name + ': ' + h.value).join(String.fromCharCode(10)))) },
-      { icon: 'copy', label: 'Copy body', onClick: async () => void (await copyToClipboard(bodyText)) },
+      { icon: 'copy', label: 'Copy raw request', separatorAfter: true, onClick: async () => void (await copyToClipboard(value, { label: 'raw request' })) },
+      { icon: 'copy', label: 'Copy headers', onClick: async () => void (await copyToClipboard(headers.map((h) => h.name + ': ' + h.value).join(String.fromCharCode(10)), { label: 'headers' })) },
+      { icon: 'copy', label: 'Copy body', onClick: async () => void (await copyToClipboard(bodyText, { label: 'body' })) },
     ]
-  }, [value])
+  }
 
   // highlight mirror: header names colored like the read-only RawView, plus a
   // line-number gutter (absolute spans inside each line; the textarea gets
   // matching left padding so text stays aligned in both wrap modes).
+  // When a search needle is active, matching text gets <mark> spans instead —
+  // the marks carry no padding so the mirror keeps exact textarea metrics.
   // The textarea above it is transparent-text; both share exact metrics.
   const mirror = useMemo(() => {
-    return value.split('\n').map((line, i) => {
+    const lines = value.split('\n')
+    // header coloring is scoped to the block between the request line and the
+    // first blank line — body lines containing ':' (JSON, URLs) stay plain
+    const empty = lines.findIndex((l, i) => i > 0 && l.trim() === '')
+    const headEnd = empty < 0 ? lines.length : empty
+    return lines.map((line, i) => {
       const ln = <span className="ln">{i + 1}</span>
+      if (needle && line.toLowerCase().includes(needle)) {
+        const parts: React.ReactNode[] = []
+        let rest = line
+        let idx = 0
+        while (rest) {
+          const at = rest.toLowerCase().indexOf(needle)
+          if (at < 0) {
+            parts.push(rest)
+            break
+          }
+          parts.push(rest.slice(0, at))
+          parts.push(<mark key={`${i}-${idx++}`}>{rest.slice(at, at + needle.length)}</mark>)
+          rest = rest.slice(at + needle.length)
+        }
+        return (
+          <div key={i}>
+            {ln}
+            {parts}
+          </div>
+        )
+      }
       const idx = line.indexOf(':')
-      if (i > 0 && idx > 0 && !line.startsWith(' ') && !line.startsWith('\t')) {
+      if (i > 0 && i < headEnd && idx > 0 && !line.startsWith(' ') && !line.startsWith('\t')) {
         return (
           <div key={i}>
             {ln}
@@ -180,7 +338,7 @@ export default function RawEditor({
         </div>
       )
     })
-  }, [value])
+  }, [value, needle])
 
   const syncScroll = (e: React.UIEvent<HTMLTextAreaElement>) => {
     if (mirrorRef.current) {
@@ -202,6 +360,9 @@ export default function RawEditor({
         style={sharedText}
         onContextMenu={(e) => {
           e.preventDefault()
+          const live = readSel()
+          const snap = live ?? lastSelRef.current
+          setSel(snap && snap.end <= value.length ? snap : null)
           setMenu({ x: e.clientX, y: e.clientY })
         }}
       >
@@ -213,14 +374,56 @@ export default function RawEditor({
           style={sharedText}
           value={value}
           spellCheck={false}
+          ref={textareaRef}
           onChange={(e) => onChange(e.target.value)}
           onScroll={syncScroll}
+          onMouseDown={(e) => {
+            // right button: grab the selection before the browser collapses it
+            if (e.button === 2) lastSelRef.current = readSel()
+          }}
+          onMouseUp={(e) => {
+            if (e.button === 2) return
+            lastSelRef.current = readSel() // null when collapsed → clears stale
+          }}
+          onKeyUp={() => {
+            lastSelRef.current = readSel()
+          }}
           placeholder={'GET /path HTTP/1.1' + String.fromCharCode(10) + 'Host: example.com' + String.fromCharCode(10) + String.fromCharCode(10) + 'body'}
         />
-        {menu && <ContextMenu x={menu.x} y={menu.y} items={menuItems} onClose={() => setMenu(null)} />}
+        {menu && <ContextMenu x={menu.x} y={menu.y} items={menuItems()} onClose={() => setMenu(null)} />}
         <button className="wrap-btn" title="Toggle soft wrap of long lines" onClick={toggleWrap}>
           {wrap ? '⏳ Wrap' : '⏩ Wrap'}
         </button>
+      </div>
+      <div className="raw-search">
+        <Icon name="search" size={11} />
+        <input
+          value={q}
+          spellCheck={false}
+          placeholder="Find in raw…"
+          onChange={(e) => {
+            setQ(e.target.value)
+            setHit(0)
+          }}
+          onKeyDown={(e) => {
+            e.stopPropagation()
+            if (e.key === 'Enter') {
+              e.preventDefault()
+              step(e.shiftKey ? -1 : 1)
+            }
+          }}
+        />
+        {needle && (
+          <>
+            <span className="count">{matches > 0 ? `${clampHit(hit) + 1}/${matches}` : '0'}</span>
+            <button className="mini" title="Previous match (Shift+Enter)" disabled={matches < 2} onClick={() => step(-1)}>
+              ▲
+            </button>
+            <button className="mini" title="Next match (Enter)" disabled={matches < 2} onClick={() => step(1)}>
+              ▼
+            </button>
+          </>
+        )}
       </div>
       <div className="raw-hint">
         First line <kbd>METHOD path HTTP/1.1</kbd> · the <kbd>Host</kbd> header (or an absolute URL) sets the target ·

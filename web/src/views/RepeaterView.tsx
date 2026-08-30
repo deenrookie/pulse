@@ -241,14 +241,14 @@ export default function RepeaterView({ pulse, goProxy }: { pulse: PulseState; go
       label: 'Copy URL',
       separatorAfter: true,
       onClick: async () => {
-        if (await copyToClipboard(t.request.url)) pulse.notify('URL copied')
+        await copyToClipboard(t.request.url, { label: 'URL' })
       },
     },
     {
       icon: 'link',
       label: 'Copy link to this tab',
       onClick: async () => {
-        if (await copyToClipboard(`${location.origin}/#/repeater?tab=${t.id}`)) pulse.notify('Link copied')
+        await copyToClipboard(`${location.origin}/#/repeater?tab=${t.id}`, { label: 'link' })
       },
     },
     {
@@ -469,9 +469,7 @@ export default function RepeaterView({ pulse, goProxy }: { pulse: PulseState; go
                   className="btn ghost sm icon-btn"
                   title="Copy a link that opens this tab selected"
                   onClick={() => {
-                    void copyToClipboard(`${location.origin}/#/repeater?tab=${tab.id}`).then(
-                      (ok) => ok && pulse.notify('Link copied'),
-                    )
+                    void copyToClipboard(`${location.origin}/#/repeater?tab=${tab.id}`, { label: 'link' })
                   }}
                 >
                   <Icon name="link" size={13} />

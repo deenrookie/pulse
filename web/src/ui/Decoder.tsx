@@ -4,6 +4,7 @@
 // draggable, resizable, pinnable/ghost, and fully persistent.
 import { useEffect, useRef, useState } from 'react'
 import Icon from './Icon'
+import { copyToClipboard } from '../api'
 
 interface Op {
   id: string
@@ -272,12 +273,19 @@ const GROUPS: Group[] = [
 const ALL_OPS: Op[] = GROUPS.flatMap((g) => g.ops)
 const opById = (id: string) => ALL_OPS.find((o) => o.id === id)
 
-export default function Decoder({ onClose }: { onClose: () => void }) {
+export default function Decoder({ onClose, seed }: { onClose: () => void; seed?: { text: string; n: number } | null }) {
   const [st, setSt] = useState<Persisted>(load)
   const [search, setSearch] = useState('')
   const [output, setOutput] = useState('')
   const [error, setError] = useState<string | null>(null)
   const bakeToken = useRef(0)
+
+  // "Send to Decoder" payload: replace the input (recipe is kept — Burp keeps
+  // its transform chain too); n re-triggers even for identical text
+  useEffect(() => {
+    if (seed) save({ input: seed.text })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [seed?.n])
 
   const save = (patch: Partial<Persisted>) =>
     setSt((prev) => {
@@ -454,7 +462,7 @@ export default function Decoder({ onClose }: { onClose: () => void }) {
               >
                 ↻ Output → Input
               </button>
-              <button className="mini" disabled={!output} onClick={() => void navigator.clipboard?.writeText(output)}>
+              <button className="mini" disabled={!output} onClick={() => void copyToClipboard(output, { label: 'output' })}>
                 Copy
               </button>
             </div>

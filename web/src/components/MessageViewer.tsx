@@ -1,6 +1,6 @@
 // Structured inspector for one side (request or response) of an HTTP message.
 // Sub-tabs: Headers / Params / Pretty (JSON, text or image) / Hex / Raw.
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   bodyToHex,
   bodyToText,
@@ -287,7 +287,7 @@ function CopyRaw({ text, kind, headLine, headers, title }: {
       className="btn ghost sm icon-btn"
       title={title ?? `Copy the complete raw ${kind} to the clipboard`}
       onClick={async () => {
-        await copyToClipboard(rawOfMessage(headLine, headers, text))
+        await copyToClipboard(rawOfMessage(headLine, headers, text), { label: `raw ${kind}` })
       }}
     >
       <Icon name="copy" size={13} />
@@ -490,6 +490,19 @@ function RawView({
   const [hit, setHit] = useState(0)
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null)
   const [wrap, toggleWrap] = useRawWrap()
+  const preRef = useRef<HTMLPreElement>(null)
+  // text selected inside this raw at context-menu time (read-only side: Copy
+  // + Send to Decoder only — no cut/paste, matching Burp's read-only viewers)
+  const [selText, setSelText] = useState<string | null>(null)
+  // Chrome can clear the page selection on right-button mousedown before
+  // contextmenu fires — snapshot it so the menu still targets it (Burp-style)
+  const lastSelRef = useRef<string | null>(null)
+  const readSel = () => {
+    const s = window.getSelection()
+    if (!s || s.isCollapsed) return null
+    const node = s.anchorNode
+    return node && preRef.current?.contains(node) ? s.toString() : null
+  }
 
   const fullRaw = useMemo(
     () => rawOfMessage(headLine ?? '', headers, text),
@@ -508,18 +521,45 @@ function RawView({
     return fullRaw.toLowerCase().split(needle).length - 1
   }, [fullRaw, needle])
   const clampHit = (n: number) => (matches > 0 ? ((n % matches) + matches) % matches : 0)
+
+  // paint the current-match marker inside THIS raw only (the old global
+  // document.querySelectorAll crossed wires between multiple raw panes)
+  const applyCur = (idx: number, scroll: boolean) => {
+    const root = preRef.current
+    if (!root) return
+    root.querySelectorAll('mark.cur').forEach((m) => m.classList.remove('cur'))
+    const el = root.querySelectorAll('mark')[idx]
+    if (el) {
+      el.classList.add('cur')
+      if (scroll) el.scrollIntoView({ block: 'center' })
+    }
+  }
+
+  // typing a needle: land on the first match immediately so the highlight
+  // is visible even when it lives outside the viewport
+  useEffect(() => {
+    if (!needle) return
+    requestAnimationFrame(() => applyCur(0, true))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [needle])
+
+  // content swapped under the same needle (cap expander, live flow update):
+  // repaint the marker at the (clamped) position without stealing scroll
+  useEffect(() => {
+    if (!needle) return
+    requestAnimationFrame(() => applyCur(clampHit(hit), false))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rawText])
+
   const step = (dir: 1 | -1) => {
     const next = clampHit(hit + dir)
     setHit(next)
-    document.querySelectorAll('.raw-lines mark.cur')?.forEach((m) => m.classList.remove('cur'))
-    const els = document.querySelectorAll('.raw-lines mark')
-    els[next]?.classList.add('cur')
-    els[next]?.scrollIntoView({ block: 'center' })
+    requestAnimationFrame(() => applyCur(next, true))
   }
 
   const renderLine = (line: string, key: number) => {
     if (!needle || !line.toLowerCase().includes(needle)) {
-      return <RawLine key={key} line={line} n={key} />
+      return <RawLine key={key} line={line} n={key} inHead={key > 0 && key < headEnd} />
     }
     // highlight all occurrences
     const parts: React.ReactNode[] = []
@@ -546,8 +586,34 @@ function RawView({
   // fullRaw already contains the start line + header block + body — split it
   // directly (prepending a separate head block duplicated every header)
   const lines = useMemo(() => rawText.split('\n'), [rawText])
+  // header names are colored only between the start line and the first blank
+  // line — body lines containing ':' (JSON, URLs) must not light up as headers
+  const headEnd = useMemo(() => {
+    const i = lines.findIndex((l, idx) => idx > 0 && l.trim() === '')
+    return i < 0 ? lines.length : i
+  }, [lines])
 
   const menuItems = (): MenuItem[] => [
+    ...(selText
+      ? [
+          {
+            label: 'Copy',
+            hint: '⌃C',
+            onClick: async () => {
+              await copyToClipboard(selText, { label: 'selection' })
+            },
+          },
+          {
+            icon: 'terminal' as const,
+            label: 'Send to Decoder',
+            hint: '⌃⇧D',
+            separatorAfter: true,
+            onClick: () => {
+              window.dispatchEvent(new CustomEvent('pulse:send-to-decoder', { detail: selText }))
+            },
+          },
+        ]
+      : []),
     ...((flowIdForCurl || curlRequest)
       ? [
           {
@@ -557,7 +623,7 @@ function RawView({
               const cmd = flowIdForCurl
                 ? toCurl(await getFlow(flowIdForCurl))
                 : toCurlRequest(curlRequest!.method, curlRequest!.url, curlRequest!.headers, bodyToText(curlRequest!.body))
-              await copyToClipboard(cmd)
+              await copyToClipboard(cmd, { label: 'cURL' })
             },
           },
         ]
@@ -569,7 +635,7 @@ function RawView({
             label: 'Copy URL',
             separatorAfter: true,
             onClick: async () => {
-              await copyToClipboard(urlForCopy)
+              await copyToClipboard(urlForCopy, { label: 'URL' })
             },
           },
         ]
@@ -579,21 +645,21 @@ function RawView({
       label: 'Copy raw message',
       separatorAfter: !!flowIdForCurl,
       onClick: async () => {
-        await copyToClipboard(fullRaw)
+        await copyToClipboard(fullRaw, { label: 'raw message' })
       },
     },
     {
       icon: 'copy',
       label: 'Copy headers',
       onClick: async () => {
-        await copyToClipboard(headers.map((h) => `${h.name}: ${h.value}`).join('\n'))
+        await copyToClipboard(headers.map((h) => `${h.name}: ${h.value}`).join('\n'), { label: 'headers' })
       },
     },
     {
       icon: 'copy',
       label: 'Copy body',
       onClick: async () => {
-        await copyToClipboard(text)
+        await copyToClipboard(text, { label: 'body' })
       },
     },
   ]
@@ -604,9 +670,18 @@ function RawView({
         {wrap ? '⏳ Wrap' : '⏩ Wrap'}
       </button>
       <pre
+        ref={preRef}
         className={`code-view raw-lines ${wrap ? '' : 'no-wrap'}`}
+        onMouseDown={(e) => {
+          if (e.button === 2) lastSelRef.current = readSel()
+        }}
+        onMouseUp={(e) => {
+          if (e.button === 2) return
+          lastSelRef.current = readSel() // null when collapsed → clears stale
+        }}
         onContextMenu={(e) => {
           e.preventDefault()
+          setSelText(readSel() ?? lastSelRef.current)
           setMenu({ x: e.clientX, y: e.clientY })
         }}
       >
@@ -658,10 +733,11 @@ function RawView({
 }
 
 /** one raw line: header names get their own color (Burp-style), with a
- *  hover copy button on header lines */
-function RawLine({ line, n }: { line: string; n: number }) {
+ *  hover copy button on header lines — inHead scopes the coloring to the
+ *  header block so body lines containing ':' stay plain */
+function RawLine({ line, n, inHead }: { line: string; n: number; inHead: boolean }) {
   const idx = line.indexOf(':')
-  const isHeader = n > 0 && idx > 0 && !line.startsWith(' ')
+  const isHeader = inHead && idx > 0 && !line.startsWith(' ')
   if (!isHeader) {
     return (
       <div>
@@ -710,9 +786,9 @@ function HeadersTable({ headers }: { headers: Header[] }) {
           x={menu.x}
           y={menu.y}
           items={[
-            { icon: 'copy', label: `Copy "${menu.h.name}: ${menu.h.value.slice(0, 24)}${menu.h.value.length > 24 ? '…' : ''}"`, onClick: async () => void (await copyToClipboard(`${menu.h.name}: ${menu.h.value}`)) },
-            { icon: 'copy', label: 'Copy value', onClick: async () => void (await copyToClipboard(menu.h.value)) },
-            { icon: 'copy', label: 'Copy all headers', separatorAfter: true, onClick: async () => void (await copyToClipboard(allText)) },
+            { icon: 'copy', label: `Copy "${menu.h.name}: ${menu.h.value.slice(0, 24)}${menu.h.value.length > 24 ? '…' : ''}"`, onClick: async () => void (await copyToClipboard(`${menu.h.name}: ${menu.h.value}`, { label: 'header' })) },
+            { icon: 'copy', label: 'Copy value', onClick: async () => void (await copyToClipboard(menu.h.value, { label: 'value' })) },
+            { icon: 'copy', label: 'Copy all headers', separatorAfter: true, onClick: async () => void (await copyToClipboard(allText, { label: 'headers' })) },
           ]}
           onClose={() => setMenu(null)}
         />

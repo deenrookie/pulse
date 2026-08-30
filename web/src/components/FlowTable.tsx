@@ -200,8 +200,7 @@ export default function FlowTable({
         notify(`${label} is empty`, 'err')
         return
       }
-      if (await copyToClipboard(text)) notify(`${label} copied`)
-      else notify('Clipboard unavailable in this browser', 'err')
+      await copyToClipboard(text, { label })
     } catch (e) {
       notify(`Copy failed: ${(e as Error).message}`, 'err')
     }

@@ -372,7 +372,7 @@ export default function InterceptView({ pulse }: { pulse: PulseState }) {
       icon: 'copy',
       label: 'Copy URL',
       onClick: async () => {
-        if (await copyToClipboard(p.url)) pulse.notify('URL copied')
+        await copyToClipboard(p.url, { label: 'URL' })
       },
     },
   ]
