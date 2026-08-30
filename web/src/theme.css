@@ -1490,3 +1490,21 @@ textarea.editor.raw.over-mirror:focus { border-color: var(--accent-dim); box-sha
 }
 .to-top:hover { color: var(--accent); border-color: var(--accent-line); }
 .to-top:active { transform: scale(0.92); }
+
+/* display-cap notice under large raw/pretty bodies */
+.raw-cap {
+  flex: none;
+  display: flex; align-items: center; gap: 12px;
+  padding: 6px 12px;
+  border-top: 1px solid var(--border);
+  background: var(--bg-raised);
+  color: var(--text-faint);
+  font-size: 11px;
+  font-family: var(--mono);
+}
+.raw-cap .mini {
+  background: var(--bg-input); color: var(--text-muted);
+  border: 1px solid var(--border); border-radius: var(--radius-xs);
+  font: inherit; font-size: 10.5px; padding: 2px 8px; cursor: pointer;
+}
+.raw-cap .mini:hover { color: var(--warn); border-color: rgb(var(--warn-rgb) / 0.4); }

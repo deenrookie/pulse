@@ -209,7 +209,7 @@ export function ResponseInspector({
         {tab === 'ws' ? (
           <WSPanel ws={ws ?? []} />
         ) : (
-          <TabBody tab={tab} headers={resp.headers} params={params} text={text} b64={resp.body} kind="response" curlFlowId={flowId} />
+          <TabBody tab={tab} headers={resp.headers} params={params} text={text} b64={resp.body} kind="response" curlFlowId={flowId} decompressed={wasDecompressed} />
         )}
       </div>
     </div>
@@ -335,6 +335,7 @@ function TabBody({
   req,
   curlFlowId,
   curlRequest,
+  decompressed,
 }: {
   tab: Tab
   headers: Header[]
@@ -344,6 +345,9 @@ function TabBody({
   kind: 'request' | 'response'
   req?: RequestLike
   curlFlowId?: string
+  /** true when text came from transparent decompression — binary sniffing
+   *  must judge the decoded text, not the compressed wire bytes */
+  decompressed?: boolean
   /** ad-hoc request (Repeater) — enables Copy as cURL without a stored flow */
   curlRequest?: RequestLike
 }) {
@@ -368,11 +372,11 @@ function TabBody({
       )
     case 'pretty': {
       const json = prettyJsonIfPossible(text)
-      if (json) return <pre className="code-view">{json}</pre>
+      if (json) return <CappedPre text={json} />
       const ct = headers.find((h) => h.name.toLowerCase() === 'content-type')?.value ?? ''
       if (ct.startsWith('image/') && b64) return <ImagePreview b64={b64} contentType={ct} />
-      if (looksBinary(b64)) return <BinaryNotice b64={b64} />
-      return <pre className="code-view">{text || '(empty)'}</pre>
+      if (!decompressed && looksBinary(b64)) return <BinaryNotice b64={b64} />
+      return <CappedPre text={text} emptyHint="(empty)" />
     }
     case 'hex':
       return <pre className="code-view">{bodyToHex(b64)}</pre>
@@ -382,6 +386,25 @@ function TabBody({
       return <RawView headLine={headLine} headers={headers} text={text} flowIdForCurl={curlFlowId} curlRequest={curlRequest} />
     }
   }
+}
+
+/** renders text with a display cap + expander (multi-MB bodies jank) */
+function CappedPre({ text, emptyHint }: { text: string; emptyHint?: string }) {
+  const CAP = 200_000
+  const [showAll, setShowAll] = useState(false)
+  if (!text && emptyHint !== undefined) return <pre className="code-view">{emptyHint}</pre>
+  if (text.length <= CAP || showAll) return <pre className="code-view">{text}</pre>
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
+      <pre className="code-view" style={{ flex: 1, minHeight: 0, overflow: 'auto' }}>{text.slice(0, CAP)}</pre>
+      <div className="raw-cap">
+        Showing the first {(CAP / 1000).toFixed(0)}k of {(text.length / 1e6).toFixed(2)}M characters
+        <button className="mini" onClick={() => setShowAll(true)}>
+          Show all anyway
+        </button>
+      </div>
+    </div>
+  )
 }
 
 function ImagePreview({ b64, contentType }: { b64: string; contentType: string }) {
@@ -465,6 +488,12 @@ function RawView({
     [headLine, headers, text],
   )
 
+  // cap what hits the DOM: minified bundles can be one multi-MB line and
+  // rendering that synchronously freezes the tab. Show a prefix + expander.
+  const CAP = 200_000
+  const [showAll, setShowAll] = useState(false)
+  const rawText = showAll ? fullRaw : fullRaw.length > CAP ? fullRaw.slice(0, CAP) : fullRaw
+
   const needle = q.trim().toLowerCase()
   const matches = useMemo(() => {
     if (!needle) return 0
@@ -511,8 +540,8 @@ function RawView({
     if (headLine) head.push(headLine)
     for (const h of headers) head.push(`${h.name}: ${h.value}`)
     head.push('')
-    return [...head, ...text.split('\n')]
-  }, [headLine, headers, text])
+    return [...head, ...rawText.split('\n')]
+  }, [headLine, headers, rawText])
 
   const menuItems = (): MenuItem[] => [
     ...((flowIdForCurl || curlRequest)
@@ -599,6 +628,14 @@ function RawView({
           </>
         )}
       </div>
+      {fullRaw.length > CAP && !showAll && (
+        <div className="raw-cap">
+          Showing the first {(CAP / 1000).toFixed(0)}k of {(fullRaw.length / 1e6).toFixed(2)}M characters — rendering everything can freeze the tab
+          <button className="mini" onClick={() => setShowAll(true)}>
+            Show all anyway
+          </button>
+        </div>
+      )}
       {menu && <ContextMenu x={menu.x} y={menu.y} items={menuItems()} onClose={() => setMenu(null)} />}
     </div>
   )
