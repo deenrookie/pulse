@@ -666,8 +666,13 @@ tr.vspacer td { border: none; padding: 0; }
   color: var(--text); user-select: text;
   font-variant-numeric: tabular-nums;
 }
-/* line numbers stay quiet — they must never compete with the payload text */
-.code-view .ln { color: var(--text-faint); opacity: 0.55; margin-right: 12px; user-select: none; }
+/* line numbers stay quiet — they must never compete with the payload text.
+   Fixed-width right-aligned gutter: 1- and 2-digit numbers take the same
+   box, so the text column starts at one x for every line. */
+.code-view .ln {
+  display: inline-block; width: 4ch; text-align: right;
+  color: var(--text-faint); opacity: 0.55; margin-right: 14px; user-select: none;
+}
 
 .summary-strip {
   display: flex; flex-wrap: wrap; gap: 5px 16px;

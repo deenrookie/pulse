@@ -1,6 +1,7 @@
 package proxy
 
 import (
+	"sort"
 	"bufio"
 	"bytes"
 	"context"
@@ -172,10 +173,18 @@ func (c *Client) doH2(req *store.Request) (*Result, bool, error) {
 	return &Result{Resp: resp}, true, nil
 }
 
+// headersFromHTTP flattens a net/http Header (a map — iteration order is
+// randomized) into a stable, alphabetically ordered slice so the same
+// response always renders identically.
 func headersFromHTTP(h http.Header) []store.Header {
+	names := make([]string, 0, len(h))
+	for name := range h {
+		names = append(names, name)
+	}
+	sort.Strings(names)
 	out := make([]store.Header, 0, len(h))
-	for name, vals := range h {
-		for _, v := range vals {
+	for _, name := range names {
+		for _, v := range h[name] {
 			out = append(out, store.Header{Name: name, Value: v})
 		}
 	}
