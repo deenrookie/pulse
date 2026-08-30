@@ -10,16 +10,25 @@ import Decoder from './ui/Decoder'
 import { usePulse } from './state'
 
 type Tab = 'proxy' | 'intercept' | 'repeater' | 'sitemap' | 'extensions' | 'settings'
-type Theme = 'warm' | 'midnight'
+type Theme = 'warm' | 'midnight' | 'linear'
 
 const THEMES: { id: Theme; label: string; hint: string }[] = [
   { id: 'warm', label: 'Warm', hint: 'Warm charcoal + cream (Warp)' },
   { id: 'midnight', label: 'Midnight', hint: 'Violet midnight + lime (Sentry)' },
+  { id: 'linear', label: 'Linear', hint: 'White + lavender light (Linear)' },
 ]
+
+/** favicon canvas/ink per theme — the tab icon follows the switch */
+const THEME_MARK: Record<Theme, [string, string]> = {
+  warm: ['#2b2622', '#f7f5f0'],
+  midnight: ['#150f23', '#c2ef4e'],
+  linear: ['#ffffff', '#5e6ad2'],
+}
 
 function readTheme(): Theme {
   try {
-    return localStorage.getItem('pulse.theme') === 'midnight' ? 'midnight' : 'warm'
+    const v = localStorage.getItem('pulse.theme')
+    return THEMES.some((t) => t.id === v) ? (v as Theme) : 'warm'
   } catch {
     return 'warm'
   }
@@ -83,8 +92,7 @@ export default function App() {
     } catch {
       /* ignore */
     }
-    const bg = theme === 'midnight' ? '#150f23' : '#2b2622'
-    const fg = theme === 'midnight' ? '#c2ef4e' : '#f7f5f0'
+    const [bg, fg] = THEME_MARK[theme]
     const svg =
       `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'>` +
       `<rect width='24' height='24' rx='5' fill='${bg}'/>` +
@@ -199,7 +207,7 @@ export default function App() {
         <div className="rail-footer">
           <button
             className="rail-theme"
-            onClick={() => setTheme((t) => (t === 'warm' ? 'midnight' : 'warm'))}
+            onClick={() => setTheme((t) => THEMES[(THEMES.findIndex((x) => x.id === t) + 1) % THEMES.length].id)}
             title={`Theme: ${THEMES.find((t) => t.id === theme)!.hint} — click to switch`}
           >
             <span className="swatch" />

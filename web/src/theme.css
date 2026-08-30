@@ -161,6 +161,67 @@
   --check-b: #221a3a;
 }
 
+/* ---- theme: linear light (voltagent/awesome-design-md → linear.app) ----
+   Linear's inverse palette: white canvas, white cards on #f7f8f8, hairline
+   borders, near-black ink, and the signature lavender #5e6ad2 as the single
+   chromatic accent. Semantic colors are Linear product values. */
+:root[data-theme='linear'] {
+  /* surfaces — Linear inverse family, light -> layered */
+  --bg: #f7f8f8;          /* app background (inverse surface) */
+  --bg-deep: #f0f1f2;     /* nav rail, under everything */
+  --bg-panel: #ffffff;    /* panels / cards */
+  --bg-raised: #fafbfb;   /* panel heads, toolbars, sticky headers */
+  --bg-hover: #f0f1f3;
+  --bg-active: #e9ebef;
+  --bg-input: #ffffff;
+
+  /* lines */
+  --border: #e1e4e8;
+  --border-strong: #c9cdd4;
+
+  /* ink — Linear's inverse text scale */
+  --text: #191a1c;
+  --text-muted: #505459;
+  --text-faint: #8a8f98;
+
+  /* signal — the Linear lavender, never decorative */
+  --accent: #5e6ad2;
+  --accent-dim: #4d58c4;
+  --accent-bg: rgba(94, 106, 210, 0.08);
+  --accent-line: rgba(94, 106, 210, 0.4);
+
+  /* semantic — Linear product values on the white canvas */
+  --ok: #27a644;      --ok-rgb: 39 166 68;
+  --info: #2e7dd1;    --info-rgb: 46 125 209;
+  --warn: #d9930d;    --warn-rgb: 217 147 13;
+  --danger: #eb5757;  --danger-rgb: 235 87 87;
+  --purple: #8a63d2;  --purple-rgb: 138 99 210;
+  --focus-ring: #5e6ad2;
+
+  /* derived tints */
+  --sel: rgba(94, 106, 210, 0.14);
+  --scroll: #d3d6db;
+  --scroll-hover: #bfc3ca;
+  --hover-border: #c3c7ce;
+  --on-accent: #ffffff;
+  --on-accent-rgb: 255 255 255;
+  --on-danger: #ffffff;
+  --shadow-rgb: 26 27 30;
+  --overlay: rgba(20, 20, 24, 0.32);
+  --glow: rgba(94, 106, 210, 0.12);
+  --row-flash: rgba(94, 106, 210, 0.08);
+  --check-a: #f0f1f3;
+  --check-b: #e9ebef;
+
+  /* light canvases need far gentler shadow weights than the 0.6 global */
+  --shadow: 0 12px 40px rgb(var(--shadow-rgb) / 0.12), 0 2px 8px rgb(var(--shadow-rgb) / 0.08);
+}
+/* the raw editor's native-selection overlay is tuned for dark canvases;
+   on white it needs the lavender to stay visible */
+:root[data-theme='linear'] textarea.editor.raw.over-mirror::selection {
+  background: rgba(94, 106, 210, 0.22);
+}
+
 /* shadow composes the per-theme tint */
 :root { --shadow: 0 12px 40px rgb(var(--shadow-rgb) / 0.6), 0 2px 8px rgb(var(--shadow-rgb) / 0.45); }
 
