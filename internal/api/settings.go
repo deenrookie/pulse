@@ -62,7 +62,7 @@ func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
 	case http.MethodPut:
 		s.set.handlePut(w, r)
 		if s.set.ResponseTimeoutSec > 0 {
-			s.eng.SetTimeout(s.set.ResponseTimeoutSec)
+			s.eng.SetRepeaterTimeout(s.set.ResponseTimeoutSec)
 		}
 	default:
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)

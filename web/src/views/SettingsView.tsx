@@ -22,7 +22,7 @@ export default function SettingsView({ pulse }: { pulse: PulseState }) {
       const s = await putSettings({ responseTimeoutSec: timeoutSec })
       setTimeoutSec(s.responseTimeoutSec)
       setSavedAt(Date.now())
-      pulse.notify(`Response timeout set to ${s.responseTimeoutSec}s`)
+      pulse.notify(`Repeater send timeout set to ${s.responseTimeoutSec}s`)
     } catch (e) {
       setSaveErr((e as Error).message)
     }
@@ -114,8 +114,8 @@ export default function SettingsView({ pulse }: { pulse: PulseState }) {
             Timeouts
           </h3>
           <div className="sub">
-            How long Pulse waits for an upstream response head before giving up (applies to proxy traffic and
-            Repeater sends; 1–600 seconds).
+            How long a <b>Repeater send</b> waits for the response before giving up (1–600 seconds, default 30).
+            Proxied traffic keeps the standard timeout, like Burp.
           </div>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
             <input

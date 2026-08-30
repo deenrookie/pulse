@@ -60,6 +60,18 @@ func (c *Client) maxBody() int64 {
 }
 
 // Do executes req against the origin server named in its URL.
+// DoWithTimeout sends like Do but bounds the response-head read with the
+// given timeout (0 = the client default). Used by Repeater sends.
+func (c *Client) DoWithTimeout(req *store.Request, timeout time.Duration) (*Result, error) {
+	saved := c.ResponseTimeout
+	if timeout > 0 {
+		c.ResponseTimeout = timeout
+	}
+	res, err := c.Do(req)
+	c.ResponseTimeout = saved
+	return res, err
+}
+
 func (c *Client) Do(req *store.Request) (*Result, error) {
 	scheme := "http"
 	rest := req.URL

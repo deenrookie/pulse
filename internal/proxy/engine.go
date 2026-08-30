@@ -30,6 +30,8 @@ type Engine struct {
 	bus     *events.Bus
 	Inter   *Intercept
 	client  *Client
+	// repTimeout bounds Repeater sends (0 = client default 30s).
+	repTimeout time.Duration
 	Plugins *plugins.Runtime
 	Rewrite *rewrite.Engine
 	mu      sync.Mutex
@@ -69,8 +71,9 @@ func (e *Engine) SetUpstreamTLS(cfg *tls.Config) { e.client.UpstreamTLS = cfg }
 func (e *Engine) CAPool() *x509.CertPool { return e.auth.CAPool() }
 
 // ListenAndServe starts the proxy listener and blocks serving it.
-// SetTimeout configures the upstream response timeout (seconds).
-func (e *Engine) SetTimeout(seconds int) { e.client.SetTimeout(seconds) }
+// SetRepeaterTimeout bounds Repeater sends only; proxied traffic keeps the
+// standard response-head timeout (Burp-like fixed default).
+func (e *Engine) SetRepeaterTimeout(seconds int) { e.repTimeout = time.Duration(seconds) * time.Second }
 
 func (e *Engine) ListenAndServe(addr string) error {
 	ln, err := net.Listen("tcp", addr)
@@ -318,7 +321,7 @@ func (e *Engine) RoundTrip(req *store.Request) *store.Flow {
 	e.publishFlow("flow", fl)
 
 	start := time.Now()
-	res, err := e.client.Do(req)
+	res, err := e.client.DoWithTimeout(req, e.repTimeout)
 	dur := time.Since(start).Milliseconds()
 	switch {
 	case err != nil:
