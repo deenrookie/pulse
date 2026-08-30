@@ -147,6 +147,7 @@ export default function App() {
 
   return (
     <div className="shell">
+    <div className="shell-row">
       <nav className={`rail ${railCollapsed ? 'collapsed' : ''}`} aria-label="Views">
         <div className="rail-brand" title="Pulse">
           <span className="mark">
@@ -170,20 +171,6 @@ export default function App() {
           </button>
         ))}
         <div className="rail-footer">
-          <div className="rail-mem" title="Pulse process memory (sys) · JavaScript heap is separate">
-            <Icon name="bolt" size={12} />
-            <span className="txt">
-              {pulse.status?.memory ? `${pulse.status.memory.sysMB} MB` : '…'}
-            </span>
-          </div>
-          <button
-            className="rail-theme"
-            title="Decoder — encode/decode toolkit (draggable, pinnable)"
-            onClick={() => setDecoderOpen(true)}
-          >
-            <Icon name="terminal" size={14} />
-            <span className="txt">Decoder</span>
-          </button>
           <button
             className="rail-theme"
             onClick={() => setTheme((t) => (t === 'warm' ? 'midnight' : 'warm'))}
@@ -233,6 +220,47 @@ export default function App() {
           {tab === 'settings' && <SettingsView pulse={pulse} />}
         </div>
       </div>
+
+      </div>
+
+      <footer className="footbar">
+        <button
+          className="foot-tool"
+          title="Decoder — encode/decode toolkit (draggable, pinnable)"
+          onClick={() => setDecoderOpen(true)}
+        >
+          <Icon name="terminal" size={13} />
+          Decoder
+        </button>
+        <span className="foot-sep" />
+        <span className="foot-tool ghosted" title="More tools are on the way">
+          <Icon name="puzzle" size={13} />
+          Tools
+        </span>
+        <span className="spacer" />
+        <span className={`foot-stat ${pulse.connected ? '' : 'off'}`} title="Proxy listener & event stream">
+          <span className="dot" />
+          {proxyShort}
+        </span>
+        <span className="foot-sep" />
+        <span className="foot-stat" title="Flows captured (store)">
+          <Icon name="waves" size={12} />
+          {pulse.total.toLocaleString()}
+        </span>
+        {pulse.status?.memory && (
+          <>
+            <span className="foot-sep" />
+            <span className="foot-stat" title="Go runtime — total memory obtained from the OS">
+              <Icon name="bolt" size={12} />
+              MEM {pulse.status.memory.sysMB} MB
+            </span>
+            <span className="foot-stat" title="Go runtime — live heap">
+              HEAP {pulse.status.memory.heapMB} MB
+            </span>
+            <span className="foot-stat" title="Goroutines" style={{ display: 'none' }} />
+          </>
+        )}
+      </footer>
 
       {decoderOpen && <Decoder onClose={() => setDecoderOpen(false)} />}
 

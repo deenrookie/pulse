@@ -192,7 +192,8 @@ kbd {
 }
 
 /* ============ 3. Shell ============ */
-.shell { display: flex; height: 100%; min-height: 0; }
+.shell { display: flex; flex-direction: column; height: 100%; min-height: 0; }
+.shell-row { display: flex; flex: 1; min-height: 0; }
 
 /* ---- nav rail ---- */
 .rail {
@@ -1199,7 +1200,35 @@ table.flows tbody tr.hl.selected td { background: var(--accent-bg); box-shadow: 
 .decoder-step .n { color: var(--text-faint); }
 .decoder-label { font-size: 10.5px; font-weight: 600; letter-spacing: 0.4px; text-transform: uppercase; color: var(--text-faint); flex: none; }
 
-/* rail footer memory chip */
+/* ============ 27. Bottom status bar (Caido-style) ============ */
+.footbar {
+  flex: none; height: 28px;
+  display: flex; align-items: center; gap: 12px;
+  padding: 0 12px;
+  background: var(--bg-deep);
+  border-top: 1px solid var(--border);
+  font-family: var(--mono); font-size: 11px;
+  color: var(--text-faint);
+  user-select: none;
+}
+.footbar .spacer { flex: 1; }
+.foot-tool {
+  display: inline-flex; align-items: center; gap: 6px;
+  border: 1px solid var(--border); background: none; cursor: pointer;
+  color: var(--text-muted); font: inherit; font-size: 11px;
+  padding: 2px 9px; border-radius: var(--radius-xs);
+  transition: color var(--t-fast) ease, border-color var(--t-fast) ease, background var(--t-fast) ease;
+}
+.foot-tool:hover { color: var(--accent); border-color: var(--accent-line); background: var(--accent-bg); }
+.foot-tool.ghosted { opacity: 0.55; cursor: default; }
+.foot-tool.ghosted:hover { color: var(--text-muted); border-color: var(--border); background: none; }
+.foot-sep { width: 1px; height: 14px; background: var(--border-strong); flex: none; }
+.foot-stat { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
+.foot-stat .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--ok); }
+.foot-stat.off .dot { background: var(--danger); }
+.foot-stat.off { color: var(--danger); }
+
+/* rail footer memory chip (legacy, superseded by the footbar) */
 .rail-mem {
   display: flex; align-items: center; gap: 8px;
   padding: 6px 10px; border-radius: var(--radius-sm);
