@@ -147,7 +147,6 @@ export default function App() {
 
   return (
     <div className="shell">
-    <div className="shell-row">
       <nav className={`rail ${railCollapsed ? 'collapsed' : ''}`} aria-label="Views">
         <div className="rail-brand" title="Pulse">
           <span className="mark">
@@ -219,11 +218,8 @@ export default function App() {
           {tab === 'extensions' && <ExtensionsView notify={pulse.notify} />}
           {tab === 'settings' && <SettingsView pulse={pulse} />}
         </div>
-      </div>
 
-      </div>
-
-      <footer className="footbar">
+        <footer className="footbar">
         <button
           className="foot-tool"
           title="Decoder — encode/decode toolkit (draggable, pinnable)"
@@ -261,6 +257,7 @@ export default function App() {
           </>
         )}
       </footer>
+      </div>
 
       {decoderOpen && <Decoder onClose={() => setDecoderOpen(false)} />}
 

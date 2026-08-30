@@ -192,8 +192,7 @@ kbd {
 }
 
 /* ============ 3. Shell ============ */
-.shell { display: flex; flex-direction: column; height: 100%; min-height: 0; }
-.shell-row { display: flex; flex: 1; min-height: 0; }
+.shell { display: flex; height: 100%; min-height: 0; }
 
 /* ---- nav rail ---- */
 .rail {
