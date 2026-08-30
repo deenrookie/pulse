@@ -395,13 +395,6 @@ export default function Decoder({ onClose }: { onClose: () => void }) {
 
   const addOp = (id: string) => save({ recipe: [...st.recipe, id] })
   const removeOp = (i: number) => save({ recipe: st.recipe.filter((_, idx) => idx !== i) })
-  const moveOp = (i: number, dir: -1 | 1) => {
-    const next = [...st.recipe]
-    const j = i + dir
-    if (j < 0 || j >= next.length) return
-    ;[next[i], next[j]] = [next[j], next[i]]
-    save({ recipe: next })
-  }
 
   return (
     <div
@@ -500,12 +493,6 @@ export default function Decoder({ onClose }: { onClose: () => void }) {
               const op = opById(id)
               return (
                 <span key={`${id}-${i}`} className="cyber-chip">
-                  <button className="cyber-chip-move" title="Move earlier" disabled={i === 0} onClick={() => moveOp(i, -1)}>
-                    ▲
-                  </button>
-                  <button className="cyber-chip-move" title="Move later" disabled={i === st.recipe.length - 1} onClick={() => moveOp(i, 1)}>
-                    ▼
-                  </button>
                   {op?.label ?? id}
                   <button className="cyber-chip-x" title="Remove" onClick={() => removeOp(i)}>
                     <Icon name="x" size={10} />
