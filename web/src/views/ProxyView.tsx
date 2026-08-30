@@ -217,10 +217,6 @@ export default function ProxyView({ pulse }: { pulse: PulseState }) {
     if (!fl) return
     if (editedRaw !== null) {
       const parsed = rawToRequest(editedRaw, fl.request.url)
-      if ('error' in parsed) {
-        pulse.notify(`Edited request invalid: ${parsed.error}`, 'err')
-        return
-      }
       try {
         await createRepeaterTab({ request: parsed })
         try {

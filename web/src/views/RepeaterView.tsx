@@ -143,10 +143,6 @@ export default function RepeaterView({ pulse, goProxy }: { pulse: PulseState; go
   const send = async () => {
     if (!currentId || !raw || !tab) return
     const req = rawToRequest(raw.text, tab.request.url)
-    if ('error' in req) {
-      setErr(req.error)
-      return
-    }
     setBusy(true)
     setErr(null)
     try {
@@ -165,7 +161,17 @@ export default function RepeaterView({ pulse, goProxy }: { pulse: PulseState; go
     if (selected === id) setSelected(null)
   }
 
-  // Ctrl/Cmd+Enter sends; Ctrl+R duplicates the current tab into a new one
+  const duplicateCurrent = async () => {
+    if (!raw || !tab) return
+    const parsed = rawToRequest(raw.text, tab.request.url)
+    const t = await createRepeaterTab({ request: parsed })
+    const r = await listRepeater()
+    setRepeaterTabsDirect(r.tabs)
+    setSelected(t.id)
+    pulse.notify(`Duplicated to ${t.id}`)
+  }
+
+  // Ctrl/Cmd+Enter sends; Ctrl+R (and the raw context menu) duplicate the tab
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
@@ -174,18 +180,16 @@ export default function RepeaterView({ pulse, goProxy }: { pulse: PulseState; go
       } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'r' && raw && tab) {
         e.preventDefault()
         e.stopPropagation()
-        const parsed = rawToRequest(raw.text, tab.request.url)
-        if ('error' in parsed) return
-        void createRepeaterTab({ request: parsed }).then(async (t) => {
-          const r = await listRepeater()
-          setRepeaterTabsDirect(r.tabs)
-          setSelected(t.id)
-          pulse.notify(`Duplicated to ${t.id}`)
-        })
+        void duplicateCurrent()
       }
     }
+    const onSend = () => void duplicateCurrent()
     window.addEventListener('keydown', onKey, true) // capture: wins over the global handler
-    return () => window.removeEventListener('keydown', onKey, true)
+    window.addEventListener('pulse:send-to-repeater', onSend)
+    return () => {
+      window.removeEventListener('keydown', onKey, true)
+      window.removeEventListener('pulse:send-to-repeater', onSend)
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentId, raw, busy, tab])
 

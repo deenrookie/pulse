@@ -68,7 +68,7 @@ export function RequestInspector({
         </span>
         <div className="spacer" />
         <CopyRaw
-          text={text}
+          text={raw ?? text}
           kind="request"
           headLine={`${req.method} ${pathOf(req.url)} ${req.httpVersion || 'HTTP/1.1'}`}
           headers={req.headers}

@@ -253,10 +253,6 @@ export default function InterceptView({ pulse }: { pulse: PulseState }) {
   const onForward = () => {
     if (!currentId || raw === null || !heldFull) return
     const req = rawToRequest(raw, heldFull.url)
-    if ('error' in req) {
-      setErr(req.error)
-      return
-    }
     act(() => pulse.forwardPending(currentId, req))
   }
 
