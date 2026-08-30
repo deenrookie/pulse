@@ -71,7 +71,11 @@ func newEnv(t *testing.T) *testEnv {
 		t.Fatalf("ui listen: %v", err)
 	}
 	uiAddr := uln.Addr().String()
-	ts := httptest.NewUnstartedServer(api.New(st, eng, rep, auth, bus, rw, plug, "test", pln.Addr().String(), uiAddr, dir).Handler())
+	apiSrv, err := api.New(st, eng, rep, auth, bus, rw, plug, "test", pln.Addr().String(), uiAddr, dir)
+	if err != nil {
+		t.Fatalf("api.New: %v", err)
+	}
+	ts := httptest.NewUnstartedServer(apiSrv.Handler())
 	ts.Listener = uln
 	ts.Start()
 

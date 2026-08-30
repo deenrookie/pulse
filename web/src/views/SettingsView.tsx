@@ -1,8 +1,32 @@
 import Icon from '../ui/Icon'
+import { getSettings, putSettings } from '../api'
 import type { PulseState } from '../state'
+import { useEffect, useState } from 'react'
 
 export default function SettingsView({ pulse }: { pulse: PulseState }) {
   const st = pulse.status
+  const [timeoutSec, setTimeoutSec] = useState<number | null>(null)
+  const [savedAt, setSavedAt] = useState(0)
+  const [saveErr, setSaveErr] = useState<string | null>(null)
+
+  useEffect(() => {
+    getSettings()
+      .then((s) => setTimeoutSec(s.responseTimeoutSec))
+      .catch(() => {})
+  }, [])
+
+  const saveTimeout = async () => {
+    if (timeoutSec === null) return
+    setSaveErr(null)
+    try {
+      const s = await putSettings({ responseTimeoutSec: timeoutSec })
+      setTimeoutSec(s.responseTimeoutSec)
+      setSavedAt(Date.now())
+      pulse.notify(`Response timeout set to ${s.responseTimeoutSec}s`)
+    } catch (e) {
+      setSaveErr((e as Error).message)
+    }
+  }
   return (
     <div className="settings-wrap">
       <div className="settings">
@@ -82,6 +106,34 @@ export default function SettingsView({ pulse }: { pulse: PulseState }) {
           ) : (
             <div className="spinner" />
           )}
+        </div>
+
+        <div className="card">
+          <h3>
+            <Icon name="clock" size={15} />
+            Timeouts
+          </h3>
+          <div className="sub">
+            How long Pulse waits for an upstream response head before giving up (applies to proxy traffic and
+            Repeater sends; 1–600 seconds).
+          </div>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <input
+              className="input"
+              type="number"
+              min={1}
+              max={600}
+              style={{ width: 110 }}
+              value={timeoutSec ?? ''}
+              onChange={(e) => setTimeoutSec(parseInt(e.target.value, 10) || 0)}
+            />
+            <span className="faint">seconds</span>
+            <button className="btn primary sm" onClick={() => void saveTimeout()} disabled={!timeoutSec || timeoutSec < 1 || timeoutSec > 600}>
+              Save
+            </button>
+            {savedAt > 0 && !saveErr && <span className="faint" key={savedAt} style={{ animation: 'hist-flash 700ms var(--ease-out)' }}>saved</span>}
+            {saveErr && <span className="err-inline">{saveErr}</span>}
+          </div>
         </div>
 
         <div className="card">

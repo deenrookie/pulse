@@ -69,6 +69,9 @@ func (e *Engine) SetUpstreamTLS(cfg *tls.Config) { e.client.UpstreamTLS = cfg }
 func (e *Engine) CAPool() *x509.CertPool { return e.auth.CAPool() }
 
 // ListenAndServe starts the proxy listener and blocks serving it.
+// SetTimeout configures the upstream response timeout (seconds).
+func (e *Engine) SetTimeout(seconds int) { e.client.SetTimeout(seconds) }
+
 func (e *Engine) ListenAndServe(addr string) error {
 	ln, err := net.Listen("tcp", addr)
 	if err != nil {

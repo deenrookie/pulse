@@ -93,6 +93,17 @@ export const deleteRewriteRule = (id: string) =>
 
 export const listPlugins = () => api<{ plugins: PluginInfo[]; dir: string }>('/api/plugins')
 
+// ---------- settings ----------
+
+export interface PulseSettings {
+  responseTimeoutSec: number
+}
+
+export const getSettings = () => api<PulseSettings>('/api/settings')
+
+export const putSettings = (patch: Partial<PulseSettings>) =>
+  api<PulseSettings>('/api/settings', { method: 'PUT', body: JSON.stringify(patch) })
+
 export const reloadPlugins = () => api<{ plugins: PluginInfo[]; dir: string }>('/api/plugins/reload', { method: 'POST', body: '{}' })
 
 export const setPluginEnabled = (file: string, enabled: boolean) =>

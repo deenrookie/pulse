@@ -4,6 +4,7 @@ package api
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"net"
 	"net/http"
@@ -33,14 +34,20 @@ type Server struct {
 	bus  *events.Bus
 	rw   *rewrite.Engine
 	plug *plugins.Runtime
+	set  *Settings
 }
 
 func New(st *store.Store, eng *proxy.Engine, rep *repeater.Manager, auth *certs.Authority, bus *events.Bus,
-	rw *rewrite.Engine, plug *plugins.Runtime, version, proxyAddr, uiAddr, dataDir string) *Server {
+	rw *rewrite.Engine, plug *plugins.Runtime, version, proxyAddr, uiAddr, dataDir string) (*Server, error) {
+	set, err := LoadSettings(dataDir)
+	if err != nil {
+		return nil, fmt.Errorf("load settings: %w", err)
+	}
+	eng.SetTimeout(set.ResponseTimeoutSec)
 	return &Server{
 		Version: version, ProxyAddr: proxyAddr, UIAddr: uiAddr, DataDir: dataDir,
-		st: st, eng: eng, rep: rep, auth: auth, bus: bus, rw: rw, plug: plug,
-	}
+		st: st, eng: eng, rep: rep, auth: auth, bus: bus, rw: rw, plug: plug, set: set,
+	}, nil
 }
 
 // Handler builds the routed handler with host-header validation.
@@ -50,6 +57,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/api/status", s.handleStatus)
 	mux.HandleFunc("/api/cert", s.handleCert)
 	mux.HandleFunc("/api/decode", s.handleDecode)
+	mux.HandleFunc("/api/settings", s.handleSettings)
 	mux.HandleFunc("/api/flows", s.handleFlows)
 	mux.HandleFunc("/api/flows/", s.handleFlow)
 	mux.HandleFunc("/api/events", s.handleEvents)

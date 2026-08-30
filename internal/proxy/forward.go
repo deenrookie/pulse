@@ -23,13 +23,24 @@ const (
 type Client struct {
 	MaxBody     int64
 	DialTimeout time.Duration
+	// ResponseTimeout bounds reading the response head (SetTimeout updates).
+	ResponseTimeout time.Duration
 	// UpstreamTLS overrides the upstream TLS config (tests inject a trust
 	// pool here). nil means system roots with SNI.
 	UpstreamTLS *tls.Config
 }
 
 func NewClient() *Client {
-	return &Client{MaxBody: DefaultMaxBody, DialTimeout: dialTimeout}
+	return &Client{MaxBody: DefaultMaxBody, DialTimeout: dialTimeout, ResponseTimeout: responseHeadTimout}
+}
+
+// SetTimeout configures the upstream response timeout (seconds). Values
+// below 1 are ignored.
+func (c *Client) SetTimeout(seconds int) {
+	if seconds < 1 {
+		return
+	}
+	c.ResponseTimeout = time.Duration(seconds) * time.Second
 }
 
 // Result carries the captured response. For 101 upgrades Raw is the live
@@ -107,7 +118,11 @@ func (c *Client) Do(req *store.Request) (*Result, error) {
 	}
 
 	br := bufio.NewReader(conn)
-	_ = conn.SetReadDeadline(time.Now().Add(responseHeadTimout))
+	respTimeout := c.ResponseTimeout
+	if respTimeout <= 0 {
+		respTimeout = responseHeadTimout
+	}
+	_ = conn.SetReadDeadline(time.Now().Add(respTimeout))
 	head, err := readResponseHead(br)
 	if err != nil {
 		conn.Close()
