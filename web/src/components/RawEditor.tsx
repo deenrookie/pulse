@@ -107,14 +107,9 @@ function useRawWrap(): [boolean, () => void] {
 export default function RawEditor({
   value,
   onChange,
-  note,
-  hideHint,
 }: {
   value: string
   onChange: (next: string) => void
-  note?: string
-  /** suppress the format hint bar (e.g. Repeater keeps its pane clean) */
-  hideHint?: boolean
 }) {
   const [wrap, toggleWrap] = useRawWrap()
   const mirrorRef = useRef<HTMLPreElement>(null)
@@ -454,12 +449,6 @@ export default function RawEditor({
           </>
         )}
       </div>
-      {!hideHint && (
-        <div className="raw-hint">
-          First line <kbd>METHOD path HTTP/1.1</kbd> · the <kbd>Host</kbd> header (or an absolute URL) sets the target ·
-          body after the first blank line · <kbd>Ctrl Enter</kbd> sends{note ? ' · ' + note : ''}
-        </div>
-      )}
     </div>
   )
 }

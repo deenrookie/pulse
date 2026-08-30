@@ -50,7 +50,6 @@ export function RequestInspector({
   flowId,
   raw,
   onRawChange,
-  hideRawHint,
   headerExtra,
 }: {
   req: RequestLike
@@ -58,8 +57,6 @@ export function RequestInspector({
   /** Repeater mode: the Raw tab becomes an editor wired to the parent state */
   raw?: string
   onRawChange?: (v: string) => void
-  /** suppress the raw format hint bar under the editor */
-  hideRawHint?: boolean
   /** slot right after the URL meta in the header (e.g. Repeater settings) */
   headerExtra?: React.ReactNode
 }) {
@@ -104,7 +101,7 @@ export function RequestInspector({
       </div>
       <div className={`panel-body ${tab === 'raw' && editableRaw ? 'io-flex' : ''}`}>
         {tab === 'raw' && editableRaw ? (
-          <RawEditor value={raw} onChange={onRawChange} hideHint={hideRawHint} />
+          <RawEditor value={raw} onChange={onRawChange} />
         ) : (
           <TabBody tab={tab} headers={req.headers} params={params} text={text} b64={req.body} kind="request" req={req} curlFlowId={flowId} curlRequest={editableRaw ? req : undefined} />
         )}

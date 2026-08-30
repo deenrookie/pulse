@@ -667,7 +667,6 @@ export default function RepeaterView({ pulse, goProxy }: { pulse: PulseState; go
                         req={reqView}
                         raw={raw.text}
                         onRawChange={(text) => setRaw({ text, __id: currentId })}
-                        hideRawHint
                         headerExtra={<RequestOptions autoCL={autoCL} setAutoCL={setAutoCL} />}
                       />
                     ) : null

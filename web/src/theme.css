@@ -736,14 +736,6 @@ textarea.editor.raw {
   flex: 1; min-height: 120px; line-height: 1.6; font-size: 12.5px;
   white-space: pre; overflow: auto;
 }
-.raw-hint {
-  flex: none; padding: 6px 12px;
-  font-size: 11px; color: var(--text-faint);
-  border-top: 1px solid var(--border);
-  background: var(--bg-raised);
-  line-height: 1.6;
-}
-.raw-hint kbd { margin: 0 2px; }
 
 /* ============ 9. Side lists (intercept queue / repeater tabs) ============ */
 .side-list { width: 250px; flex: none; }
@@ -1514,13 +1506,6 @@ table.flows tbody tr.hl.selected td { background: var(--accent-bg); box-shadow: 
 /* editable raw fills its pane (no dead space before the response pane) */
 .panel-body.io-flex { display: flex; flex-direction: column; }
 .panel-body.io-flex > * { flex: 1; min-height: 0; }
-.raw-hint .mini {
-  background: var(--bg-input); color: var(--text-muted);
-  border: 1px solid var(--border); border-radius: 3px;
-  font: inherit; font-size: 10px; padding: 1px 7px; cursor: pointer;
-  font-family: var(--mono);
-}
-.raw-hint .mini:hover { color: var(--accent); border-color: var(--accent-line); }
 
 /* editable raw: transparent textarea over a highlighted mirror */
 .raw-edit-stack { position: relative; flex: 1; min-height: 0; display: block; }
