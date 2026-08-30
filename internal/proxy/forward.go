@@ -2,11 +2,18 @@ package proxy
 
 import (
 	"bufio"
+	"bytes"
+	"context"
 	"crypto/tls"
 	"fmt"
+	"io"
 	"net"
+	"net/http"
 	"strings"
+	"sync"
 	"time"
+
+	"golang.org/x/net/http2"
 
 	"pulse/internal/store"
 )
@@ -19,7 +26,9 @@ const (
 
 // Client sends captured requests upstream and captures the response.
 // It dials manually (instead of http.Transport) so 101-upgraded connections
-// can be handed back for raw tunneling.
+// can be handed back for raw tunneling. HTTPS requests that are not upgrades
+// are first attempted over HTTP/2 (ALPN); anything that fails there falls
+// back to the hand-rolled HTTP/1.1 path.
 type Client struct {
 	MaxBody     int64
 	DialTimeout time.Duration
@@ -28,6 +37,10 @@ type Client struct {
 	// UpstreamTLS overrides the upstream TLS config (tests inject a trust
 	// pool here). nil means system roots with SNI.
 	UpstreamTLS *tls.Config
+
+	h2mu  sync.Mutex
+	h2tr  *http2.Transport
+	h2tls *tls.Config // the UpstreamTLS the transport was built from
 }
 
 func NewClient() *Client {
@@ -73,6 +86,103 @@ func (c *Client) DoWithTimeout(req *store.Request, timeout time.Duration) (*Resu
 }
 
 func (c *Client) Do(req *store.Request) (*Result, error) {
+	if strings.HasPrefix(strings.ToLower(req.URL), "https://") && !hasHeader(req.Headers, "Upgrade") {
+		// HTTP/2 first: multiplexed, and most modern origins speak it. Any
+		// failure (no h2 on ALPN, dial, stream error) falls through to the
+		// HTTP/1.1 path below, which re-dials a fresh connection.
+		if res, ok, err := c.doH2(req); ok {
+			return res, err
+		}
+	}
+	return c.doHTTP1(req)
+}
+
+// h2Transport lazily builds the HTTP/2 round tripper; rebuilt when tests
+// swap UpstreamTLS after the client was constructed.
+func (c *Client) h2Transport() *http2.Transport {
+	c.h2mu.Lock()
+	defer c.h2mu.Unlock()
+	if c.h2tr == nil || c.h2tls != c.UpstreamTLS {
+		cfg := &tls.Config{}
+		if c.UpstreamTLS != nil {
+			cfg = c.UpstreamTLS.Clone()
+		}
+		c.h2tr = &http2.Transport{TLSClientConfig: cfg}
+		c.h2tls = c.UpstreamTLS
+	}
+	return c.h2tr
+}
+
+// doH2 sends req over HTTP/2. ok=false means "not handled — use HTTP/1.1"
+// (the origin declined h2 or the transport failed before a usable stream).
+func (c *Client) doH2(req *store.Request) (*Result, bool, error) {
+	out, err := http.NewRequest(req.Method, req.URL, nil)
+	if err != nil {
+		return nil, false, nil
+	}
+	for _, h := range req.Headers {
+		name := http.CanonicalHeaderKey(h.Name)
+		if name == "Host" {
+			continue // expressed via URL
+		}
+		if hopByHop(h.Name) || name == "Content-Length" || name == "Connection" {
+			continue // illegal in HTTP/2 framing
+		}
+		out.Header.Add(name, h.Value)
+	}
+	if len(req.Body) > 0 {
+		out.Body = io.NopCloser(bytes.NewReader(req.Body))
+		out.ContentLength = int64(len(req.Body))
+	}
+	respTimeout := c.ResponseTimeout
+	if respTimeout <= 0 {
+		respTimeout = responseHeadTimout
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), respTimeout)
+	defer cancel()
+	out = out.WithContext(ctx)
+
+	hr, err := c.h2Transport().RoundTrip(out)
+	if err != nil {
+		// no h2 (or the stream died): let the HTTP/1.1 path retry
+		return nil, false, nil
+	}
+	defer hr.Body.Close()
+
+	body, truncated, err := readLimited(hr.Body, c.maxBody())
+	if err != nil {
+		hr.Body.Close()
+		return nil, true, fmt.Errorf("read h2 response body: %w", err)
+	}
+	_ = hr.Body.Close()
+	// hr.Status is "200 OK" — keep only the phrase for the stored reason
+	reason := hr.Status
+	if i := strings.IndexByte(hr.Status, ' '); i >= 0 {
+		reason = hr.Status[i+1:]
+	}
+	resp := &store.Response{
+		StatusCode:  hr.StatusCode,
+		Reason:      reason,
+		HTTPVersion: "HTTP/2.0",
+		Headers:     headersFromHTTP(hr.Header),
+		Body:        body,
+		Truncated:   truncated,
+		Timestamp:   time.Now(),
+	}
+	return &Result{Resp: resp}, true, nil
+}
+
+func headersFromHTTP(h http.Header) []store.Header {
+	out := make([]store.Header, 0, len(h))
+	for name, vals := range h {
+		for _, v := range vals {
+			out = append(out, store.Header{Name: name, Value: v})
+		}
+	}
+	return out
+}
+
+func (c *Client) doHTTP1(req *store.Request) (*Result, error) {
 	scheme := "http"
 	rest := req.URL
 	if i := strings.Index(rest, "://"); i >= 0 {

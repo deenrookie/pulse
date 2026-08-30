@@ -8,6 +8,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -197,6 +198,7 @@ func (e *Engine) handleConnect(conn net.Conn, br *bufio.Reader, target string) {
 	}
 
 	tlsConn := tls.Server(bufferedConn{conn, br}, &tls.Config{
+		NextProtos: []string{"h2", "http/1.1"},
 		GetCertificate: func(hello *tls.ClientHelloInfo) (*tls.Certificate, error) {
 			name := hello.ServerName
 			if name == "" {
@@ -211,23 +213,32 @@ func (e *Engine) handleConnect(conn net.Conn, br *bufio.Reader, target string) {
 	}
 	_ = conn.SetDeadline(time.Time{})
 	defer tlsConn.Close()
+	if tlsConn.ConnectionState().NegotiatedProtocol == "h2" {
+		e.serveHTTP2(tlsConn, target)
+		return
+	}
 	e.serveLoop(tlsConn, bufio.NewReader(tlsConn), target)
 }
 
-// process runs the pipeline for one request on a client connection and
-// returns whether the connection may serve another request. Pipeline order:
-// record → plugins → match&replace → intercept → upstream; the response runs
-// plugins → match&replace before reaching the client. The stored flow always
-// reflects what was actually sent and received.
-func (e *Engine) process(conn net.Conn, br *bufio.Reader, req *store.Request) bool {
+// respondFunc delivers the pipeline outcome to the client transport: either
+// the final response or a gateway error (nil resp). Both HTTP/1 (conn
+// writer) and HTTP/2 (ResponseWriter) paths provide one.
+type respondFunc func(resp *store.Response, gwErr error) error
+
+var errDroppedByInterceptor = errors.New("request dropped by interceptor")
+
+// executeRequest runs the capture pipeline shared by every transport:
+// record → plugins → match&replace → intercept → upstream → response hooks.
+// It returns the upstream Result (Upgraded set only for HTTP/1 upgrades —
+// the caller then owns the raw tunnel and the already-finalized flow), the
+// flow, and whether the client connection may serve another request.
+func (e *Engine) executeRequest(req *store.Request, respond respondFunc) (*Result, *store.Flow, bool) {
 	req.ID = e.store.NewID()
 	fl := &store.Flow{ID: req.ID, Req: *req, State: store.StatePending}
 	if err := e.store.Add(fl); err != nil {
 		log.Printf("store add: %v", err)
 	}
 	e.publishFlow("flow", fl)
-
-	keepAlive := wantsKeepAlive(req)
 
 	if e.Plugins != nil && e.Plugins.ApplyRequest(req) {
 		fl.Req = *req
@@ -248,14 +259,14 @@ func (e *Engine) process(conn net.Conn, br *bufio.Reader, req *store.Request) bo
 		held, ok := e.Inter.Hold(e.ctx, req)
 		if !ok {
 			if e.ctx.Err() != nil {
-				return false
+				return nil, nil, false
 			}
 			// dropped by user or client vanished
 			fl.State = store.StateDropped
 			_ = e.store.Update(fl)
 			e.publishFlow("flow_update", fl)
-			writeGatewayError(conn, "Pulse: request dropped by interceptor")
-			return false
+			_ = respond(nil, errDroppedByInterceptor)
+			return nil, fl, false
 		}
 		if held != req {
 			req = held
@@ -272,15 +283,42 @@ func (e *Engine) process(conn net.Conn, br *bufio.Reader, req *store.Request) bo
 		fl.Error = err.Error()
 		_ = e.store.Update(fl)
 		e.publishFlow("flow_update", fl)
-		writeGatewayError(conn, fl.Error)
-		return false
+		_ = respond(nil, err)
+		return nil, fl, false
 	}
 	if res.Upgraded {
-		_ = writeRawResponseHead(conn, respHeadOf(res.Resp))
 		fl.Resp = res.Resp
 		fl.State = store.StateComplete
 		_ = e.store.Update(fl)
 		e.publishFlow("flow_update", fl)
+		return res, fl, false // caller tunnels the raw connection
+	}
+	if e.Plugins != nil && e.Plugins.ApplyResponse(req, res.Resp) {
+		fl.Resp = res.Resp
+	}
+	if e.Rewrite != nil && e.Rewrite.ApplyResponse(res.Resp) {
+		fl.Resp = res.Resp
+	}
+	_ = respond(res.Resp, nil)
+	fl.Resp = res.Resp
+	fl.State = store.StateComplete
+	_ = e.store.Update(fl)
+	e.publishFlow("flow_update", fl)
+	return res, fl, true
+}
+
+// process runs the pipeline for one HTTP/1 request on a client connection
+// and returns whether the connection may serve another request.
+func (e *Engine) process(conn net.Conn, br *bufio.Reader, req *store.Request) bool {
+	keepAlive := wantsKeepAlive(req)
+	res, fl, alive := e.executeRequest(req, func(resp *store.Response, gwErr error) error {
+		if gwErr != nil {
+			return writeGatewayError(conn, "Pulse: "+gwErr.Error())
+		}
+		return writeResponseToClient(conn, resp, keepAlive)
+	})
+	if res != nil && res.Upgraded {
+		_ = writeRawResponseHead(conn, respHeadOf(res.Resp))
 		if isWebSocketUpgrade(req, res.Resp) {
 			// parse-and-forward relay: frames recorded into fl.WSMessages
 			e.relayWS(conn, br, res.Raw, res.RawBR, fl)
@@ -289,20 +327,7 @@ func (e *Engine) process(conn net.Conn, br *bufio.Reader, req *store.Request) bo
 		}
 		return false
 	}
-	if e.Plugins != nil && e.Plugins.ApplyResponse(req, res.Resp) {
-		fl.Resp = res.Resp
-	}
-	if e.Rewrite != nil && e.Rewrite.ApplyResponse(res.Resp) {
-		fl.Resp = res.Resp
-	}
-	if err := writeResponseToClient(conn, res.Resp, keepAlive); err != nil {
-		log.Printf("write response to client: %v", err)
-	}
-	fl.Resp = res.Resp
-	fl.State = store.StateComplete
-	_ = e.store.Update(fl)
-	e.publishFlow("flow_update", fl)
-	return keepAlive && !res.Resp.Truncated
+	return alive && keepAlive && res != nil && !res.Resp.Truncated
 }
 
 // RoundTrip executes a request outside the proxy path (Repeater): records the

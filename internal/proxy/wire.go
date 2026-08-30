@@ -252,7 +252,13 @@ func hostOf(rawURL string) string {
 func writeRequestHead(w io.Writer, req *store.Request) error {
 	isUpgrade := hasHeader(req.Headers, "Upgrade")
 	var b bytes.Buffer
-	fmt.Fprintf(&b, "%s %s %s\r\n", req.Method, requestTarget(req.URL), orDefault(req.HTTPVersion, "HTTP/1.1"))
+	// The outbound wire speaks HTTP/1.x regardless of what the client used
+	// (an inbound HTTP/2 request must not produce an "HTTP/2.0" request line).
+	version := req.HTTPVersion
+	if !strings.HasPrefix(version, "HTTP/1.") {
+		version = "HTTP/1.1"
+	}
+	fmt.Fprintf(&b, "%s %s %s\r\n", req.Method, requestTarget(req.URL), version)
 	hasHost := hasHeader(req.Headers, "Host")
 	if !hasHost {
 		fmt.Fprintf(&b, "Host: %s\r\n", hostOf(req.URL))
