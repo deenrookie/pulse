@@ -2,12 +2,14 @@ import Icon from '../ui/Icon'
 import { getSettings, putSettings } from '../api'
 import type { PulseState } from '../state'
 import { useEffect, useState } from 'react'
+import { applyFontSize, loadFontSize, FONT_DEFAULT, FONT_MIN, FONT_MAX } from '../ui/fontSize'
 
 export default function SettingsView({ pulse }: { pulse: PulseState }) {
   const st = pulse.status
   const [timeoutSec, setTimeoutSec] = useState<number | null>(null)
   const [savedAt, setSavedAt] = useState(0)
   const [saveErr, setSaveErr] = useState<string | null>(null)
+  const [fontSize, setFontSize] = useState(loadFontSize)
 
   useEffect(() => {
     getSettings()
@@ -106,6 +108,32 @@ export default function SettingsView({ pulse }: { pulse: PulseState }) {
           ) : (
             <div className="spinner" />
           )}
+        </div>
+
+        <div className="card">
+          <h3>
+            <Icon name="contrast" size={15} />
+            Interface
+          </h3>
+          <div className="sub">
+            Base UI font size — every surface (raw views, tables, menus) scales with it. Default {FONT_DEFAULT}px;
+            applies instantly and persists.
+          </div>
+          <div className="font-row">
+            <input
+              type="range"
+              min={FONT_MIN}
+              max={FONT_MAX}
+              step={0.5}
+              value={fontSize}
+              aria-label="UI font size"
+              onChange={(e) => setFontSize(applyFontSize(Number(e.target.value)))}
+            />
+            <span className="font-val">{fontSize}px</span>
+            <button className="btn sm" disabled={fontSize === FONT_DEFAULT} onClick={() => setFontSize(applyFontSize(FONT_DEFAULT))}>
+              Reset
+            </button>
+          </div>
         </div>
 
         <div className="card">

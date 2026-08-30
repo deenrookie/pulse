@@ -222,6 +222,14 @@
   background: rgba(94, 106, 210, 0.22);
 }
 
+/* settings: font-size slider row */
+.font-row { display: flex; align-items: center; gap: 12px; margin-top: 10px; }
+.font-row input[type='range'] { flex: 1; accent-color: var(--accent); cursor: pointer; }
+.font-val {
+  flex: none; min-width: 48px; text-align: right;
+  font-family: var(--mono); font-size: 12px; color: var(--text-muted);
+}
+
 /* shadow composes the per-theme tint */
 :root { --shadow: 0 12px 40px rgb(var(--shadow-rgb) / 0.6), 0 2px 8px rgb(var(--shadow-rgb) / 0.45); }
 

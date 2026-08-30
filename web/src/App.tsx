@@ -7,6 +7,7 @@ import SiteMapView from './views/SiteMapView'
 import SettingsView from './views/SettingsView'
 import Icon, { type IconName } from './ui/Icon'
 import Decoder from './ui/Decoder'
+import { applyFontSize, loadFontSize } from './ui/fontSize'
 import { usePulse } from './state'
 
 type Tab = 'proxy' | 'intercept' | 'repeater' | 'sitemap' | 'extensions' | 'settings'
@@ -82,6 +83,11 @@ export default function App() {
     }
     window.addEventListener('pulse:send-to-decoder', onSend)
     return () => window.removeEventListener('pulse:send-to-decoder', onSend)
+  }, [])
+
+  // restore the persisted UI font scale before first paint settles
+  useEffect(() => {
+    applyFontSize(loadFontSize())
   }, [])
 
   // apply theme to <html>, persist it, and keep the favicon in sync
