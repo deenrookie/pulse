@@ -136,15 +136,12 @@ export default function App() {
         if (tab !== 'proxy') go('proxy')
         window.dispatchEvent(new CustomEvent('pulse:focus-filter'))
       } else if (mod && e.key.toLowerCase() === 'r') {
-        // Burp-style Ctrl+R: send the selected flow to Repeater and jump there
+        // Burp-style Ctrl+R: send the selected flow to Repeater. No jump —
+        // the toast confirms, and the next Repeater visit focuses the newest.
         e.preventDefault()
         const target = e.target as HTMLElement
         if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') return
-        if (pulse.selectedId) {
-          void pulse.sendToRepeater(pulse.selectedId).then((ok) => {
-            if (ok) go('repeater')
-          })
-        }
+        if (pulse.selectedId) void pulse.sendToRepeater(pulse.selectedId)
       }
     }
     window.addEventListener('keydown', onKey)

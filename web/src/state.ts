@@ -187,10 +187,16 @@ export function usePulse() {
   const sendToRepeater = useCallback(
     async (flowId: string) => {
       try {
-        await api.createRepeaterTab({ flowId })
+        const tab = await api.createRepeaterTab({ flowId })
         const r = await api.listRepeater()
         setRepeaterTabs(r.tabs)
-        notify('Sent to Repeater')
+        notify(`Sent to Repeater (${tab.id})`)
+        // arm the "focus newest on next Repeater visit" behavior
+        try {
+          localStorage.setItem('pulse.repeater.jumpNewest', '1')
+        } catch {
+          /* ignore */
+        }
         return true
       } catch (e) {
         notify(`Send to Repeater failed: ${(e as Error).message}`, 'err')

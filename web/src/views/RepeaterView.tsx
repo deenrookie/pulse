@@ -66,14 +66,46 @@ export default function RepeaterView({ pulse, goProxy }: { pulse: PulseState; go
     return () => window.removeEventListener('hashchange', apply)
   }, [])
 
-  // entering the Repeater view focuses the newest tab (Ctrl+R lands here)
+  // entering the Repeater view: if a send-to-repeater happened since the last
+  // visit, focus the newest tab; otherwise restore the last-operated one
   useEffect(() => {
-    if (tabs.length > 0) {
+    let jump = false
+    try {
+      jump = localStorage.getItem('pulse.repeater.jumpNewest') === '1'
+      if (jump) localStorage.removeItem('pulse.repeater.jumpNewest')
+    } catch {
+      /* ignore */
+    }
+    if (viewParam('tab')) return // explicit deep link wins
+    if (tabs.length === 0) return
+    if (jump) {
       const newest = tabs.reduce((a, b) => (a.updatedAt >= b.updatedAt ? a : b))
       setSelected(newest.id)
+      return
     }
+    try {
+      const saved = localStorage.getItem('pulse.repeater.selected')
+      if (saved && tabs.some((t) => t.id === saved)) {
+        setSelected(saved)
+        return
+      }
+    } catch {
+      /* ignore */
+    }
+    setSelected(null) // falls back to tabs[0]
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  // remember the operated tab so a plain revisit restores it
+  useEffect(() => {
+    if (currentId) {
+      try {
+        localStorage.setItem('pulse.repeater.selected', currentId)
+      } catch {
+        /* ignore */
+      }
+    }
+  }, [currentId])
 
   // address bar mirrors the selected tab (replaceState fires no hashchange)
   useEffect(() => {
