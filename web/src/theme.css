@@ -676,9 +676,10 @@ tr.vspacer td { border: none; padding: 0; }
 }
 .code-view.raw-lines > div { position: relative; padding-left: 48px; }
 
-/* JSON body property keys and Cookie/Set-Cookie pair keys */
-.json-key { color: var(--info); }
-.cookie-key { color: var(--info); }
+/* JSON body property keys and Cookie/Set-Cookie pair keys — purple, distinct
+   from the info-blue used for header names */
+.json-key { color: var(--purple); }
+.cookie-key { color: var(--purple); }
 
 .summary-strip {
   display: flex; flex-wrap: wrap; gap: 5px 16px;
