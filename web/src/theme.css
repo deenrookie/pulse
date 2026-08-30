@@ -8,6 +8,10 @@
    midnight  "midnight signal" — Sentry: violet-midnight surfaces,
              electric lime signal accent
 
+   Structural tokens (type/geometry/z/motion) are theme-independent.
+   All ink/surface pairs in both themes verified WCAG AA.
+   ================================================================ */
+
 /* JetBrains Mono (OFL) bundled so the mono voice is identical on every
    machine — latin subset only; anything outside it falls through the
    stack to the system monospace. */
@@ -25,10 +29,6 @@
   font-style: normal;
   font-display: swap;
 }
-
-   Structural tokens (type/geometry/z/motion) are theme-independent.
-   All ink/surface pairs in both themes verified WCAG AA.
-   ================================================================ */
 
 /* ============ 1. Tokens ============ */
 :root {
