@@ -136,6 +136,24 @@ export default function RepeaterView({ pulse, goProxy }: { pulse: PulseState; go
   // response history navigation (Burp-style): index into tab.history; null = latest
   const [histIdx, setHistIdx] = useState<number | null>(null)
   const [autoCL, setAutoCL] = useState(loadAutoCL)
+  // request/response arrangement: stacked (default) or side-by-side
+  const [layout, setLayout] = useState<'v' | 'h'>(() => {
+    try {
+      return localStorage.getItem('pulse.repeater.layout') === 'h' ? 'h' : 'v'
+    } catch {
+      return 'v'
+    }
+  })
+  const toggleLayout = () =>
+    setLayout((l) => {
+      const next = l === 'v' ? 'h' : 'v'
+      try {
+        localStorage.setItem('pulse.repeater.layout', next)
+      } catch {
+        /* ignore */
+      }
+      return next
+    })
   const [sentAt, setSentAt] = useState<number>(0)
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
@@ -543,6 +561,13 @@ export default function RepeaterView({ pulse, goProxy }: { pulse: PulseState; go
                 <Icon name="trash" size={13} />
                 Delete
               </button>
+              <button
+                className="btn ghost sm icon-btn"
+                title={layout === 'v' ? 'Switch to side-by-side (request | response)' : 'Switch to stacked (request above response)'}
+                onClick={toggleLayout}
+              >
+                <Icon name="layout" size={13} />
+              </button>
               {hist.length > 0 && (
                 <span className="hist-nav" key={sentAt}>
                   <button
@@ -602,9 +627,9 @@ export default function RepeaterView({ pulse, goProxy }: { pulse: PulseState; go
             <div className="panel-body" style={{ display: 'flex', flexDirection: 'column', padding: 0 }}>
               {raw ? (
                 <Split
-                  dir="v"
-                  storageKey="pulse.split.repeater"
-                  initial={0.55}
+                  dir={layout}
+                  storageKey={layout === 'v' ? 'pulse.split.repeater.v' : 'pulse.split.repeater.h'}
+                  initial={layout === 'v' ? 0.55 : 0.5}
                   a={
                     reqView ? (
                       <RequestInspector
