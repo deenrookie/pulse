@@ -407,6 +407,10 @@ kbd {
 }
 .view.row { flex-direction: row; }
 .view.padded { padding: 10px; gap: 10px; }
+/* content area nested inside a .view (ext-tabs above): a plain flex child,
+   NOT another .view — .view is position:absolute inset:0 and would escape
+   the parent's height constraint, breaking inner scrolling */
+.view-fill { flex: 1; min-height: 0; min-width: 0; display: flex; flex-direction: column; position: relative; }
 @keyframes view-in { from { opacity: 0; transform: translateY(3px); } to { opacity: 1; transform: none; } }
 
 /* ============ 4. Controls ============ */
@@ -944,33 +948,22 @@ textarea.editor.raw {
   display: flex; align-items: center; gap: 8px;
   padding: 8px 16px; border-bottom: 1px solid var(--border); flex: none; flex-wrap: wrap;
 }
-.plugin-src {
-  flex: 1.4; min-height: 160px; resize: none;
-  padding: 10px 14px; border: none; outline: none;
-  background: var(--bg-input); color: var(--text);
-  font-family: var(--mono); font-size: 12.5px; line-height: 1.6;
-  white-space: pre; overflow: auto; border-bottom: 1px solid var(--border);
+.editor-toolbar .plugin-status {
+  flex: none; max-width: 40%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .plugin-status { font-size: 11.5px; font-family: var(--mono); word-break: break-all; }
 .plugin-status.ok { color: var(--ok, #3fb950); }
 .plugin-status.err { color: var(--danger); }
 .plugin-status.warn { color: var(--warn); flex: none; }
-.editor-toolbar .plugin-status { flex: none; }
-.plugin-fixture {
-  flex: 1; min-height: 120px; display: flex; flex-direction: column;
-}
+/* CodeMirror host: the editor fills its pane; drag the splitter to resize */
+.cm-host { flex: 1; min-height: 0; min-width: 0; overflow: hidden; display: flex; }
+.cm-host .cm-editor { flex: 1; min-height: 0; }
+.plugin-test { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
 .fixture-head {
   display: flex; align-items: center; gap: 12px;
   padding: 7px 16px 6px; flex: none;
 }
-.plugin-fixture-src {
-  flex: 1; min-height: 80px; resize: none;
-  padding: 8px 14px; border: none; outline: none; border-top: 1px solid var(--border);
-  background: var(--bg); color: var(--text-muted);
-  font-family: var(--mono); font-size: 11.5px; line-height: 1.55;
-  white-space: pre; overflow: auto;
-}
-.plugin-test-result { padding: 8px 16px 12px; border-top: 1px solid var(--border); flex: none; max-height: 220px; overflow: auto; }
+.plugin-test-result { padding: 8px 16px 12px; border-top: 1px solid var(--border); flex: none; max-height: 40%; overflow: auto; }
 .sample-card { border-bottom: 1px solid var(--border); padding: 13px 16px; }
 .sample-card .head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .sample-card .name { font-weight: 600; font-size: 12.5px; color: var(--text); }

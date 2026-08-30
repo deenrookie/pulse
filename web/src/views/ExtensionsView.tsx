@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react'
 import * as api from '../api'
 import Icon from '../ui/Icon'
 import Empty from '../ui/Empty'
+import Split from '../ui/Split'
+import CodeEditor from '../ui/CodeEditor'
 import { confirm } from '../ui/Confirm'
 import ContextMenu, { type MenuItem } from '../components/ContextMenu'
 import type { PluginInfo, PluginTestResult, RewriteRule, RewriteZone, TestMessage } from '../types'
@@ -30,9 +32,7 @@ export default function ExtensionsView({ notify }: { notify: (text: string, kind
           Plugins
         </button>
       </div>
-      <div className="view padded" style={{ position: 'relative' }}>
-        {tab === 'rewrite' ? <RewritePanel notify={notify} /> : <PluginsPanel notify={notify} />}
-      </div>
+      <div className="view-fill padded">{tab === 'rewrite' ? <RewritePanel notify={notify} /> : <PluginsPanel notify={notify} />}</div>
     </div>
   )
 }
@@ -730,7 +730,12 @@ function EditorTab({
   }
 
   return (
-    <div className="plugin-editor">
+    <div className="plugin-editor" onKeyDown={(e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+        e.preventDefault()
+        void doSave()
+      }
+    }}>
       <div className="editor-toolbar">
         <input
           className="input mono"
@@ -741,15 +746,16 @@ function EditorTab({
           onChange={(e) => setFile(e.target.value)}
         />
         {!fileNameOk && <span className="plugin-status err">name must be *.js</span>}
-        {savedSrc !== null && src !== savedSrc && <span className="plugin-status warn" title="Edited since last save">● unsaved</span>}
+        {savedSrc !== null && src !== savedSrc && (
+          <span className="plugin-status warn" title="Edited since last save">
+            ● unsaved
+          </span>
+        )}
+        {check && <span className={`plugin-status ${check.ok ? 'ok' : 'err'}`}>{check.ok ? '✓ ' : '✗ '}{check.text}</span>}
         <div className="spacer" />
         <button className="btn ghost sm" disabled={busy} title="Dry-compile without saving" onClick={doCheck}>
           <Icon name="check" size={13} />
           Check
-        </button>
-        <button className="btn ghost sm" disabled={busy} title="Run the hook against the fixture below — zero traffic" onClick={doTest}>
-          <Icon name="play" size={13} />
-          Test run
         </button>
         {exists && (
           <button className="btn danger sm" disabled={busy} onClick={doDelete}>
@@ -761,57 +767,53 @@ function EditorTab({
           Save to disk
         </button>
       </div>
-      <textarea
-        className="plugin-src"
-        value={src}
-        spellCheck={false}
-        onChange={(e) => setSrc(e.target.value)}
-        onKeyDown={(e) => {
-          if ((e.ctrlKey || e.metaKey) && e.key === 's') {
-            e.preventDefault()
-            void doSave()
-          }
-        }}
-      />
-      {check && <div className={`plugin-status ${check.ok ? 'ok' : 'err'}`}>{check.ok ? '✓ ' : '✗ '}{check.text}</div>}
-      <div className="plugin-fixture">
-        <div className="fixture-head">
-          <span className="lbl">Test fixture</span>
-          <label className="switch" title="Which hook the test run executes">
-            <input type="checkbox" checked={hook === 'response'} onChange={(e) => setHook(e.target.checked ? 'response' : 'request')} />
-            <span className="track" />
-            onResponse
-          </label>
-          <span className="faint" style={{ fontSize: 11 }}>
-            the hook runs against this JSON — no traffic is sent
-          </span>
-        </div>
-        <textarea className="plugin-fixture-src" value={fixture} spellCheck={false} onChange={(e) => setFixture(e.target.value)} />
-        {result && (
-          <div className="plugin-test-result">
-            {result.error ? (
-              <div className="plugin-err">{result.error}</div>
-            ) : (
-              <div className="plugin-status ok">
-                ✓ ran clean · {result.changed ? 'message modified' : 'no changes'}
+      <Split
+        dir="v"
+        storageKey="pulse.split.pluginEditor"
+        initial={0.62}
+        a={<CodeEditor value={src} onChange={setSrc} language="js" />}
+        b={
+          <div className="plugin-test">
+            <div className="fixture-head">
+              <span className="lbl">Test fixture</span>
+              <label className="switch" title="Which hook the test run executes">
+                <input type="checkbox" checked={hook === 'response'} onChange={(e) => setHook(e.target.checked ? 'response' : 'request')} />
+                <span className="track" />
+                onResponse
+              </label>
+              <span className="faint" style={{ fontSize: 11 }}>
+                runs against this JSON — no traffic is sent
+              </span>
+              <div className="spacer" />
+              <button className="btn ghost sm" disabled={busy} title="Run the hook against the fixture" onClick={doTest}>
+                {busy ? <span className="spinner" /> : <Icon name="play" size={13} />}
+                Test run
+              </button>
+            </div>
+            <CodeEditor value={fixture} onChange={setFixture} language="json" />
+            {result && (
+              <div className="plugin-test-result">
+                {result.error ? (
+                  <div className="plugin-err">{result.error}</div>
+                ) : (
+                  <div className="plugin-status ok">✓ ran clean · {result.changed ? 'message modified' : 'no changes'}</div>
+                )}
+                {result.logs.length > 0 && (
+                  <pre className="plugin-log">{result.logs.map((l, i) => `${String(i + 1).padStart(2, ' ')}  ${l}`).join('\n')}</pre>
+                )}
+                {result.changed && (
+                  <pre className="plugin-log">
+                    {`→ request ${result.request.method ?? ''} ${result.request.url ?? ''}`}
+                    {result.request.headers?.map((h) => `\n  ${h.name}: ${h.value}`).join('') ?? ''}
+                    {result.request.body ? `\n  body: ${result.request.body}` : ''}
+                    {result.response ? `\n→ response ${result.response.status ?? ''} ${result.response.reason ?? ''}${result.response.body ? `\n  body: ${result.response.body}` : ''}` : ''}
+                  </pre>
+                )}
               </div>
             )}
-            {result.logs.length > 0 && (
-              <pre className="plugin-log">
-                {result.logs.map((l, i) => `${String(i + 1).padStart(2, ' ')}  ${l}`).join('\n')}
-              </pre>
-            )}
-            {result.changed && (
-              <pre className="plugin-log">
-                {`→ request ${result.request.method ?? ''} ${result.request.url ?? ''}`}
-                {result.request.headers?.map((h) => `\n  ${h.name}: ${h.value}`).join('') ?? ''}
-                {result.request.body ? `\n  body: ${result.request.body}` : ''}
-                {result.response ? `\n→ response ${result.response.status ?? ''} ${result.response.reason ?? ''}${result.response.body ? `\n  body: ${result.response.body}` : ''}` : ''}
-              </pre>
-            )}
           </div>
-        )}
-      </div>
+        }
+      />
     </div>
   )
 }
