@@ -83,6 +83,7 @@
 
   /* signal — cream is the accent (Warp's inverted CTA) */
   --accent: #f7f5f0;
+  --accent-rgb: 247 245 240;
   --accent-dim: #dedbd3;
   --accent-bg: rgba(247, 245, 240, 0.09);
   --accent-line: rgba(247, 245, 240, 0.35);
@@ -133,6 +134,7 @@
 
   /* signal — single electric accent (Sentry lime) */
   --accent: #c2ef4e;
+  --accent-rgb: 194 239 78;
   --accent-dim: #a4cc35;
   --accent-bg: rgba(194, 239, 78, 0.1);
   --accent-line: rgba(194, 239, 78, 0.35);
@@ -186,6 +188,7 @@
 
   /* signal — the Linear lavender, never decorative */
   --accent: #5e6ad2;
+  --accent-rgb: 94 106 210;
   --accent-dim: #4d58c4;
   --accent-bg: rgba(94, 106, 210, 0.08);
   --accent-line: rgba(94, 106, 210, 0.4);
