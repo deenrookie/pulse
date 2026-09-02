@@ -5,7 +5,7 @@
 import { useEffect, useRef } from 'react'
 import { EditorView, keymap, lineNumbers, highlightActiveLine, drawSelection } from '@codemirror/view'
 import { EditorState, Compartment } from '@codemirror/state'
-import { indentWithTab, defaultKeymap } from '@codemirror/commands'
+import { indentWithTab, defaultKeymap, standardKeymap } from '@codemirror/commands'
 import { javascript } from '@codemirror/lang-javascript'
 import { json } from '@codemirror/lang-json'
 import { syntaxHighlighting, HighlightStyle, bracketMatching, indentUnit } from '@codemirror/language'
@@ -91,7 +91,7 @@ export default function CodeEditor({
         bracketMatching(),
         indentUnit.of('  '),
         EditorView.lineWrapping,
-        keymap.of([indentWithTab, ...defaultKeymap]),
+        keymap.of([indentWithTab, ...defaultKeymap, ...standardKeymap]),
         languageComp.of(language === 'js' ? javascript() : json()),
         cmBase,
         autoHeight ? cmAuto : cmFill,
