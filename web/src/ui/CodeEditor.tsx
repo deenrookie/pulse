@@ -13,9 +13,11 @@ import { tags as t } from '@lezer/highlight'
 
 const languageComp = new Compartment()
 
-const cmTheme = EditorView.theme({
-  '&': { height: '100%', backgroundColor: 'var(--bg-input)', color: 'var(--text)', fontSize: '12.5px' },
-  '.cm-scroller': { fontFamily: 'var(--mono)', lineHeight: '1.65', overflow: 'auto', padding: '6px 0' },
+// shared look for both modes: gutters/cursor/selection must follow the app
+// theme — CodeMirror's built-in defaults are light-theme and glare on dark.
+const cmBase = EditorView.theme({
+  '&': { backgroundColor: 'var(--bg-input)', color: 'var(--text)', fontSize: '12.5px' },
+  '.cm-scroller': { fontFamily: 'var(--mono)', lineHeight: '1.65', padding: '6px 0' },
   '.cm-content': { caretColor: 'var(--accent)' },
   '.cm-gutters': {
     backgroundColor: 'var(--bg)', color: 'var(--text-faint)',
@@ -33,6 +35,17 @@ const cmTheme = EditorView.theme({
   },
 })
 
+// default mode: the editor fills its pane and scrolls inside
+const cmFill = EditorView.theme({
+  '&': { height: '100%' },
+  '.cm-scroller': { overflow: 'auto' },
+})
+
+// auto-height mode: the editor grows with its content (Samples showcase)
+const cmAuto = EditorView.theme({
+  '.cm-scroller': { overflow: 'visible' },
+})
+
 // restrained token palette — a monitoring tool reads first, decorates second
 const cmHighlight = HighlightStyle.define([
   { tag: t.comment, color: 'var(--text-faint)', fontStyle: 'italic' },
@@ -45,13 +58,6 @@ const cmHighlight = HighlightStyle.define([
   { tag: [t.propertyName, t.labelName], color: 'var(--text-muted)' },
   { tag: t.invalid, color: 'var(--danger)' },
 ])
-
-// auto-height mode: the editor grows with its content (Samples showcase);
-// default mode fills its pane and scrolls inside.
-const cmThemeAuto = EditorView.theme({
-  '&': { backgroundColor: 'var(--bg-input)', color: 'var(--text)', fontSize: '12.5px' },
-  '.cm-scroller': { fontFamily: 'var(--mono)', lineHeight: '1.65', overflow: 'visible' },
-})
 
 export default function CodeEditor({
   value,
@@ -87,7 +93,8 @@ export default function CodeEditor({
         EditorView.lineWrapping,
         keymap.of([indentWithTab, ...defaultKeymap]),
         languageComp.of(language === 'js' ? javascript() : json()),
-        autoHeight ? cmThemeAuto : cmTheme,
+        cmBase,
+        autoHeight ? cmAuto : cmFill,
         EditorState.readOnly.of(readOnly),
         EditorView.editable.of(!readOnly),
         syntaxHighlighting(cmHighlight),
