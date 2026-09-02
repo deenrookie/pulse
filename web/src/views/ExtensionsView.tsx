@@ -17,9 +17,83 @@ const ZONES: [RewriteZone, string][] = [
 ]
 
 type ExtTab = 'rewrite' | 'plugins'
+type PluginTab = 'installed' | 'editor' | 'samples'
+
+/** read one query param from the location hash (#/view?a=b) */
+function hashParam(name: string): string | null {
+  const h = window.location.hash
+  const i = h.indexOf('?')
+  if (i < 0) return null
+  return new URLSearchParams(h.slice(i + 1)).get(name)
+}
+
+/** last-used tabs, so navigating away and back keeps your place */
+function loadExtTabs(): { tab: ExtTab; sub: PluginTab } {
+  let tab: ExtTab = 'rewrite'
+  let sub: PluginTab = 'installed'
+  try {
+    const saved = localStorage.getItem('pulse.ext')
+    if (saved) {
+      const [t, s] = saved.split(':')
+      if (t === 'plugins') tab = 'plugins'
+      if (s === 'editor' || s === 'samples') sub = s
+    }
+  } catch {
+    /* private mode */
+  }
+  // explicit hash params win over the saved tabs (deep links)
+  if (hashParam('tab') === 'plugins') tab = 'plugins'
+  else if (hashParam('tab') === 'rewrite') tab = 'rewrite'
+  const s = hashParam('sub')
+  if (s === 'editor' || s === 'samples' || s === 'installed') sub = s as PluginTab
+  return { tab, sub }
+}
+
+function parseExtTabs(): { tab: ExtTab; sub: PluginTab } {
+  let tab: ExtTab = 'rewrite'
+  let sub: PluginTab = 'installed'
+  if (hashParam('tab') === 'plugins') tab = 'plugins'
+  const s = hashParam('sub')
+  if (s === 'editor' || s === 'samples') sub = s
+  return { tab, sub }
+}
 
 export default function ExtensionsView({ notify }: { notify: (text: string, kind?: 'ok' | 'err') => void }) {
-  const [tab, setTab] = useState<ExtTab>('rewrite')
+  const [{ tab, sub }, setTabs] = useState(loadExtTabs)
+
+  // tab switches land in the address bar (shareable deep links); defaults
+  // are omitted for clean URLs: #/extensions, #/extensions?tab=plugins&sub=editor
+  useEffect(() => {
+    const params = new URLSearchParams()
+    if (tab === 'plugins') {
+      params.set('tab', 'plugins')
+      if (sub !== 'installed') params.set('sub', sub)
+    }
+    const q = params.toString()
+    const next = '#/extensions' + (q ? '?' + q : '')
+    if (window.location.hash !== next) window.history.replaceState(null, '', next)
+    try {
+      localStorage.setItem('pulse.ext', `${tab}:${sub}`)
+    } catch {
+      /* private mode */
+    }
+  }, [tab, sub])
+
+  // follow #/extensions deep links while the app is already open (our own
+  // writes use replaceState, which never fires hashchange — no loops)
+  useEffect(() => {
+    const onHash = () => {
+      if (!window.location.hash.startsWith('#/extensions')) return
+      const next = parseExtTabs()
+      setTabs((cur) => (cur.tab === next.tab && cur.sub === next.sub ? cur : next))
+    }
+    window.addEventListener('hashchange', onHash)
+    return () => window.removeEventListener('hashchange', onHash)
+  }, [])
+
+  const setTab = (t: ExtTab) => setTabs((c) => ({ ...c, tab: t }))
+  const setSub = (s: PluginTab) => setTabs((c) => ({ ...c, sub: s }))
+
   return (
     <div className="view">
       <div className="ext-tabs">
@@ -32,7 +106,7 @@ export default function ExtensionsView({ notify }: { notify: (text: string, kind
           Plugins
         </button>
       </div>
-      <div className="view-fill padded">{tab === 'rewrite' ? <RewritePanel notify={notify} /> : <PluginsPanel notify={notify} />}</div>
+      <div className="view-fill padded">{tab === 'rewrite' ? <RewritePanel notify={notify} /> : <PluginsPanel notify={notify} sub={sub} setSub={setSub} />}</div>
     </div>
   )
 }
@@ -316,8 +390,6 @@ function onResponse(ctx) {
   // ctx.response = { status, reason, httpVersion, headers, body }
 }`
 
-type PluginTab = 'installed' | 'editor' | 'samples'
-
 const defaultFixture = JSON.stringify(
   {
     request: {
@@ -342,8 +414,18 @@ const defaultFixture = JSON.stringify(
   2,
 )
 
-function PluginsPanel({ notify }: { notify: (text: string, kind?: 'ok' | 'err') => void }) {
-  const [tab, setTab] = useState<PluginTab>('installed')
+function PluginsPanel({
+  notify,
+  sub,
+  setSub,
+}: {
+  notify: (text: string, kind?: 'ok' | 'err') => void
+  /** active showcase tab, lifted to ExtensionsView so it lands in the URL */
+  sub: PluginTab
+  setSub: (s: PluginTab) => void
+}) {
+  const tab = sub
+  const setTab = setSub
   const [plugins, setPlugins] = useState<PluginInfo[]>([])
   const [dir, setDir] = useState('')
   const [busy, setBusy] = useState(false)
