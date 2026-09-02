@@ -27,7 +27,7 @@
 
 <div align="center"><img src="docs/screenshots/repeater.png" alt="Pulse Repeater — raw 编辑与重放" width="880"/></div>
 
-> 内置 **Warm 炭灰 / Midnight 午夜 / Linear** 三套主题，全程离线本地运行，流量不出你的机器。
+> 内置 **Linear（默认）/ Warm 炭灰 / Midnight 午夜** 三套主题，全程离线本地运行，流量不出你的机器。
 
 ## ✨ 核心能力
 

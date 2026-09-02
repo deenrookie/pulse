@@ -29,9 +29,9 @@ const THEME_MARK: Record<Theme, [string, string]> = {
 function readTheme(): Theme {
   try {
     const v = localStorage.getItem('pulse.theme')
-    return THEMES.some((t) => t.id === v) ? (v as Theme) : 'warm'
+    return THEMES.some((t) => t.id === v) ? (v as Theme) : 'linear'
   } catch {
-    return 'warm'
+    return 'linear'
   }
 }
 
