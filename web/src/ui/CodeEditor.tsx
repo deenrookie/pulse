@@ -27,7 +27,7 @@ const cmBase = EditorView.theme({
   '.cm-activeLineGutter': { backgroundColor: 'transparent', color: 'var(--text-muted)' },
   '&.cm-focused': { outline: 'none' },
   '.cm-selectionBackground, &.cm-focused .cm-selectionBackground': {
-    backgroundColor: 'rgb(var(--accent-rgb) / .16) !important',
+    backgroundColor: 'rgb(var(--accent-rgb) / .32) !important',
   },
   '.cm-cursor, .cm-dropCursor': { borderLeftColor: 'var(--accent)', borderLeftWidth: '2px' },
   '.cm-matchingBracket': {
@@ -95,8 +95,9 @@ export default function CodeEditor({
         languageComp.of(language === 'js' ? javascript() : json()),
         cmBase,
         autoHeight ? cmAuto : cmFill,
+        // readOnly (state) keeps the DOM editable so native selection and
+        // copy work — EditorView.editable.of(false) would kill both
         EditorState.readOnly.of(readOnly),
-        EditorView.editable.of(!readOnly),
         syntaxHighlighting(cmHighlight),
         EditorView.updateListener.of((u) => {
           if (u.docChanged) onChangeRef.current(u.state.doc.toString())
