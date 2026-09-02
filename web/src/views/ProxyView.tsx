@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import FlowTable, { type SortSpec } from '../components/FlowTable'
 import { RequestInspector, ResponseInspector } from '../components/MessageViewer'
 import Split from '../ui/Split'
@@ -77,14 +77,6 @@ export default function ProxyView({ pulse }: { pulse: PulseState }) {
   const [rawEdit, setRawEdit] = useState<{ id: string; text: string } | null>(null)
   const [filter, setFilter] = useState<FilterModel>(loadFilter)
   const [filterOpen, setFilterOpen] = useState(false)
-  const searchRef = useRef<HTMLInputElement>(null)
-
-  // Ctrl+F lands here (App dispatches after switching views)
-  useEffect(() => {
-    const focus = () => searchRef.current?.focus()
-    window.addEventListener('pulse:focus-filter', focus)
-    return () => window.removeEventListener('pulse:focus-filter', focus)
-  }, [])
 
   // deep link: #/proxy?flow=<id> selects that flow
   useEffect(() => {
@@ -254,14 +246,12 @@ export default function ProxyView({ pulse }: { pulse: PulseState }) {
               <div className="search-box">
                 <Icon name="search" size={13} />
                 <input
-                  ref={searchRef}
                   className="input"
                   placeholder="Filter traffic…"
                   value={q}
                   spellCheck={false}
                   onChange={(e) => setQ(e.target.value)}
                 />
-                <kbd className="hint">Ctrl F</kbd>
               </div>
               {STATUS_FILTERS.map(([id, label]) => (
                 <button

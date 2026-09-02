@@ -151,19 +151,14 @@ export default function App() {
     return () => window.removeEventListener('hashchange', onHash)
   }, [tab])
 
-  // global shortcuts: Ctrl/Cmd+1..5 switch views, Ctrl/Cmd+F jumps to the
-  // traffic filter (switches to Live Traffic first if needed)
+  // global shortcuts: Ctrl/Cmd+1..5 switch views. Ctrl+F stays with the
+  // browser (native find-in-page); the traffic filter has its own field.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const mod = e.ctrlKey || e.metaKey
       if (mod && e.key >= '1' && e.key <= '6') {
         e.preventDefault()
         go(VIEWS[Number(e.key) - 1].id)
-      } else if (mod && e.key.toLowerCase() === 'f') {
-        // focus the traffic filter only when already on Live Traffic —
-        // never yank the user away from the view they are working in
-        e.preventDefault()
-        if (tab === 'proxy') window.dispatchEvent(new CustomEvent('pulse:focus-filter'))
       } else if (mod && e.shiftKey && e.key.toLowerCase() === 'd') {
         // Burp-style Ctrl+Shift+D: send the current text selection to Decoder
         e.preventDefault()
