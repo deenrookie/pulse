@@ -15,3 +15,4 @@ web/node_modules/
 !web/dist/
 *.exe~
 /pulse-dev.exe
+/.pulse-dev-bin.*

@@ -91,6 +91,11 @@ go build -o pulse.exe ./cmd/pulse        # Linux/macOS: -o pulse
 <summary><b>开发模式</b></summary>
 
 ```bash
+# 一键开发环境（macOS / Linux / Git Bash）：后端 + Vite 热更新，Ctrl+C 一并停止
+./dev.sh                     # 控制台 http://127.0.0.1:5175，代理 :8080
+PROXY_PORT=9090 ./dev.sh     # 换代理端口
+
+# 或手动分开跑：
 # 终端 1：后端
 go run ./cmd/pulse
 # 终端 2：前端（热更新，/api 代理到 8000）
