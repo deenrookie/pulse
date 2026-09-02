@@ -1,6 +1,7 @@
-# build artifacts
-pulse.exe
-pulse
+# build artifacts (anchored to the repo root — a bare "pulse" would also
+# ignore the cmd/pulse/ source directory)
+/pulse.exe
+/pulse
 *.pdb
 
 # node
