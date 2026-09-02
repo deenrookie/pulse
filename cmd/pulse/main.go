@@ -83,9 +83,15 @@ func run(proxyAddr, uiAddr, dataDir string) error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()
 
+	// bind the proxy listener synchronously: api.New compares against the
+	// live address to apply a persisted proxyAddr from settings.json
+	pln, err := net.Listen("tcp", proxyAddr)
+	if err != nil {
+		return fmt.Errorf("proxy listen %s: %w", proxyAddr, err)
+	}
 	go func() {
-		if err := engine.ListenAndServe(proxyAddr); err != nil {
-			log.Fatalf("proxy listener: %v", err)
+		if err := engine.ServeListener(pln); err != nil {
+			log.Fatalf("proxy serve: %v", err)
 		}
 	}()
 

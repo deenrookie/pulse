@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -355,5 +356,62 @@ func TestFlowRenderEndpoint(t *testing.T) {
 	}
 	if string(body) != "<h1>rendered</h1>" {
 		t.Fatalf("body = %s", body)
+	}
+}
+
+func TestSettingsProxyAddrChange(t *testing.T) {
+	e := newEnv(t)
+	up := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte("rebound"))
+	}))
+	defer up.Close()
+
+	// pick a free port for the new listener
+	probe, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	newAddr := probe.Addr().String()
+	probe.Close()
+
+	resp, data := e.do(t, "PUT", "/api/settings", map[string]any{"proxyAddr": newAddr})
+	if resp.StatusCode != 200 {
+		t.Fatalf("set proxyAddr = %d %s", resp.StatusCode, data)
+	}
+	var set struct {
+		ProxyAddr string `json:"proxyAddr"`
+	}
+	json.Unmarshal(data, &set)
+	if set.ProxyAddr != newAddr {
+		t.Fatalf("proxyAddr = %q", set.ProxyAddr)
+	}
+
+	// the new address actually proxies traffic
+	c := proxiedClient(newAddr)
+	res, err := c.Get(up.URL + "/rb")
+	if err != nil {
+		t.Fatalf("proxied get via new addr: %v", err)
+	}
+	io.Copy(io.Discard, res.Body)
+	res.Body.Close()
+
+	// status reports the live address
+	_, data = e.do(t, "GET", "/api/status", nil)
+	var st struct {
+		ProxyAddr string `json:"proxyAddr"`
+	}
+	json.Unmarshal(data, &st)
+	if st.ProxyAddr != newAddr {
+		t.Fatalf("status proxyAddr = %q, want %q", st.ProxyAddr, newAddr)
+	}
+
+	// a bad address is rejected (400) and does not stick
+	resp, data = e.do(t, "PUT", "/api/settings", map[string]any{"proxyAddr": "not an addr"})
+	if resp.StatusCode != 400 {
+		t.Fatalf("bad addr = %d %s", resp.StatusCode, data)
+	}
+	resp, _ = e.do(t, "PUT", "/api/settings", map[string]any{"proxyAddr": "127.0.0.1:99999"})
+	if resp.StatusCode != 400 {
+		t.Fatalf("bad port = %d", resp.StatusCode)
 	}
 }

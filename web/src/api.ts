@@ -135,6 +135,8 @@ export interface PulseSettings {
   largeBodyMB: number
   /** live plugin directory (absolute path); PUT with '' to reset to default */
   pluginsDir: string
+  /** live proxy listener address; PUT rebinds without restart */
+  proxyAddr: string
 }
 
 export const getSettings = () => api<PulseSettings>('/api/settings')

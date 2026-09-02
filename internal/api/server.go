@@ -52,6 +52,14 @@ func New(st *store.Store, eng *proxy.Engine, rep *repeater.Manager, auth *certs.
 			set.PluginsDir = plug.Dir()
 		}
 	}
+	// same for the proxy address: --proxy binds first, a persisted change
+	// from the Settings page rebinds on startup
+	if set.ProxyAddr != "" && set.ProxyAddr != eng.Addr() {
+		if err := eng.Relisten(set.ProxyAddr); err != nil {
+			log.Printf("WARN: proxyAddr %s unusable (%v) — keeping %s", set.ProxyAddr, err, eng.Addr())
+			set.ProxyAddr = eng.Addr()
+		}
+	}
 	eng.SetRepeaterTimeout(set.ResponseTimeoutSec)
 	st.SetMemoryGuard(set.MemoryGuardMB, set.LargeBodyMB)
 	return &Server{

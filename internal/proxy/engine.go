@@ -81,6 +81,12 @@ func (e *Engine) ListenAndServe(addr string) error {
 	if err != nil {
 		return fmt.Errorf("proxy listen %s: %w", addr, err)
 	}
+	return e.ServeListener(ln)
+}
+
+// ServeListener adopts an already-bound listener (main binds synchronously
+// so api.New can safely compare against Addr() and rebind if settings ask).
+func (e *Engine) ServeListener(ln net.Listener) error {
 	e.mu.Lock()
 	e.ln = ln
 	e.mu.Unlock()
@@ -95,11 +101,46 @@ func (e *Engine) Serve(ln net.Listener) error {
 			case <-e.ctx.Done():
 				return nil
 			default:
-				return err
 			}
+			e.mu.Lock()
+			cur := e.ln
+			e.mu.Unlock()
+			if cur != ln {
+				return nil // listener was swapped out by Relisten
+			}
+			return err
 		}
 		go e.handleConn(conn)
 	}
+}
+
+// Relisten swaps the proxy listener to a new address without stopping the
+// engine: the new socket is bound first, then the old one closes. A failed
+// bind leaves the current listener untouched.
+func (e *Engine) Relisten(addr string) error {
+	ln, err := net.Listen("tcp", addr)
+	if err != nil {
+		return fmt.Errorf("proxy listen %s: %w", addr, err)
+	}
+	e.mu.Lock()
+	old := e.ln
+	e.ln = ln
+	e.mu.Unlock()
+	if old != nil {
+		old.Close() // its Serve loop exits quietly via the swap check
+	}
+	go e.Serve(ln)
+	return nil
+}
+
+// Addr reports the address the proxy listener is currently bound to.
+func (e *Engine) Addr() string {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if e.ln == nil {
+		return ""
+	}
+	return e.ln.Addr().String()
 }
 
 // Close stops accepting and releases held intercepts.

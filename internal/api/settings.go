@@ -5,9 +5,12 @@ package api
 
 import (
 	"encoding/json"
+	"net"
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
+	"strings"
 	"sync"
 )
 
@@ -27,6 +30,9 @@ type Settings struct {
 	// PluginsDir is where *.js plugins are loaded from; empty means the
 	// default <data-dir>/plugins.
 	PluginsDir string `json:"pluginsDir"`
+	// ProxyAddr is the address the proxy listener is bound to; empty means
+	// "keep whatever --proxy passed at startup".
+	ProxyAddr string `json:"proxyAddr"`
 }
 
 func LoadSettings(dataDir string) (*Settings, error) {
@@ -78,11 +84,16 @@ func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
 	case http.MethodGet:
 		s.set.mu.Lock()
 		defer s.set.mu.Unlock()
+		proxy := s.eng.Addr()
+		if proxy == "" {
+			proxy = s.ProxyAddr
+		}
 		writeJSON(w, http.StatusOK, map[string]any{
 			"responseTimeoutSec": s.set.ResponseTimeoutSec,
 			"memoryGuardMB":      s.set.MemoryGuardMB,
 			"largeBodyMB":        s.set.LargeBodyMB,
 			"pluginsDir":         s.plug.Dir(),
+			"proxyAddr":          proxy,
 		})
 	case http.MethodPut:
 		s.handlePutSettings(w, r)
@@ -100,6 +111,7 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 		MemoryGuardMB      *int    `json:"memoryGuardMB"`
 		LargeBodyMB        *int    `json:"largeBodyMB"`
 		PluginsDir         *string `json:"pluginsDir"`
+		ProxyAddr          *string `json:"proxyAddr"`
 	}
 	if !readJSON(w, r, &body, 1<<16) {
 		return
@@ -108,6 +120,32 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 	set := s.set
 	set.mu.Lock()
 	defer set.mu.Unlock()
+
+	if body.ProxyAddr != nil {
+		addr := strings.TrimSpace(*body.ProxyAddr)
+		if addr == "" {
+			writeErr(w, http.StatusBadRequest, "proxyAddr must be host:port (empty is not allowed — point it at another address instead)")
+			return
+		}
+		host, port, err := net.SplitHostPort(addr)
+		if err != nil || host == "" || port == "" {
+			writeErr(w, http.StatusBadRequest, "proxyAddr must be host:port, e.g. 127.0.0.1:8080")
+			return
+		}
+		if n, err := strconv.Atoi(port); err != nil || n < 1 || n > 65535 {
+			writeErr(w, http.StatusBadRequest, "proxyAddr port must be 1..65535")
+			return
+		}
+		// rebind first — a failed bind must not be persisted, and the old
+		// listener stays untouched when Relisten errors out
+		if addr != s.eng.Addr() {
+			if err := s.eng.Relisten(addr); err != nil {
+				writeErr(w, http.StatusBadRequest, "proxyAddr: "+err.Error())
+				return
+			}
+		}
+		set.ProxyAddr = addr
+	}
 
 	if body.PluginsDir != nil {
 		dir := *body.PluginsDir
@@ -152,10 +190,15 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 		s.eng.SetRepeaterTimeout(set.ResponseTimeoutSec)
 	}
 	s.st.SetMemoryGuard(set.MemoryGuardMB, set.LargeBodyMB)
+	proxy := s.eng.Addr()
+	if proxy == "" {
+		proxy = s.ProxyAddr
+	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"responseTimeoutSec": set.ResponseTimeoutSec,
 		"memoryGuardMB":      set.MemoryGuardMB,
 		"largeBodyMB":        set.LargeBodyMB,
 		"pluginsDir":         s.plug.Dir(),
+		"proxyAddr":          proxy,
 	})
 }

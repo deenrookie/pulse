@@ -108,6 +108,7 @@
 ### `GET /api/plugins/samples` → `{"samples":[{"file","desc","src"},...]}` 内嵌样例（Samples 标签同源，Go 测试覆盖）
 ### `POST /api/plugins/test` `{"src","hook":"request|response","request":{...},"response":{...}?}` → 沙箱试跑钩子（零流量），返回 `{"logs":[...],"error?","changed",​"request":{...},"response":{...}|null}`；夹具字段与 Request 对象同构（`body` 为字符串，响应用 `status/reason`）
 ### `PUT /api/settings` 增补 `{"pluginsDir":"..."}` → 切换插件目录（自动创建；空串恢复默认 `<data-dir>/plugins`；校验失败返回 400 且不落盘）
+### `PUT /api/settings` 增补 `{"proxyAddr":"127.0.0.1:9090"}` → 热重绑代理监听地址（先绑新再关旧；非法地址 400 且旧监听不动；持久化，重启后仍然生效，优先于 `--proxy`）
 
 ## Request 对象结构（提交类接口通用）
 ```json

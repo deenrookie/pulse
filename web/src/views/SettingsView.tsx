@@ -9,6 +9,7 @@ export default function SettingsView({ pulse }: { pulse: PulseState }) {
   const [timeoutSec, setTimeoutSec] = useState<number | null>(null)
   const [memGuard, setMemGuard] = useState<number | null>(null)
   const [largeBody, setLargeBody] = useState<number | null>(null)
+  const [proxyAddr, setProxyAddr] = useState<string | null>(null)
   const [savedAt, setSavedAt] = useState(0)
   const [saveErr, setSaveErr] = useState<string | null>(null)
   const [fontSize, setFontSize] = useState(loadFontSize)
@@ -19,6 +20,7 @@ export default function SettingsView({ pulse }: { pulse: PulseState }) {
         setTimeoutSec(s.responseTimeoutSec)
         setMemGuard(s.memoryGuardMB)
         setLargeBody(s.largeBodyMB)
+        setProxyAddr(s.proxyAddr)
       })
       .catch(() => {})
   }, [])
@@ -49,6 +51,19 @@ export default function SettingsView({ pulse }: { pulse: PulseState }) {
       setSaveErr((e as Error).message)
     }
   }
+  const saveProxyAddr = async () => {
+    if (proxyAddr === null) return
+    setSaveErr(null)
+    try {
+      const s = await putSettings({ proxyAddr: proxyAddr.trim() })
+      setProxyAddr(s.proxyAddr)
+      setSavedAt(Date.now())
+      pulse.notify(`Proxy listener rebound to ${s.proxyAddr} — point your browser proxy there`)
+    } catch (e) {
+      setSaveErr((e as Error).message)
+    }
+  }
+
   return (
     <div className="view">
       <div className="settings-wrap">
@@ -114,7 +129,21 @@ export default function SettingsView({ pulse }: { pulse: PulseState }) {
               <div className="k">Version</div>
               <div className="v">{st.version}</div>
               <div className="k">Proxy listener</div>
-              <div className="v">{st.proxyAddr}</div>
+              <div className="v" style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                <input
+                  className="input mono"
+                  style={{ width: 190 }}
+                  title="Proxy listen address — rebinds without restart, survives restarts"
+                  placeholder="127.0.0.1:8080"
+                  value={proxyAddr ?? ''}
+                  spellCheck={false}
+                  onChange={(e) => setProxyAddr(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && saveProxyAddr()}
+                />
+                <button className="btn sm" disabled={proxyAddr === null || proxyAddr.trim() === '' || proxyAddr.trim() === st.proxyAddr} onClick={saveProxyAddr}>
+                  Apply
+                </button>
+              </div>
               <div className="k">UI / API</div>
               <div className="v">{st.uiAddr}</div>
               <div className="k">Data directory</div>

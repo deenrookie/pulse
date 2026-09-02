@@ -12,6 +12,10 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 	var ms runtime.MemStats
 	runtime.ReadMemStats(&ms)
+	proxy := s.eng.Addr() // live value — Relisten (Settings page) swaps it
+	if proxy == "" {
+		proxy = s.ProxyAddr
+	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"memory": map[string]any{
 			"sysMB":     ms.Sys / 1048576,     // total obtained from the OS
@@ -19,7 +23,7 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 			"goroutine": runtime.NumGoroutine(),
 		},
 		"version":       s.Version,
-		"proxyAddr":     s.ProxyAddr,
+		"proxyAddr":     proxy,
 		"uiAddr":        s.UIAddr,
 		"dataDir":       s.DataDir,
 		"caFingerprint": s.auth.Fingerprint(),
