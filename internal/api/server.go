@@ -79,6 +79,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/api/rewrite/", s.handleRewriteID)
 	mux.HandleFunc("/api/plugins", s.handlePlugins)
 	mux.HandleFunc("/api/plugins/reload", s.handlePluginsReload)
+	mux.HandleFunc("/api/plugins/samples", s.handlePluginsSamples)
 	mux.HandleFunc("/api/plugins/validate", s.handlePluginsValidate)
 	mux.HandleFunc("/api/plugins/test", s.handlePluginsTest)
 	mux.HandleFunc("/api/plugins/source/", s.handlePluginsSource)

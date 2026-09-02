@@ -6,7 +6,7 @@ import Split from '../ui/Split'
 import CodeEditor from '../ui/CodeEditor'
 import { confirm } from '../ui/Confirm'
 import ContextMenu, { type MenuItem } from '../components/ContextMenu'
-import type { PluginInfo, PluginTestResult, RewriteRule, RewriteZone, TestMessage } from '../types'
+import type { PluginInfo, PluginSample, PluginTestResult, RewriteRule, RewriteZone, TestMessage } from '../types'
 
 const ZONES: [RewriteZone, string][] = [
   ['request_line', 'Request line / URL'],
@@ -298,53 +298,12 @@ function RewritePanel({ notify }: { notify: (text: string, kind?: 'ok' | 'err') 
   )
 }
 
-// ---------- plugin samples (mirror examples/plugins/) ----------
-
-const SAMPLES: { file: string; desc: string; src: string }[] = [
-  {
-    file: 'add-header.js',
-    desc: 'Request hook · add a header, use pulse.log',
-    src: `// Adds a custom header to every proxied request.
-plugin = {
-  name: "Add Header",
-  version: "1.0",
-};
-
-function onRequest(ctx) {
-  ctx.request.headers.push({ name: "X-Powered-By-Pulse-Plugin", value: "add-header" });
-  pulse.log("tagged " + ctx.request.method + " " + ctx.request.url);
-}`,
-  },
-  {
-    file: 'redact-tokens.js',
-    desc: 'Response hook · regex redaction of secrets',
-    src: `// Redacts bearer tokens and api keys in responses before they reach the client.
-plugin = {
-  name: "Redact Tokens",
-  version: "1.0",
-};
-
-var patterns = [
-  /Bearer\\s+[A-Za-z0-9._\\-]+/g,
-  /(api[_-]?key["'\\s:=]+)[A-Za-z0-9_\\-]{16,}/gi,
-];
-
-function onResponse(ctx) {
-  var body = ctx.response.body;
-  if (!body) return;
-  for (var i = 0; i < patterns.length; i++) {
-    body = body.replace(patterns[i], "[REDACTED]");
-  }
-  if (body !== ctx.response.body) {
-    ctx.response.body = body;
-    pulse.log("redacted response for " + ctx.request.url);
-  }
-}`,
-  },
-  {
-    file: 'template.js',
-    desc: 'Minimal skeleton for a new plugin',
-    src: `plugin = {
+// ---------- plugin samples ----------
+// Showcase sources live in the backend (internal/plugins/samples, embedded)
+// and are fetched via /api/plugins/samples so the UI, the API and the test
+// suite all exercise the very same code. This constant only seeds the
+// editor's initial draft before anything is loaded.
+const TEMPLATE_SRC = `plugin = {
   name: "My Plugin",
   version: "1.0",
 };
@@ -355,9 +314,7 @@ function onRequest(ctx) {
 
 function onResponse(ctx) {
   // ctx.response = { status, reason, httpVersion, headers, body }
-}`,
-  },
-]
+}`
 
 type PluginTab = 'installed' | 'editor' | 'samples'
 
@@ -394,7 +351,7 @@ function PluginsPanel({ notify }: { notify: (text: string, kind?: 'ok' | 'err') 
 
   // editor state lives here so plugin cards and samples can load into it
   const [file, setFile] = useState('my-plugin.js')
-  const [src, setSrc] = useState(SAMPLES[2].src)
+  const [src, setSrc] = useState(TEMPLATE_SRC)
   const [savedSrc, setSavedSrc] = useState<string | null>(null)
 
   const pluginMenu = (p: PluginInfo): MenuItem[] => [
@@ -806,7 +763,9 @@ function EditorTab({
                     {`→ request ${result.request.method ?? ''} ${result.request.url ?? ''}`}
                     {result.request.headers?.map((h) => `\n  ${h.name}: ${h.value}`).join('') ?? ''}
                     {result.request.body ? `\n  body: ${result.request.body}` : ''}
-                    {result.response ? `\n→ response ${result.response.status ?? ''} ${result.response.reason ?? ''}${result.response.body ? `\n  body: ${result.response.body}` : ''}` : ''}
+                    {result.response
+                      ? `\n→ response ${result.response.status ?? ''} ${result.response.reason ?? ''}${result.response.headers?.map((h) => `\n  ${h.name}: ${h.value}`).join('') ?? ''}${result.response.body ? `\n  body: ${result.response.body}` : ''}`
+                      : ''}
                   </pre>
                 )}
               </div>
@@ -819,7 +778,16 @@ function EditorTab({
 }
 
 function SamplesTab({ onLoad, notify }: { onLoad: (s: { file: string; src: string }) => void; notify: (text: string, kind?: 'ok' | 'err') => void }) {
-  const copy = async (s: { file: string; src: string }) => {
+  const [samples, setSamples] = useState<PluginSample[]>([])
+
+  useEffect(() => {
+    api
+      .listPluginSamples()
+      .then((r) => setSamples(r.samples))
+      .catch(() => notify('Failed to load samples', 'err'))
+  }, [notify])
+
+  const copy = async (s: PluginSample) => {
     try {
       await navigator.clipboard.writeText(s.src)
       notify(`${s.file} copied to clipboard`)
@@ -829,7 +797,7 @@ function SamplesTab({ onLoad, notify }: { onLoad: (s: { file: string; src: strin
   }
   return (
     <div className="panel-body">
-      {SAMPLES.map((s) => (
+      {samples.map((s) => (
         <div key={s.file} className="sample-card">
           <div className="head">
             <span className="name mono">{s.file}</span>
@@ -843,7 +811,9 @@ function SamplesTab({ onLoad, notify }: { onLoad: (s: { file: string; src: strin
               Load into editor
             </button>
           </div>
-          <pre className="plugin-log">{s.src}</pre>
+          <div className="sample-code">
+            <CodeEditor value={s.src} onChange={() => {}} language="js" readOnly autoHeight />
+          </div>
         </div>
       ))}
     </div>

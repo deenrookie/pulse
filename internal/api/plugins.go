@@ -59,6 +59,15 @@ func (s *Server) handlePluginFile(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 }
 
+// handlePluginsSamples: GET the embedded showcase sources for the Samples tab.
+func (s *Server) handlePluginsSamples(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"samples": plugins.Samples()})
+}
+
 // handlePluginsSource: GET read a plugin's source, PUT save it (then rescan),
 // DELETE remove the file. Path: /api/plugins/source/{file}.
 func (s *Server) handlePluginsSource(w http.ResponseWriter, r *http.Request) {

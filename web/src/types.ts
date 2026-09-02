@@ -171,3 +171,10 @@ export interface TestMessage {
   headers?: { name: string; value: string }[]
   body?: string
 }
+
+/** embedded showcase entry from GET /api/plugins/samples */
+export interface PluginSample {
+  file: string
+  desc: string
+  src: string
+}

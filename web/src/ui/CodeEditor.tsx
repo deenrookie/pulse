@@ -46,15 +46,28 @@ const cmHighlight = HighlightStyle.define([
   { tag: t.invalid, color: 'var(--danger)' },
 ])
 
+// auto-height mode: the editor grows with its content (Samples showcase);
+// default mode fills its pane and scrolls inside.
+const cmThemeAuto = EditorView.theme({
+  '&': { backgroundColor: 'var(--bg-input)', color: 'var(--text)', fontSize: '12.5px' },
+  '.cm-scroller': { fontFamily: 'var(--mono)', lineHeight: '1.65', overflow: 'visible' },
+})
+
 export default function CodeEditor({
   value,
   onChange,
   language = 'js',
+  readOnly = false,
+  autoHeight = false,
 }: {
   value: string
   onChange: (next: string) => void
   /** 'js' for plugin sources, 'json' for test fixtures */
   language?: 'js' | 'json'
+  /** read-only display (Samples tab) — no cursor, no editing */
+  readOnly?: boolean
+  /** grow with content instead of filling the pane */
+  autoHeight?: boolean
 }) {
   const host = useRef<HTMLDivElement>(null)
   const viewRef = useRef<EditorView | null>(null)
@@ -74,7 +87,9 @@ export default function CodeEditor({
         EditorView.lineWrapping,
         keymap.of([indentWithTab, ...defaultKeymap]),
         languageComp.of(language === 'js' ? javascript() : json()),
-        cmTheme,
+        autoHeight ? cmThemeAuto : cmTheme,
+        EditorState.readOnly.of(readOnly),
+        EditorView.editable.of(!readOnly),
         syntaxHighlighting(cmHighlight),
         EditorView.updateListener.of((u) => {
           if (u.docChanged) onChangeRef.current(u.state.doc.toString())

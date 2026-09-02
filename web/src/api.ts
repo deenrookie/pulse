@@ -7,6 +7,7 @@ import type {
   InterceptSummary,
   PluginInfo,
   PluginInspection,
+  PluginSample,
   PluginTestResult,
   RepeaterTab,
   RewriteRule,
@@ -117,6 +118,9 @@ export const deletePluginSource = (file: string) =>
 /** dry-compile source without writing anything */
 export const validatePlugin = (src: string) =>
   api<PluginInspection>('/api/plugins/validate', { method: 'POST', body: JSON.stringify({ src }) })
+
+/** embedded showcase sources for the Samples tab */
+export const listPluginSamples = () => api<{ samples: PluginSample[] }>('/api/plugins/samples')
 
 /** run one hook against a fixture inside the sandbox VM — zero traffic */
 export const testPlugin = (payload: { src: string; hook: 'request' | 'response'; request: TestMessage; response?: TestMessage }) =>

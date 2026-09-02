@@ -109,12 +109,14 @@ function onResponse(ctx) {
 
 ## 示例
 
-仓库 `examples/plugins/`（同样内容也内置在 **Extensions → Plugins → Samples** 标签，可一键复制或载入编辑器）：
+仓库 `examples/plugins/`（同样内容内置在 **Extensions → Plugins → Samples** 标签，带语法高亮，可一键复制或载入编辑器）：
 
 | 文件 | 作用 |
 | --- | --- |
+| `demo-read-rewrite.js` | **全功能演示**：获取/改写请求路径、query 参数、headers、POST body 与响应 headers/body |
 | `add-header.js` | 为所有请求注入自定义头，并演示 `pulse.log` |
 | `redact-tokens.js` | 响应中的 Bearer token / API key 打码（正则） |
+| `template.js` | 最小插件骨架 |
 
 ## 路线图
 

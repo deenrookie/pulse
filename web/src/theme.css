@@ -970,6 +970,11 @@ textarea.editor.raw {
 .sample-card .grow { flex: 1; }
 /* samples are reference material — show the full source, no height cap */
 .sample-card .plugin-log { max-height: none; }
+/* read-only highlighted showcase (auto-height CodeMirror) */
+.sample-code {
+  margin-top: 9px; border: 1px solid var(--border); border-radius: var(--radius-sm);
+  overflow: hidden; background: var(--bg-input);
+}
 
 /* ============ 15. Settings ============ */
 .settings-wrap { flex: 1; overflow: auto; padding: 24px 20px; display: flex; justify-content: center; align-items: flex-start; }
