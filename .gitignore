@@ -14,3 +14,4 @@ web/node_modules/
 # keep the built SPA so fresh clones can `go build` without node
 !web/dist/
 *.exe~
+/pulse-dev.exe
