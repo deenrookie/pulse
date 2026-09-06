@@ -1246,6 +1246,32 @@ table.flows tbody tr.hl.selected td { background: var(--accent-bg); box-shadow: 
 .highlights-modal { width: 520px; max-width: calc(100vw - 40px); max-height: calc(100vh - 80px); display: flex; flex-direction: column; }
 .highlights-modal .sub { margin-bottom: 8px; }
 .highlights-modal .rule-list { overflow: auto; min-height: 0; flex: 1; }
+
+/* global deep search (Ctrl+Shift+F) */
+.gsearch-modal { width: 640px; max-width: calc(100vw - 40px); height: min(560px, calc(100vh - 80px)); display: flex; flex-direction: column; }
+.gsearch-modal h4 { margin: 0 0 10px; display: flex; align-items: center; gap: 8px; }
+.gsearch-modal .faint { margin-left: auto; }
+.gsearch-bar { display: flex; gap: 8px; margin-bottom: 10px; }
+.gsearch-bar .input { flex: 1; }
+.gsearch-results { flex: 1; min-height: 0; overflow: auto; display: flex; flex-direction: column; gap: 2px; }
+.gsearch-empty { color: var(--text-faint); font-size: 12px; padding: 18px 4px; text-align: center; }
+.gsearch-hit {
+  display: grid; grid-template-columns: auto auto auto auto 1fr; gap: 8px; align-items: baseline;
+  text-align: left; padding: 7px 9px; border-radius: var(--radius-sm); cursor: pointer;
+  background: none; border: none; color: var(--text); font: inherit;
+}
+.gsearch-hit:hover { background: var(--bg-hover); }
+.gsearch-hit .title { font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gsearch-hit .snippet { grid-column: 1 / -1; font-size: 11px; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.src-tag, .side-tag {
+  font-size: 10px; padding: 1px 6px; border-radius: 4px; text-transform: uppercase; letter-spacing: .4px;
+  font-family: var(--mono);
+}
+.src-tag.traffic { background: var(--accent-bg); color: var(--accent); }
+.src-tag.repeater { background: rgb(var(--purple-rgb) / .12); color: var(--purple); }
+.side-tag.request { color: var(--info); background: rgb(var(--info-rgb) / .1); }
+.side-tag.response { color: var(--ok); background: rgb(var(--ok-rgb) / .1); }
+.side-tag.both { color: var(--warn); background: rgb(var(--warn-rgb) / .12); }
 .filter-scroll { overflow: auto; min-height: 0; padding-right: 4px; }
 .fsec { margin-bottom: 14px; }
 .fsec-label {

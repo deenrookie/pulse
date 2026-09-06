@@ -330,6 +330,14 @@ export default function ProxyView({ pulse }: { pulse: PulseState }) {
                 Highlights
                 {rules.length > 0 && <span className="badge">{rules.length}</span>}
               </button>
+              <button
+                className="btn ghost sm"
+                title="Deep search — Ctrl+Shift+F: keyword across traffic + repeater, requests & responses"
+                onClick={() => window.dispatchEvent(new CustomEvent('pulse:open-search'))}
+              >
+                <Icon name="search" size={13} />
+                Search
+              </button>
               <span className="faint mono" style={{ fontSize: 11, fontVariantNumeric: 'tabular-nums' }} title="Total recorded flows (including filtered-out)">
                 {pulse.total.toLocaleString()} total
               </span>

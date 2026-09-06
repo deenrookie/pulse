@@ -7,6 +7,7 @@ import SiteMapView from './views/SiteMapView'
 import SettingsView from './views/SettingsView'
 import Icon, { type IconName } from './ui/Icon'
 import Decoder from './ui/Decoder'
+import GlobalSearch from './ui/GlobalSearch'
 import { applyFontSize, loadFontSize } from './ui/fontSize'
 import { usePulse } from './state'
 
@@ -159,6 +160,11 @@ export default function App() {
       if (mod && e.key >= '1' && e.key <= '6') {
         e.preventDefault()
         go(VIEWS[Number(e.key) - 1].id)
+      } else if (mod && e.shiftKey && e.key.toLowerCase() === 'f') {
+        // Ctrl+Shift+F: deep search across traffic + repeater records
+        // (plain Ctrl+F stays with the browser's find-in-page)
+        e.preventDefault()
+        window.dispatchEvent(new CustomEvent('pulse:open-search'))
       } else if (mod && e.shiftKey && e.key.toLowerCase() === 'd') {
         // Burp-style Ctrl+Shift+D: send the current text selection to Decoder
         e.preventDefault()
@@ -297,6 +303,7 @@ export default function App() {
       </div>
 
       {decoderOpen && <Decoder onClose={() => setDecoderOpen(false)} seed={decoderSeed} />}
+      <GlobalSearch />
 
       {pulse.toast && (
         <div className={`toast ${pulse.toast.kind === 'err' ? 'err' : ''} ${pulse.toastLeaving ? 'leaving' : ''}`}>

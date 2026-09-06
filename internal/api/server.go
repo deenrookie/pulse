@@ -76,6 +76,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/api/cert", s.handleCert)
 	mux.HandleFunc("/api/decode", s.handleDecode)
 	mux.HandleFunc("/api/settings", s.handleSettings)
+	mux.HandleFunc("/api/search", s.handleSearch)
 	mux.HandleFunc("/api/flows", s.handleFlows)
 	mux.HandleFunc("/api/flows/har", s.handleFlowsHAR)
 	mux.HandleFunc("/api/flows/", s.handleFlow)

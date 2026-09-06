@@ -11,9 +11,14 @@ import type {
   PluginTestResult,
   RepeaterTab,
   RewriteRule,
+  SearchHit,
   Status,
   TestMessage,
 } from './types'
+
+/** deep keyword search across traffic + repeater records */
+export const deepSearch = (q: string) =>
+  api<{ q: string; hits: SearchHit[]; total: number }>(`/api/search?q=${encodeURIComponent(q)}`)
 
 async function api<T>(path: string, init?: RequestInit): Promise<T> {
   const resp = await fetch(path, {

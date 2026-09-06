@@ -594,6 +594,13 @@ export default function RepeaterView({ pulse, goProxy }: { pulse: PulseState; go
               </button>
               <button
                 className="btn ghost sm icon-btn"
+                title="Deep search — Ctrl+Shift+F: keyword across traffic + repeater, requests & responses"
+                onClick={() => window.dispatchEvent(new CustomEvent('pulse:open-search'))}
+              >
+                <Icon name="search" size={13} />
+              </button>
+              <button
+                className="btn ghost sm icon-btn"
                 title={layout === 'v' ? 'Switch to side-by-side (request | response)' : 'Switch to stacked (request above response)'}
                 onClick={toggleLayout}
               >

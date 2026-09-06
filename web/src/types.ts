@@ -178,3 +178,13 @@ export interface PluginSample {
   desc: string
   src: string
 }
+
+/** one deep-search match (traffic flow or repeater record) */
+export interface SearchHit {
+  source: 'traffic' | 'repeater'
+  id: string
+  title: string
+  side: 'request' | 'response' | 'both'
+  statusCode?: number
+  snippet: string
+}

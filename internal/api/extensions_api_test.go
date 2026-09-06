@@ -542,3 +542,76 @@ func TestHARExport(t *testing.T) {
 		t.Fatalf("request headers missing Host: %+v", ent.Request.Headers)
 	}
 }
+
+func TestDeepSearch(t *testing.T) {
+	e := newEnv(t)
+	var sawBody string
+	up := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		sawBody = r.Header.Get("X-Hunt")
+		w.Write([]byte(`{"secret_token":"needle-zx-918"}`))
+	}))
+	defer up.Close()
+	req, _ := http.NewRequest("GET", up.URL+"/hunt", nil)
+	req.Header.Set("X-Hunt", "needle-req-77")
+	if _, err := proxiedClient(e.proxyAddr).Do(req); err != nil {
+		t.Fatalf("proxied: %v", err)
+	}
+	if sawBody != "needle-req-77" {
+		t.Fatalf("header not proxied: %q", sawBody)
+	}
+	if !waitFlows(t, e, 1) {
+		t.Fatal("flow never appeared")
+	}
+	e.do(t, "POST", "/api/repeater", map[string]any{"request": map[string]any{
+		"method": "POST", "url": up.URL + "/login", "httpVersion": "HTTP/1.1",
+		"headers": []map[string]string{{"name": "Content-Type", "value": "application/json"}},
+	}})
+
+	resp, data := e.do(t, "GET", "/api/search?q=needle-req-77", nil)
+	if resp.StatusCode != 200 {
+		t.Fatalf("search = %d %s", resp.StatusCode, data)
+	}
+	var out struct {
+		Hits []struct {
+			Source  string `json:"source"`
+			ID      string `json:"id"`
+			Side    string `json:"side"`
+			Snippet string `json:"snippet"`
+		} `json:"hits"`
+	}
+	json.Unmarshal(data, &out)
+	if len(out.Hits) != 1 || out.Hits[0].Source != "traffic" || out.Hits[0].Side != "request" {
+		t.Fatalf("req-side hits = %+v", out.Hits)
+	}
+	if !strings.Contains(out.Hits[0].Snippet, "needle-req-77") {
+		t.Fatalf("snippet = %q", out.Hits[0].Snippet)
+	}
+
+	_, data = e.do(t, "GET", "/api/search?q=needle-zx-918", nil)
+	json.Unmarshal(data, &out)
+	if len(out.Hits) != 1 || out.Hits[0].Side != "response" || !strings.Contains(out.Hits[0].Snippet, "needle-zx-918") {
+		t.Fatalf("resp-side hits = %+v", out.Hits)
+	}
+
+	_, data = e.do(t, "GET", "/api/search?q=/login", nil)
+	json.Unmarshal(data, &out)
+	found := false
+	for _, h := range out.Hits {
+		if h.Source == "repeater" && h.Side == "request" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("repeater hit missing: %+v", out.Hits)
+	}
+
+	_, data = e.do(t, "GET", "/api/search?q=doesnotexist-xyz", nil)
+	json.Unmarshal(data, &out)
+	if len(out.Hits) != 0 {
+		t.Fatalf("unexpected hits: %+v", out.Hits)
+	}
+	resp, _ = e.do(t, "GET", "/api/search", nil)
+	if resp.StatusCode != 400 {
+		t.Fatalf("empty q = %d", resp.StatusCode)
+	}
+}
