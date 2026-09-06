@@ -7,6 +7,7 @@ import { copyToClipboard, bodyToText, formatSize, formatTime, getFlow, toCurl } 
 import type { FlowMeta } from '../types'
 import ContextMenu, { type MenuItem } from './ContextMenu'
 import Icon from '../ui/Icon'
+import { addHostToScope, bareHost, hostInScope, removeHostFromScope } from '../scope'
 import Empty from '../ui/Empty'
 import { colorTriplet } from '../ui/palette'
 
@@ -213,6 +214,17 @@ export default function FlowTable({
       icon: 'send',
       label: 'Send to Repeater',
       onClick: () => void onSendToRepeater(m.id),
+    },
+    {
+      icon: 'shield',
+      label: hostInScope(m.host) ? 'Remove host from scope' : `Add ${bareHost(m.host)} to scope`,
+      hint: 'target set',
+      separatorAfter: true,
+      onClick: () => {
+        void (hostInScope(m.host) ? removeHostFromScope(m.host) : addHostToScope(m.host))
+          .then((msg) => notify(msg))
+          .catch((e) => notify((e as Error).message, 'err'))
+      },
     },
     {
       icon: 'external',

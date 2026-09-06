@@ -415,3 +415,44 @@ func TestSettingsProxyAddrChange(t *testing.T) {
 		t.Fatalf("bad port = %d", resp.StatusCode)
 	}
 }
+
+func TestSettingsScope(t *testing.T) {
+	e := newEnv(t)
+
+	resp, data := e.do(t, "PUT", "/api/settings", map[string]any{
+		"scope": []string{"*.api.example.com", "Target.COM", "", "cdn.example.com"},
+	})
+	if resp.StatusCode != 200 {
+		t.Fatalf("set scope = %d %s", resp.StatusCode, data)
+	}
+	var set struct {
+		Scope []string `json:"scope"`
+	}
+	json.Unmarshal(data, &set)
+	want := []string{"api.example.com", "target.com", "cdn.example.com"}
+	if len(set.Scope) != len(want) {
+		t.Fatalf("scope = %v, want %v", set.Scope, want)
+	}
+	for i := range want {
+		if set.Scope[i] != want[i] {
+			t.Fatalf("scope = %v, want %v", set.Scope, want)
+		}
+	}
+
+	// GET 回读一致
+	_, data = e.do(t, "GET", "/api/settings", nil)
+	json.Unmarshal(data, &set)
+	if len(set.Scope) != 3 || set.Scope[0] != "api.example.com" {
+		t.Fatalf("get scope = %v", set.Scope)
+	}
+
+	// 非法规则被拒（带路径 / 空格）
+	resp, _ = e.do(t, "PUT", "/api/settings", map[string]any{"scope": []string{"example.com/admin"}})
+	if resp.StatusCode != 400 {
+		t.Fatalf("rule with path = %d", resp.StatusCode)
+	}
+	resp, _ = e.do(t, "PUT", "/api/settings", map[string]any{"scope": []string{"a b.com"}})
+	if resp.StatusCode != 400 {
+		t.Fatalf("rule with space = %d", resp.StatusCode)
+	}
+}

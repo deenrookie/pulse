@@ -493,6 +493,7 @@ kbd {
   white-space: nowrap;
 }
 .tchip:hover { color: var(--text); border-color: var(--hover-border); }
+.tchip:disabled { opacity: 0.45; cursor: not-allowed; }
 .tchip.on { color: var(--accent); border-color: var(--accent-line); background: var(--accent-bg); }
 
 /* status pill in topbar */

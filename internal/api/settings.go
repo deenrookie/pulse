@@ -5,6 +5,7 @@ package api
 
 import (
 	"encoding/json"
+	"fmt"
 	"net"
 	"net/http"
 	"os"
@@ -33,6 +34,9 @@ type Settings struct {
 	// ProxyAddr is the address the proxy listener is bound to; empty means
 	// "keep whatever --proxy passed at startup".
 	ProxyAddr string `json:"proxyAddr"`
+	// Scope holds target host rules ("example.com" exact, "*.example.com"
+	// includes subdomains) used to focus the traffic view on the test target.
+	Scope []string `json:"scope"`
 }
 
 func LoadSettings(dataDir string) (*Settings, error) {
@@ -94,6 +98,7 @@ func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
 			"largeBodyMB":        s.set.LargeBodyMB,
 			"pluginsDir":         s.plug.Dir(),
 			"proxyAddr":          proxy,
+			"scope":              scopeOrEmpty(s.set.Scope),
 		})
 	case http.MethodPut:
 		s.handlePutSettings(w, r)
@@ -107,11 +112,12 @@ func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
 // persisted, so a bad path never reaches settings.json.
 func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 	var body struct {
-		ResponseTimeoutSec *int    `json:"responseTimeoutSec"`
-		MemoryGuardMB      *int    `json:"memoryGuardMB"`
-		LargeBodyMB        *int    `json:"largeBodyMB"`
-		PluginsDir         *string `json:"pluginsDir"`
-		ProxyAddr          *string `json:"proxyAddr"`
+		ResponseTimeoutSec *int     `json:"responseTimeoutSec"`
+		MemoryGuardMB      *int     `json:"memoryGuardMB"`
+		LargeBodyMB        *int     `json:"largeBodyMB"`
+		PluginsDir         *string  `json:"pluginsDir"`
+		ProxyAddr          *string  `json:"proxyAddr"`
+		Scope              []string `json:"scope"`
 	}
 	if !readJSON(w, r, &body, 1<<16) {
 		return
@@ -120,6 +126,15 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 	set := s.set
 	set.mu.Lock()
 	defer set.mu.Unlock()
+
+	if body.Scope != nil {
+		clean, err := cleanScope(body.Scope)
+		if err != nil {
+			writeErr(w, http.StatusBadRequest, "scope: "+err.Error())
+			return
+		}
+		set.Scope = clean
+	}
 
 	if body.ProxyAddr != nil {
 		addr := strings.TrimSpace(*body.ProxyAddr)
@@ -200,5 +215,38 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 		"largeBodyMB":        set.LargeBodyMB,
 		"pluginsDir":         s.plug.Dir(),
 		"proxyAddr":          proxy,
+		"scope":              scopeOrEmpty(set.Scope),
 	})
+}
+
+// cleanScope normalizes and validates scope rules: exact hosts or "*.host"
+// subdomain wildcards, deduped, capped at 100 entries.
+func cleanScope(rules []string) ([]string, error) {
+	if len(rules) > 100 {
+		return nil, fmt.Errorf("too many rules (max 100)")
+	}
+	seen := map[string]bool{}
+	out := make([]string, 0, len(rules))
+	for _, r := range rules {
+		r = strings.ToLower(strings.TrimSpace(r))
+		r = strings.TrimPrefix(r, "*.")
+		if r == "" {
+			continue
+		}
+		if strings.ContainsAny(r, "/ :?#") || r != strings.Trim(r, ".") {
+			return nil, fmt.Errorf("rules are bare hosts (optionally *.host), got %q", r)
+		}
+		if !seen[r] {
+			seen[r] = true
+			out = append(out, r)
+		}
+	}
+	return out, nil
+}
+
+func scopeOrEmpty(rules []string) []string {
+	if rules == nil {
+		return []string{}
+	}
+	return rules
 }

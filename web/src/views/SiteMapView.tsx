@@ -12,6 +12,7 @@ import Split from '../ui/Split'
 import Icon from '../ui/Icon'
 import Empty from '../ui/Empty'
 import ContextMenu, { type MenuItem } from '../components/ContextMenu'
+import { addHostToScope, hostInScope, removeHostFromScope, useScope } from '../scope'
 import type { PulseState } from '../state'
 import type { Flow, FlowMeta } from '../types'
 
@@ -271,6 +272,31 @@ export default function SiteMapView({ pulse, goProxy }: { pulse: PulseState; goP
 
   const editedRaw = flow && rawEdit && rawEdit.id === flow.id ? rawEdit.text : null
 
+  // scope: hosts in the target set get a shield badge + right-click management
+  useScope() // re-render on scope changes so badges stay in sync
+  const [hostMenu, setHostMenu] = useState<{ x: number; y: number; host: string } | null>(null)
+  const hostMenuItems = (host: string): MenuItem[] => [
+    {
+      icon: 'shield',
+      label: hostInScope(host) ? 'Remove from scope' : 'Add to scope',
+      hint: hostInScope(host) ? 'in scope' : 'includes subdomains',
+      onClick: () => {
+        void (hostInScope(host) ? removeHostFromScope(host) : addHostToScope(host))
+          .then((msg) => pulse.notify(msg))
+          .catch((e) => pulse.notify((e as Error).message, 'err'))
+      },
+    },
+    {
+      icon: 'waves',
+      label: 'Open in Live Traffic',
+      separatorAfter: true,
+      onClick: () => {
+        window.history.replaceState(null, '', `#/proxy?q=${encodeURIComponent(host)}`)
+        goProxy()
+      },
+    },
+  ]
+
   const sendSelected = async () => {
     if (!flow) return
     if (editedRaw !== null) {
@@ -376,8 +402,12 @@ export default function SiteMapView({ pulse, goProxy }: { pulse: PulseState; goP
                           className={`tree-row host ${active ? 'selected' : ''}`}
                           style={{ height: ROW_H }}
                           onClick={() => selectTreeNode(row.host.host)}
-                          title={`${row.host.host} — click to list its flows · double-click to expand`}
+                          title={`${row.host.host} — click to list its flows · double-click to expand · right-click for scope`}
                           onDoubleClick={() => toggle(row.host.host)}
+                          onContextMenu={(e) => {
+                            e.preventDefault()
+                            setHostMenu({ x: e.clientX, y: e.clientY, host: row.host.host })
+                          }}
                         >
                           <span
                             onClick={(e) => {
@@ -392,6 +422,11 @@ export default function SiteMapView({ pulse, goProxy }: { pulse: PulseState; goP
                           <span className="name" title={row.host.host}>
                             {row.host.host}
                           </span>
+                          {hostInScope(row.host.host) && (
+                            <span style={{ display: 'flex', color: 'var(--accent)' }} title="In scope — rules include subdomains">
+                              <Icon name="shield" size={11} />
+                            </span>
+                          )}
                           <span className="grow" />
                           <span className="badge" title={`${row.host.total} flows`}>
                             {row.host.total > 999 ? `${(row.host.total / 1000).toFixed(1)}k` : row.host.total}
@@ -547,6 +582,7 @@ export default function SiteMapView({ pulse, goProxy }: { pulse: PulseState; goP
         }
       />
       {menu && <ContextMenu x={menu.x} y={menu.y} items={rowMenu(menu.flowId, menu.url)} onClose={() => setMenu(null)} />}
+      {hostMenu && <ContextMenu x={hostMenu.x} y={hostMenu.y} items={hostMenuItems(hostMenu.host)} onClose={() => setHostMenu(null)} />}
     </div>
   )
 }

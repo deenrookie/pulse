@@ -11,6 +11,7 @@ import HighlightRules, { ruleMatches, type HighlightRule } from '../ui/Highlight
 import FilterDialog, { EMPTY_FILTER, filterActive, passesFilter, type FilterModel } from '../ui/FilterDialog'
 import type { PulseState } from '../state'
 import type { FlowMeta } from '../types'
+import { hostInScope, setScopeOnly, useScope } from '../scope'
 
 const METHODS = ['ANY', 'GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'HEAD', 'OPTIONS']
 const STATUS_FILTERS: [string, string][] = [
@@ -77,6 +78,7 @@ export default function ProxyView({ pulse }: { pulse: PulseState }) {
   const [rawEdit, setRawEdit] = useState<{ id: string; text: string } | null>(null)
   const [filter, setFilter] = useState<FilterModel>(loadFilter)
   const [filterOpen, setFilterOpen] = useState(false)
+  const scope = useScope()
 
   // deep link: #/proxy?flow=<id> selects that flow
   useEffect(() => {
@@ -154,6 +156,7 @@ export default function ProxyView({ pulse }: { pulse: PulseState }) {
       })
     }
     if (hideStatic) out = out.filter((m) => !isStatic(m))
+    if (scope.scopeOnly && scope.rules.length > 0) out = out.filter((m) => hostInScope(m.host))
     if (filterActive(filter)) {
       out = out.filter((m) =>
         passesFilter(
@@ -181,7 +184,7 @@ export default function ProxyView({ pulse }: { pulse: PulseState }) {
     }
     return out
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pulse.flows, q, method, statuses, hideStatic, sort, filter])
+  }, [pulse.flows, q, method, statuses, hideStatic, sort, filter, scope.scopeOnly, scope.rules])
 
   const toggleStatus = (s: string) => {
     setStatuses((prev) => {
@@ -277,6 +280,19 @@ export default function ProxyView({ pulse }: { pulse: PulseState }) {
                 <Icon name="filter" size={11} />
                 Hide static
               </button>
+              <button
+                className={`tchip ${scope.scopeOnly ? 'on' : ''}`}
+                disabled={scope.rules.length === 0}
+                title={
+                  scope.rules.length === 0
+                    ? 'Scope is empty — right-click a flow → "Add host to scope"'
+                    : `Only in-scope hosts (${scope.rules.join(', ')}) — rules include subdomains`
+                }
+                onClick={() => setScopeOnly(!scope.scopeOnly)}
+              >
+                <Icon name="shield" size={11} />
+                Scope{scope.rules.length > 0 ? ` · ${scope.rules.length}` : ''}
+              </button>
               {filtersActive && (
                 <button
                   className="tchip"
@@ -285,6 +301,7 @@ export default function ProxyView({ pulse }: { pulse: PulseState }) {
                     setMethod('ANY')
                     setStatuses(new Set())
                     setHideStatic(false)
+                    setScopeOnly(false)
                   }}
                 >
                   <Icon name="x" size={11} />

@@ -137,6 +137,8 @@ export interface PulseSettings {
   pluginsDir: string
   /** live proxy listener address; PUT rebinds without restart */
   proxyAddr: string
+  /** target host rules — each includes its subdomains; drives the Scope filter */
+  scope: string[]
 }
 
 export const getSettings = () => api<PulseSettings>('/api/settings')

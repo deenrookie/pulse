@@ -33,7 +33,7 @@
 
 | 模块 | 能力 |
 | --- | --- |
-| **Proxy** | HTTP/HTTPS MITM 抓包，SSE 实时**虚拟化**表格（5000 行、列宽拖拽、列头排序），多维过滤 + 高级过滤器 + 8 色高亮规则，gzip/br 自动解压，JSONL 持久化重启恢复，右键 Send to Repeater / Copy as cURL / 深链接直达 |
+| **Proxy** | HTTP/HTTPS MITM 抓包，SSE 实时**虚拟化**表格（5000 行、列宽拖拽、列头排序），多维过滤 + 高级过滤器 + 8 色高亮规则，gzip/br 自动解压，JSONL 持久化重启恢复，右键 Send to Repeater / Copy as cURL / 深链接直达；**Scope 目标范围**（右键加入 host，一键只看目标流量，规则含子域，站点地图盾牌标记） |
 | **Intercept** | 请求挂起队列，改方法/URL/头/体后放行或丢弃，`F` / `D` 快捷操作 |
 | **Site Map** | host→path→method 端点树聚合（状态着色、搜索），点击检查最新请求/响应 |
 | **Repeater** | raw 编辑器改包重发，标签持久化/搜索/标记，响应即查 |

@@ -351,7 +351,7 @@ function RewritePanel({ notify }: { notify: (text: string, kind?: 'ok' | 'err') 
                       Edit
                     </button>{' '}
                     <button className="btn danger sm" onClick={() => remove(r)}>
-                      Del
+                      Delete
                     </button>
                   </td>
                 </tr>
