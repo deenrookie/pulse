@@ -456,3 +456,89 @@ func TestSettingsScope(t *testing.T) {
 		t.Fatalf("rule with space = %d", resp.StatusCode)
 	}
 }
+
+func TestHARExport(t *testing.T) {
+	e := newEnv(t)
+	up := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/plain")
+		fmt.Fprint(w, "har-body")
+	}))
+	defer up.Close()
+	if _, err := proxiedClient(e.proxyAddr).Get(up.URL + "/x"); err != nil {
+		t.Fatalf("proxied get: %v", err)
+	}
+	if !waitFlows(t, e, 1) {
+		t.Fatal("flow never appeared")
+	}
+
+	resp, data := e.do(t, "GET", "/api/flows/har", nil)
+	if resp.StatusCode != 200 {
+		t.Fatalf("har = %d %s", resp.StatusCode, data)
+	}
+	if ct := resp.Header.Get("Content-Type"); !strings.HasPrefix(ct, "application/json") {
+		t.Fatalf("content-type = %s", ct)
+	}
+	if cd := resp.Header.Get("Content-Disposition"); !strings.Contains(cd, ".har") {
+		t.Fatalf("disposition = %s", cd)
+	}
+	var har struct {
+		Log struct {
+			Version string `json:"version"`
+			Creator struct {
+				Name string `json:"name"`
+			} `json:"creator"`
+			Entries []struct {
+				StartedDateTime string `json:"startedDateTime"`
+				Request         struct {
+					Method string `json:"method"`
+					URL    string `json:"url"`
+					Headers []struct {
+						Name  string `json:"name"`
+						Value string `json:"value"`
+					} `json:"headers"`
+				} `json:"request"`
+				Response struct {
+					Status  int    `json:"status"`
+					Content struct {
+						Size     int    `json:"size"`
+						MimeType string `json:"mimeType"`
+						Text     string `json:"text"`
+					} `json:"content"`
+				} `json:"response"`
+				Timings struct {
+					Wait float64 `json:"wait"`
+				} `json:"timings"`
+			} `json:"entries"`
+		} `json:"log"`
+	}
+	if err := json.Unmarshal(data, &har); err != nil {
+		t.Fatalf("parse har: %v", err)
+	}
+	if har.Log.Version != "1.2" || har.Log.Creator.Name != "Pulse" {
+		t.Fatalf("log header = %+v", har.Log)
+	}
+	if len(har.Log.Entries) != 1 {
+		t.Fatalf("entries = %d", len(har.Log.Entries))
+	}
+	ent := har.Log.Entries[0]
+	if ent.Request.Method != "GET" || !strings.Contains(ent.Request.URL, "/x") {
+		t.Fatalf("entry request = %+v", ent.Request)
+	}
+	if ent.Response.Status != 200 || ent.Response.Content.Text != "har-body" || ent.Response.Content.MimeType != "text/plain" {
+		t.Fatalf("entry response = %+v", ent.Response)
+	}
+	if ent.StartedDateTime == "" || ent.Timings.Wait < 0 {
+		t.Fatalf("entry meta = %+v", ent)
+	}
+	// headers must round-trip
+	if !func() bool {
+		for _, h := range ent.Request.Headers {
+			if h.Name == "Host" {
+				return true
+			}
+		}
+		return false
+	}() {
+		t.Fatalf("request headers missing Host: %+v", ent.Request.Headers)
+	}
+}

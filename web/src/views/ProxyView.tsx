@@ -333,6 +333,15 @@ export default function ProxyView({ pulse }: { pulse: PulseState }) {
               <span className="faint mono" style={{ fontSize: 11, fontVariantNumeric: 'tabular-nums' }} title="Total recorded flows (including filtered-out)">
                 {pulse.total.toLocaleString()} total
               </span>
+              <a
+                className="btn ghost sm"
+                href="/api/flows/har"
+                download
+                title="Export every completed flow as an HTTP Archive (.har) — importable in Burp, browsers, most tools"
+              >
+                <Icon name="download" size={13} />
+                HAR
+              </a>
               <button className="btn danger sm" onClick={clearHistory} disabled={pulse.total === 0}>
                 <Icon name="trash" size={13} />
                 Clear
