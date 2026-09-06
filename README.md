@@ -37,6 +37,7 @@ MITM interception, tampering, replay, rewriting and plugin extensibility — the
 | --- | --- |
 | **Proxy** | HTTP/HTTPS MITM capture, real-time SSE **virtualized** table (5k rows, resizable columns, sortable), multi-facet filters + advanced filter builder + 8-color highlights, gzip/br auto-decompression, JSONL persistence across restarts, right-click Send to Repeater / Copy as cURL / deep links; **Scope** targeting (right-click a host, one click to filter to your targets — rules include subdomains, shield badges in the site map); **deep search** (`Ctrl+Shift+F`) across traffic + repeater records; **HAR export** |
 | **Intercept** | Hold requests in a queue, edit method/URL/headers/body, forward or drop, `F` / `D` shortcuts |
+| **Intruder** | Burp-style batch fuzzing: mark `§positions§` in a raw template, load a payload list, fire — status/length/time per shot with baseline-deviation highlighting and a response inspector (`Ctrl+7`, right-click any flow → Send to Intruder) |
 | **Site Map** | host→path→method endpoint tree (status coloring, counts, search), click to inspect the latest exchange |
 | **Repeater** | raw-editor replay, persistent searchable tabs, instant response inspection |
 | **Extensions** | **Match & Replace** (5 zones, regex/literal, hit counters); **JS plugins** (onRequest/onResponse hooks, isolated VMs + 2s timeout, hot reload, log panel, a **CodeMirror online editor**: Check dry-run / sandbox Test run / one-click save, **configurable plugin directory**, built-in samples) |

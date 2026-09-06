@@ -188,3 +188,25 @@ export interface SearchHit {
   statusCode?: number
   snippet: string
 }
+
+/** saved Intruder attack plan */
+export interface Attack {
+  id: string
+  title: string
+  /** raw request template; §payload§ marks positions */
+  raw: string
+  /** payload list, one per line */
+  payloads: string
+  createdAt: string
+  updatedAt: string
+}
+
+/** one fired request in an attack run */
+export interface AttackResult {
+  payload: string
+  statusCode: number
+  reason: string
+  length: number
+  ms: number
+  flow: Flow | null
+}

@@ -7,6 +7,7 @@ import { copyToClipboard, bodyToText, formatSize, formatTime, getFlow, toCurl } 
 import type { FlowMeta } from '../types'
 import ContextMenu, { type MenuItem } from './ContextMenu'
 import Icon from '../ui/Icon'
+import { requestToRaw } from './RawEditor'
 import { addHostToScope, bareHost, hostInScope, removeHostFromScope } from '../scope'
 import Empty from '../ui/Empty'
 import { colorTriplet } from '../ui/palette'
@@ -214,6 +215,18 @@ export default function FlowTable({
       icon: 'send',
       label: 'Send to Repeater',
       onClick: () => void onSendToRepeater(m.id),
+    },
+    {
+      icon: 'bolt',
+      label: 'Send to Intruder',
+      onClick: async () => {
+        try {
+          const fl = await getFlow(m.id)
+          window.dispatchEvent(new CustomEvent('pulse:send-to-intruder', { detail: requestToRaw(fl.request) }))
+        } catch {
+          notify('Could not load the flow', 'err')
+        }
+      },
     },
     {
       icon: 'shield',

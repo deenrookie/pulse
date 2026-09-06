@@ -36,6 +36,7 @@ type Server struct {
 	rw   *rewrite.Engine
 	plug *plugins.Runtime
 	set  *Settings
+	intr *intruderStore
 }
 
 func New(st *store.Store, eng *proxy.Engine, rep *repeater.Manager, auth *certs.Authority, bus *events.Bus,
@@ -65,6 +66,7 @@ func New(st *store.Store, eng *proxy.Engine, rep *repeater.Manager, auth *certs.
 	return &Server{
 		Version: version, ProxyAddr: proxyAddr, UIAddr: uiAddr, DataDir: dataDir,
 		st: st, eng: eng, rep: rep, auth: auth, bus: bus, rw: rw, plug: plug, set: set,
+		intr: newIntruderStore(dataDir),
 	}, nil
 }
 
@@ -85,6 +87,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/api/intercept/", s.handleInterceptID)
 	mux.HandleFunc("/api/repeater", s.handleRepeater)
 	mux.HandleFunc("/api/repeater/", s.handleRepeaterID)
+	mux.HandleFunc("/api/intruder", s.handleIntruder)
+	mux.HandleFunc("/api/intruder/", s.handleIntruder)
 	mux.HandleFunc("/api/rewrite", s.handleRewrite)
 	mux.HandleFunc("/api/rewrite/", s.handleRewriteID)
 	mux.HandleFunc("/api/plugins", s.handlePlugins)

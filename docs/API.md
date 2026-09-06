@@ -122,3 +122,10 @@
 }
 ```
 服务端忽略 `id/timestamp/source` 等只读字段；`body` 缺省为空。
+
+## Intruder
+
+### `GET /api/intruder` → `{"attacks":[{id,title,raw,payloads,createdAt,updatedAt}]}`（攻击计划持久化于 `<data-dir>/attacks.json`）
+### `POST /api/intruder` `{"title?","raw","payloads?"}` → 创建攻击（raw 内 `§…§` 标记位置；payloads 每行一个）
+### `PUT /api/intruder/{id}` 同上字段 → 更新；`DELETE /api/intruder/{id}` → 删除
+### `POST /api/intruder/fire` `{"request":{…}}` → 发送单次请求（控制台把载荷替换进 §位置§ 后调用；复用引擎 RoundTrip，不落任何存储）

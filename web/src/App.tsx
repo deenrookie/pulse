@@ -3,6 +3,7 @@ import ExtensionsView from './views/ExtensionsView'
 import InterceptView from './views/InterceptView'
 import ProxyView from './views/ProxyView'
 import RepeaterView from './views/RepeaterView'
+import IntruderView from './views/IntruderView'
 import SiteMapView from './views/SiteMapView'
 import SettingsView from './views/SettingsView'
 import Icon, { type IconName } from './ui/Icon'
@@ -11,7 +12,7 @@ import GlobalSearch from './ui/GlobalSearch'
 import { applyFontSize, loadFontSize } from './ui/fontSize'
 import { usePulse } from './state'
 
-type Tab = 'proxy' | 'intercept' | 'repeater' | 'sitemap' | 'extensions' | 'settings'
+type Tab = 'proxy' | 'intercept' | 'repeater' | 'intruder' | 'sitemap' | 'extensions' | 'settings'
 type Theme = 'warm' | 'midnight' | 'linear'
 
 const THEMES: { id: Theme; label: string; hint: string }[] = [
@@ -40,6 +41,7 @@ const VIEWS: { id: Tab; icon: IconName; label: string; title: string; subtitle: 
   { id: 'proxy', icon: 'waves', label: 'Live Traffic', title: 'Live Traffic', subtitle: 'Everything passing through the proxy, in real time' },
   { id: 'intercept', icon: 'hand', label: 'Intercept', title: 'Intercept', subtitle: 'Hold requests, edit them, then forward or drop' },
   { id: 'repeater', icon: 'repeat', label: 'Repeater', title: 'Repeater', subtitle: 'Edit and resend any captured request' },
+  { id: 'intruder', icon: 'bolt', label: 'Intruder', title: 'Intruder', subtitle: 'Batch-fuzz §positions§ with a payload list' },
   { id: 'sitemap', icon: 'sitemap', label: 'Site Map', title: 'Site Map', subtitle: 'Every captured endpoint as a host → path tree' },
   { id: 'extensions', icon: 'puzzle', label: 'Extensions', title: 'Extensions', subtitle: 'Match & Replace rules and JavaScript plugins' },
   { id: 'settings', icon: 'gear', label: 'Settings', title: 'Settings', subtitle: 'CA certificate, runtime configuration' },
@@ -72,6 +74,21 @@ export default function App() {
   const [theme, setTheme] = useState<Theme>(readTheme)
   const [decoderOpen, setDecoderOpen] = useState(false)
   const [decoderSeed, setDecoderSeed] = useState<{ text: string; n: number } | null>(null)
+  const [intruderSeed, setIntruderSeed] = useState<{ raw: string; n: number } | null>(null)
+
+  // "Send to Intruder": hand the raw request to the Intruder view as a seed
+  // prop (dispatched before that view mounts, so an event listener would miss it)
+  useEffect(() => {
+    const onSeed = (e: Event) => {
+      const raw = (e as CustomEvent<string>).detail
+      if (!raw) return
+      setIntruderSeed((prev) => ({ raw, n: (prev?.n ?? 0) + 1 }))
+      go('intruder')
+    }
+    window.addEventListener('pulse:send-to-intruder', onSeed)
+    return () => window.removeEventListener('pulse:send-to-intruder', onSeed)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   // "Send to Decoder" from anywhere: opens the decoder card with the selected
   // text loaded as its input (n forces a re-seed even for identical text)
@@ -157,7 +174,7 @@ export default function App() {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const mod = e.ctrlKey || e.metaKey
-      if (mod && e.key >= '1' && e.key <= '6') {
+      if (mod && e.key >= '1' && e.key <= '7') {
         e.preventDefault()
         go(VIEWS[Number(e.key) - 1].id)
       } else if (mod && e.shiftKey && e.key.toLowerCase() === 'f') {
@@ -257,6 +274,7 @@ export default function App() {
           {tab === 'proxy' && <ProxyView pulse={pulse} />}
           {tab === 'intercept' && <InterceptView pulse={pulse} />}
           {tab === 'repeater' && <RepeaterView pulse={pulse} goProxy={() => go('proxy')} />}
+          {tab === 'intruder' && <IntruderView pulse={pulse} openSeed={intruderSeed} />}
           {tab === 'sitemap' && <SiteMapView pulse={pulse} goProxy={() => go('proxy')} />}
           {tab === 'extensions' && <ExtensionsView notify={pulse.notify} />}
           {tab === 'settings' && <SettingsView pulse={pulse} />}

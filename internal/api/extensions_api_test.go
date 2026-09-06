@@ -615,3 +615,75 @@ func TestDeepSearch(t *testing.T) {
 		t.Fatalf("empty q = %d", resp.StatusCode)
 	}
 }
+
+func TestIntruderAPI(t *testing.T) {
+	e := newEnv(t)
+	var sawUser string
+	up := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		sawUser = r.URL.Query().Get("user")
+		w.Write([]byte("user=" + sawUser))
+	}))
+	defer up.Close()
+
+	// 创建攻击（含 §位置§ 模板）
+	resp, data := e.do(t, "POST", "/api/intruder", map[string]any{
+		"title":    "user fuzz",
+		"raw":      "GET /search?user=§payload§ HTTP/1.1\nHost: " + up.Listener.Addr().String() + "\n\n",
+		"payloads": "alice\nbob\n",
+	})
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("create = %d %s", resp.StatusCode, data)
+	}
+	var atk struct {
+		ID    string `json:"id"`
+		Title string `json:"title"`
+	}
+	json.Unmarshal(data, &atk)
+	if atk.ID == "" || atk.Title != "user fuzz" {
+		t.Fatalf("attack = %+v", atk)
+	}
+
+	// fire：替换后的请求直达上游
+	resp, data = e.do(t, "POST", "/api/intruder/fire", map[string]any{"request": map[string]any{
+		"method": "GET", "url": up.URL + "/search?user=carol", "httpVersion": "HTTP/1.1",
+	}})
+	if resp.StatusCode != 200 {
+		t.Fatalf("fire = %d %s", resp.StatusCode, data)
+	}
+	var fired struct {
+		Flow struct {
+			Resp *struct {
+				StatusCode int `json:"statusCode"`
+			} `json:"response"`
+		} `json:"flow"`
+	}
+	if err := json.Unmarshal(data, &fired); err != nil {
+		t.Fatalf("parse fire: %v", err)
+	}
+	if sawUser != "carol" {
+		t.Fatalf("upstream saw user=%q", sawUser)
+	}
+	if fired.Flow.Resp == nil || fired.Flow.Resp.StatusCode != 200 {
+		t.Fatalf("fire response = %+v", fired)
+	}
+
+	// 列表 + 更新 + 删除
+	_, data = e.do(t, "GET", "/api/intruder", nil)
+	var list struct {
+		Attacks []struct{ ID string } `json:"attacks"`
+	}
+	json.Unmarshal(data, &list)
+	if len(list.Attacks) != 1 {
+		t.Fatalf("attacks = %+v", list)
+	}
+	e.do(t, "PUT", "/api/intruder/"+atk.ID, map[string]any{"raw": "GET / HTTP/1.1\nHost: x\n\n", "payloads": "1\n"})
+	resp, _ = e.do(t, "DELETE", "/api/intruder/"+atk.ID, nil)
+	if resp.StatusCode != 200 {
+		t.Fatalf("delete = %d", resp.StatusCode)
+	}
+	_, data = e.do(t, "GET", "/api/intruder", nil)
+	json.Unmarshal(data, &list)
+	if len(list.Attacks) != 0 {
+		t.Fatalf("after delete = %+v", list)
+	}
+}

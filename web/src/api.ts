@@ -1,5 +1,6 @@
 // Typed REST + SSE client for the Pulse backend.
 import type {
+  Attack,
   EditableRequest,
   Flow,
   FlowMeta,
@@ -19,6 +20,23 @@ import type {
 /** deep keyword search across traffic + repeater records */
 export const deepSearch = (q: string) =>
   api<{ q: string; hits: SearchHit[]; total: number }>(`/api/search?q=${encodeURIComponent(q)}`)
+
+// ---------- intruder ----------
+
+export const listAttacks = () => api<{ attacks: Attack[] }>('/api/intruder')
+
+export const createAttack = (payload: { title?: string; raw: string; payloads?: string }) =>
+  api<Attack>('/api/intruder', { method: 'POST', body: JSON.stringify(payload) })
+
+export const updateAttack = (id: string, payload: { title?: string; raw: string; payloads: string }) =>
+  api<Attack>(`/api/intruder/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify(payload) })
+
+export const deleteAttack = (id: string) =>
+  api<{ ok: boolean }>(`/api/intruder/${encodeURIComponent(id)}`, { method: 'DELETE' })
+
+/** fire one substituted request; the engine sends it upstream, nothing persists */
+export const fireAttack = (payload: { request: EditableRequest }) =>
+  api<{ flow: Flow }>('/api/intruder/fire', { method: 'POST', body: JSON.stringify(payload) })
 
 async function api<T>(path: string, init?: RequestInit): Promise<T> {
   const resp = await fetch(path, {

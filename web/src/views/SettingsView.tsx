@@ -282,7 +282,9 @@ export default function SettingsView({ pulse }: { pulse: PulseState }) {
           </h3>
           <div className="kv-grid">
             <div className="k">Switch views</div>
-            <div className="v"><kbd>Ctrl 1</kbd> … <kbd>Ctrl 5</kbd></div>
+            <div className="v"><kbd>Ctrl 1</kbd> … <kbd>Ctrl 7</kbd></div>
+            <div className="k">Deep search</div>
+            <div className="v"><kbd>Ctrl ⇧ F</kbd></div>
             <div className="k">Send (Repeater)</div>
             <div className="v"><kbd>Ctrl ↵</kbd></div>
             <div className="k">Forward / Drop (Intercept)</div>
