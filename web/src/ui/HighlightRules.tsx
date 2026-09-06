@@ -1,7 +1,10 @@
-// Popover to manage Live Traffic highlight rules: request/response scope,
-// field, contains/regex match, marker color. Rules live in localStorage and
-// are evaluated client-side against flow metadata (first match wins).
+// Centered modal for managing Live Traffic highlight rules: request/response
+// scope, field, contains/regex match, marker color. Rules live in localStorage
+// and are evaluated client-side against flow metadata (first match wins).
+// Rendered through a portal — an ancestor's transform (view-in animation)
+// would otherwise trap the fixed overlay inside the content area.
 import { useEffect, useRef } from 'react'
+import { createPortal } from 'react-dom'
 import Icon from './Icon'
 import { MARK_COLORS } from './palette'
 
@@ -40,24 +43,17 @@ export function ruleMatches(rule: HighlightRule, m: Record<string, string>): boo
 export default function HighlightRules({
   rules,
   onChange,
-  x,
-  y,
   onClose,
 }: {
   rules: HighlightRule[]
   onChange: (rules: HighlightRule[]) => void
-  x: number
-  y: number
   onClose: () => void
 }) {
   const ref = useRef<HTMLDivElement>(null)
   useEffect(() => {
-    const onDoc = () => onClose()
     const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose()
-    window.addEventListener('mousedown', onDoc)
     window.addEventListener('keydown', onKey)
     return () => {
-      window.removeEventListener('mousedown', onDoc)
       window.removeEventListener('keydown', onKey)
     }
   }, [onClose])
@@ -66,7 +62,7 @@ export default function HighlightRules({
   const prevCount = useRef(rules.length)
   useEffect(() => {
     if (rules.length > prevCount.current) {
-      const rows = document.querySelectorAll('.popover .rule-row')
+      const rows = document.querySelectorAll('.highlights-modal .rule-row')
       const last = rows[rows.length - 1]
       ;(last?.querySelector('input.mini') as HTMLInputElement | null)?.focus()
     }
@@ -91,17 +87,16 @@ export default function HighlightRules({
 
   const del = (id: string) => onChange(rules.filter((r) => r.id !== id))
 
-  return (
+  return createPortal(
     <div
-      ref={ref}
-      className="popover"
-      style={{ left: Math.max(8, Math.min(x, window.innerWidth - 480)), top: Math.max(8, Math.min(y, window.innerHeight - 360)) }}
-      onMouseDown={(e) => e.stopPropagation()}
+      className="modal-overlay"
+      onMouseDown={(e) => e.target === e.currentTarget && onClose()}
     >
-      <h4>
-        <Icon name="bolt" size={14} />
-        Highlight rules
-      </h4>
+      <div className="modal highlights-modal" role="dialog" aria-label="Highlight rules" ref={ref}>
+        <h4>
+          <Icon name="bolt" size={14} />
+          Highlight rules
+        </h4>
       <div className="sub">
         Matching flows get a colored marker in Live Traffic. First match wins. Applied client-side, saved in this
         browser.
@@ -165,7 +160,13 @@ export default function HighlightRules({
             Clear all
           </button>
         )}
+        <div className="spacer" style={{ flex: 1 }} />
+        <button className="btn ghost sm" onClick={onClose}>
+          Close
+        </button>
       </div>
-    </div>
+      </div>
+    </div>,
+    document.body,
   )
 }

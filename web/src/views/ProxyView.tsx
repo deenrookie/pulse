@@ -425,8 +425,6 @@ export default function ProxyView({ pulse }: { pulse: PulseState }) {
         <HighlightRules
           rules={rules}
           onChange={saveRules}
-          x={rulesPos.x}
-          y={rulesPos.y}
           onClose={() => setRulesPos(null)}
         />
       )}

@@ -168,6 +168,9 @@
    borders, near-black ink, and the signature lavender #5e6ad2 as the single
    chromatic accent. Semantic colors are Linear product values. */
 :root[data-theme='linear'] {
+  /* light canvas — tell the UA so native controls (select options,
+   * scrollbars, autofill) don't render dark against the white theme */
+  color-scheme: light;
   /* surfaces — Linear inverse family, light -> layered */
   --bg: #f7f8f8;          /* app background (inverse surface) */
   --bg-deep: #f0f1f2;     /* nav rail, under everything */
@@ -1238,6 +1241,11 @@ table.flows tbody tr.hl.selected td { background: var(--accent-bg); box-shadow: 
 /* ============ 24. Display filter modal (Burp-style) ============ */
 .filter-modal { width: 560px; max-width: calc(100vw - 40px); max-height: calc(100vh - 80px); display: flex; flex-direction: column; }
 .filter-modal .sub { margin-bottom: 8px; }
+/* highlights manager: centered modal (was an anchored popover whose rule
+   rows clipped below the fold on small viewports) */
+.highlights-modal { width: 520px; max-width: calc(100vw - 40px); max-height: calc(100vh - 80px); display: flex; flex-direction: column; }
+.highlights-modal .sub { margin-bottom: 8px; }
+.highlights-modal .rule-list { overflow: auto; min-height: 0; flex: 1; }
 .filter-scroll { overflow: auto; min-height: 0; padding-right: 4px; }
 .fsec { margin-bottom: 14px; }
 .fsec-label {

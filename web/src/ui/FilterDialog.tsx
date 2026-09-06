@@ -4,6 +4,7 @@
 // and response size. Excludes script mode and scope per product decision.
 // All client-side over flow metadata; persisted per browser.
 import { useEffect } from 'react'
+import { createPortal } from 'react-dom'
 import Icon from '../ui/Icon'
 
 export interface FilterModel {
@@ -204,7 +205,9 @@ export default function FilterDialog({
     return Number.isFinite(n) && n >= 0 ? n : null
   }
 
-  return (
+  // portal to <body>: an ancestor's transform (view-in) would otherwise
+  // trap the fixed overlay inside the content area instead of the viewport
+  return createPortal(
     <div className="modal-overlay" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div className="modal filter-modal" role="dialog" aria-label="Display filter">
         <h3>
@@ -302,6 +305,7 @@ export default function FilterDialog({
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   )
 }
