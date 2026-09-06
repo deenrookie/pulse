@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { bodyToText, copyToClipboard, encodeBody, toCurlRequest } from '../api'
 import ContextMenu, { type MenuItem } from './ContextMenu'
 import Icon from '../ui/Icon'
-import { renderCookieValue, renderJSONKeys } from './rawHighlight'
+import { renderBodyKeys, renderCookieValue } from './rawHighlight'
 import type { EditableRequest, HttpRequest } from '../types'
 
 /** serialize a captured request into a raw editable buffer */
@@ -340,11 +340,11 @@ export default function RawEditor({
           </div>
         )
       }
-      // body lines get JSON property-key tinting (never the request line)
+      // body lines get JSON property-key / form-key tinting (never the request line)
       return (
         <div key={i}>
           {ln}
-          {i > 0 && i > headEnd ? renderJSONKeys(line || '\u00a0') : line || '\u00a0'}
+          {i > 0 && i > headEnd ? renderBodyKeys(line || '\u00a0') : line || '\u00a0'}
         </div>
       )
     })

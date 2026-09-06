@@ -46,3 +46,35 @@ export function renderCookieValue(value: string, keyClass = 'cookie-key'): React
   })
   return out
 }
+
+/** a whole line of urlencoded form pairs: k=v&k2=v2 (every &-segment needs a key) */
+const FORM_LINE_RE = /^[A-Za-z0-9\-._~%+]+=[^&]*(?:&[A-Za-z0-9\-._~%+]+=[^&]*)*$/
+
+export function isFormLine(line: string): boolean {
+  return FORM_LINE_RE.test(line.trim())
+}
+
+/** render a form body line with each pair's key tinted: k1=v1&k2=v2 */
+export function renderFormKeys(line: string, keyClass = 'form-key'): ReactNode {
+  const out: ReactNode[] = []
+  line.split('&').forEach((p, idx) => {
+    if (idx > 0) out.push('&')
+    const eq = p.indexOf('=')
+    if (eq > 0) {
+      out.push(
+        <span key={`fk${idx}`} className={keyClass}>
+          {p.slice(0, eq)}
+        </span>,
+      )
+      out.push(p.slice(eq))
+    } else {
+      out.push(p)
+    }
+  })
+  return out
+}
+
+/** body-line renderer: JSON property keys, else urlencoded form keys, else plain */
+export function renderBodyKeys(line: string): ReactNode {
+  return isFormLine(line) ? renderFormKeys(line) : renderJSONKeys(line)
+}

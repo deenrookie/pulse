@@ -17,7 +17,7 @@ import type { Header, WSMessage } from '../types'
 import Icon from '../ui/Icon'
 import ContextMenu, { type MenuItem } from './ContextMenu'
 import RawEditor from './RawEditor'
-import { renderCookieValue, renderJSONKeys } from './rawHighlight'
+import { renderBodyKeys, renderCookieValue } from './rawHighlight'
 import { toCurlRequest } from '../api'
 
 interface RequestLike {
@@ -834,8 +834,8 @@ function RawLine({ line, n, inHead }: { line: string; n: number; inHead: boolean
   const idx = line.indexOf(':')
   const isHeader = inHead && idx > 0 && !line.startsWith(' ')
   if (!isHeader) {
-    // body lines (never the request/status line) get JSON key tinting
-    const content = n > 0 && line ? renderJSONKeys(line) : line || ' '
+    // body lines (never the request/status line) get JSON / form key tinting
+    const content = n > 0 && line ? renderBodyKeys(line) : line || ' '
     return (
       <div>
         <span className="ln">{n + 1}</span>

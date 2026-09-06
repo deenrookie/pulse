@@ -687,6 +687,7 @@ tr.vspacer td { border: none; padding: 0; }
    from the info-blue used for header names */
 .json-key { color: var(--purple); }
 .cookie-key { color: var(--purple); }
+.form-key { color: var(--purple); }
 
 .summary-strip {
   display: flex; flex-wrap: wrap; gap: 5px 16px;
