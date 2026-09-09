@@ -5,6 +5,22 @@ import { bodyToText, copyToClipboard, encodeBody, toCurlRequest } from '../api'
 import ContextMenu, { type MenuItem } from './ContextMenu'
 import Icon from '../ui/Icon'
 import { renderBodyKeys, renderCookieValue } from './rawHighlight'
+
+/** §…§ position marks tinted like Burp's — only balanced pairs are marked.
+ *  The plain segments between marks still get JSON/form key tinting. */
+function renderPositionMarks(line: string): React.ReactNode {
+  const segs = line.split('§')
+  if (segs.length < 3 || segs.length % 2 === 0) return line // unbalanced → plain
+  return segs.map((s, k) =>
+    k % 2 === 1 ? (
+      <span key={k} className="raw-pos">
+        {`§${s}§`}
+      </span>
+    ) : (
+      <span key={k}>{renderBodyKeys(s)}</span>
+    ),
+  )
+}
 import type { EditableRequest, HttpRequest } from '../types'
 
 /** serialize a captured request into a raw editable buffer */
@@ -107,9 +123,12 @@ function useRawWrap(): [boolean, () => void] {
 export default function RawEditor({
   value,
   onChange,
+  markPositions = false,
 }: {
   value: string
   onChange: (next: string) => void
+  /** tint §payload§ markers (Intruder templates) like Burp's position marks */
+  markPositions?: boolean
 }) {
   const [wrap, toggleWrap] = useRawWrap()
   const mirrorRef = useRef<HTMLPreElement>(null)
@@ -340,6 +359,11 @@ export default function RawEditor({
           </div>
         )
       }
+      // §payload§ position marks (Intruder) get Burp-style tinting — on the
+      // request line and body lines (never on header lines)
+      if (markPositions && line.includes('§')) {
+        return <div key={i}>{ln}{renderPositionMarks(line)}</div>
+      }
       // body lines get JSON property-key / form-key tinting (never the request line)
       return (
         <div key={i}>
@@ -348,7 +372,7 @@ export default function RawEditor({
         </div>
       )
     })
-  }, [value, needle])
+  }, [value, needle, markPositions])
 
   const syncScroll = (e: React.UIEvent<HTMLTextAreaElement>) => {
     if (mirrorRef.current) {

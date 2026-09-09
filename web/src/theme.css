@@ -1293,6 +1293,12 @@ table.flows tbody tr.hl.selected td { background: var(--accent-bg); box-shadow: 
   white-space: pre; overflow: auto;
 }
 .cfg-src:focus { border-color: var(--accent-dim); }
+/* §position§ marks (Intruder templates) — Burp-style tinted markers */
+.raw-pos {
+  background: rgb(var(--accent-rgb) / .2);
+  color: var(--accent);
+  border-radius: 3px; padding: 0 1px;
+}
 .intruder-table tbody tr { cursor: pointer; }
 .intruder-table tr.selected { background: var(--sel); }
 .intruder-table tr.deviates { background: rgb(var(--warn-rgb) / .1); }

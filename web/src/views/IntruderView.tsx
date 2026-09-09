@@ -10,6 +10,7 @@ import Split from '../ui/Split'
 import { confirm } from '../ui/Confirm'
 import { ResponseInspector } from '../components/MessageViewer'
 import { rawToRequest } from '../components/RawEditor'
+import RawEditor from '../components/RawEditor'
 import * as api from '../api'
 import type { PulseState } from '../state'
 import type { Attack, AttackResult, Flow } from '../types'
@@ -236,14 +237,9 @@ export default function IntruderView({ pulse, openSeed }: { pulse: PulseState; o
                 <div className="intruder-config">
                   <div className="cfg-col">
                     <div className="cfg-label">
-                      Request template <span className="faint">— wrap fuzz targets in §…§</span>
+                      Request template <span className="faint">— wrap fuzz targets in §…§ (header names, JSON/Cookie/form keys and §positions§ are highlighted)</span>
                     </div>
-                    <textarea
-                      className="cfg-src"
-                      value={raw}
-                      spellCheck={false}
-                      onChange={(e) => setRaw(e.target.value)}
-                    />
+                    <RawEditor value={raw} onChange={setRaw} markPositions />
                   </div>
                   <div className="cfg-col" style={{ flex: 0.7 }}>
                     <div className="cfg-label">
