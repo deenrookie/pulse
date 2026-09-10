@@ -122,25 +122,41 @@ export default function IntruderView({ pulse, openSeed }: { pulse: PulseState; o
 
   // ---- attack execution: substitute every §position§ with each payload ----
   const start = async () => {
-    const list = payloads.split('\n').map((p) => p.trim()).filter(Boolean)
     const grepList = grep.split('\n').map((p) => p.trim()).filter(Boolean)
     if (!raw.includes('§')) {
       pulse.notify('Mark at least one position with §payload§ in the template', 'err')
       return
     }
-    if (list.length === 0) {
-      pulse.notify('Add payloads — one per line', 'err')
-      return
+    const posCount = countPositions(raw)
+    // single set → every position gets the same payload; per-position sets →
+    // pitchfork: round i substitutes position j with sets[j][i]
+    const rounds: { label: string; values: string[] }[] = []
+    if (perPosition) {
+      const lists = sets.slice(0, posCount).map((set) => set.split('\n').map((p) => p.trim()).filter(Boolean))
+      if (lists.length !== posCount || lists.some((l) => l.length === 0)) {
+        pulse.notify(`Per-position mode needs one non-empty set for each of the ${posCount} positions`, 'err')
+        return
+      }
+      const n = Math.min(...lists.map((l) => l.length))
+      for (let i = 0; i < n; i++) rounds.push({ label: lists.map((l) => l[i]).join(' · '), values: lists.map((l) => l[i]) })
+    } else {
+      const list = payloads.split('\n').map((p) => p.trim()).filter(Boolean)
+      if (list.length === 0) {
+        pulse.notify('Add payloads — one per line', 'err')
+        return
+      }
+      for (const p of list) rounds.push({ label: p, values: [p] })
     }
     stopRef.current = false
     setRunning(true)
     setResults([])
     setSelectedIdx(null)
     const out: AttackResult[] = []
-    for (let i = 0; i < list.length; i++) {
+    for (let i = 0; i < rounds.length; i++) {
       if (stopRef.current) break
-      const payload = list[i]
-      const substituted = raw.replaceAll('§', '\x00').split('\x00').map((part, idx) => (idx % 2 === 1 ? payload : part)).join('')
+      const payload = rounds[i].label
+      const segs = raw.split('§')
+      const substituted = segs.map((part, idx) => (idx % 2 === 1 ? (rounds[i].values[Math.floor(idx / 2)] ?? '') : part)).join('')
       const parsed = rawToRequest(substituted, templateBaseURL(raw))
       if ('error' in parsed) {
         out.push({ payload, statusCode: 0, reason: 'parse: ' + parsed.error, length: 0, ms: 0, flow: null, grepHits: [] })
