@@ -256,6 +256,13 @@ export default function App() {
             <div className="subtitle">{view.subtitle}</div>
           </div>
           <div className="spacer" />
+          <button
+            className="btn ghost sm icon-btn"
+            title="Deep search — Ctrl+Shift+F: keyword across traffic + repeater, requests & responses"
+            onClick={() => window.dispatchEvent(new CustomEvent('pulse:open-search'))}
+          >
+            <Icon name="search" size={13} />
+          </button>
           <label className="switch" title="Hold every request before it reaches the server">
             <input
               type="checkbox"
