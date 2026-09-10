@@ -1787,3 +1787,9 @@ textarea.editor.raw.over-mirror:focus { border-color: var(--accent-dim); box-sha
   flex: none; align-self: center; font-size: 11px; color: var(--accent);
   background: rgb(var(--accent-rgb) / .12); border-radius: 4px; padding: 2px 7px;
 }
+
+/* held-response queue (intercept) */
+.resp-hold { border-top: 1px solid var(--border); flex: none; max-height: 30%; overflow: auto; }
+.resp-hold-head { display: flex; align-items: center; gap: 8px; padding: 8px 14px; font-size: 12px; color: var(--text-muted); }
+.resp-hold-row { display: flex; align-items: center; gap: 10px; padding: 6px 14px; }
+.resp-hold-row:hover { background: var(--bg-hover); }

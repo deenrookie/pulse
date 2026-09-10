@@ -10,19 +10,23 @@ import (
 const interceptCapacity = 50
 
 type iAction struct {
-	req  *store.Request // modified request (nil = forward unchanged)
+	req  *store.Request  // modified request (nil = forward unchanged)
+	resp *store.Response // modified response (nil = forward unchanged)
 	drop bool
 }
 
 type iItem struct {
-	req *store.Request
-	ch  chan iAction
+	req  *store.Request  // the held request (or the context request for a held response)
+	resp *store.Response // set when holding a response
+	ch   chan iAction
 }
 
-// Intercept holds matching requests until the user forwards or drops them.
+// Intercept holds matching requests (and, optionally, responses) until the
+// user forwards or drops them.
 type Intercept struct {
 	mu       sync.Mutex
 	enabled  bool
+	respOn   bool
 	capacity int
 	pending  map[string]*iItem
 	order    []string
@@ -41,10 +45,25 @@ func (it *Intercept) Enabled() bool {
 	return it.enabled
 }
 
-// SetEnabled toggles interception; queued items stay held either way.
+// SetEnabled toggles request interception; queued items stay held either way.
 func (it *Intercept) SetEnabled(v bool) {
 	it.mu.Lock()
 	it.enabled = v
+	it.mu.Unlock()
+	it.changed()
+}
+
+func (it *Intercept) RespEnabled() bool {
+	it.mu.Lock()
+	defer it.mu.Unlock()
+	return it.respOn
+}
+
+// SetRespEnabled toggles response interception (holds responses after the
+// upstream reply, before they reach the client).
+func (it *Intercept) SetRespEnabled(v bool) {
+	it.mu.Lock()
+	it.respOn = v
 	it.mu.Unlock()
 	it.changed()
 }
@@ -61,9 +80,30 @@ func (it *Intercept) Pending() []*store.Request {
 	defer it.mu.Unlock()
 	out := make([]*store.Request, 0, len(it.order))
 	for _, id := range it.order {
-		if item := it.pending[id]; item != nil {
+		if item := it.pending[id]; item != nil && item.resp == nil {
 			cp := *item.req
 			out = append(out, &cp)
+		}
+	}
+	return out
+}
+
+// HeldResp is one held response with its request context for display.
+type HeldResp struct {
+	ID   string
+	Req  *store.Request
+	Resp *store.Response
+}
+
+// PendingResp snapshots held responses in arrival order.
+func (it *Intercept) PendingResp() []HeldResp {
+	it.mu.Lock()
+	defer it.mu.Unlock()
+	out := make([]HeldResp, 0, len(it.order))
+	for _, id := range it.order {
+		if item := it.pending[id]; item != nil && item.resp != nil {
+			rq, rp := *item.req, *item.resp
+			out = append(out, HeldResp{ID: id, Req: &rq, Resp: &rp})
 		}
 	}
 	return out
@@ -80,19 +120,58 @@ func (it *Intercept) Hold(ctx context.Context, req *store.Request) (forward *sto
 		return req, true
 	}
 	item := &iItem{req: req, ch: make(chan iAction, 1)}
-	it.pending[req.ID] = item
-	it.order = append(it.order, req.ID)
+	it.enqueue(req.ID, item)
+	it.mu.Unlock()
+	it.changed()
+	return it.await(ctx, item, req.ID)
+}
+
+// HoldResp holds a response (with its request for context) until forwarded
+// or dropped. The id is "<reqID>-r" so it can't collide with held requests.
+func (it *Intercept) HoldResp(ctx context.Context, req *store.Request, resp *store.Response) (forward *store.Response, ok bool) {
+	id := req.ID + "-r"
+	it.mu.Lock()
+	if !it.respOn {
+		it.mu.Unlock()
+		return resp, true
+	}
+	item := &iItem{req: req, resp: resp, ch: make(chan iAction, 1)}
+	it.enqueue(id, item)
+	it.mu.Unlock()
+	it.changed()
+
+	it.mu.Lock()
+	it.mu.Unlock()
+	select {
+	case a := <-item.ch:
+		if a.drop {
+			return nil, false
+		}
+		if a.resp != nil {
+			return a.resp, true
+		}
+		return resp, true
+	case <-ctx.Done():
+		it.remove(id)
+		it.changed()
+		return nil, false
+	}
+}
+
+func (it *Intercept) enqueue(id string, item *iItem) {
+	it.pending[id] = item
+	it.order = append(it.order, id)
 	if len(it.order) > it.capacity {
 		oldest := it.order[0]
 		it.order = it.order[1:]
 		if old := it.pending[oldest]; old != nil {
 			delete(it.pending, oldest)
-			old.ch <- iAction{req: old.req} // auto-forward
+			old.ch <- iAction{req: old.req, resp: old.resp} // auto-forward
 		}
 	}
-	it.mu.Unlock()
-	it.changed()
+}
 
+func (it *Intercept) await(ctx context.Context, item *iItem, id string) (*store.Request, bool) {
 	select {
 	case a := <-item.ch:
 		if a.drop {
@@ -101,9 +180,9 @@ func (it *Intercept) Hold(ctx context.Context, req *store.Request) (forward *sto
 		if a.req != nil {
 			return a.req, true
 		}
-		return req, true
+		return item.req, true
 	case <-ctx.Done():
-		it.remove(req.ID)
+		it.remove(id)
 		it.changed()
 		return nil, false
 	}
@@ -124,6 +203,11 @@ func (it *Intercept) remove(id string) {
 // Forward releases the held request, optionally replacing it with mod.
 func (it *Intercept) Forward(id string, mod *store.Request) bool {
 	return it.resolve(id, iAction{req: mod})
+}
+
+// ForwardResp releases a held response, optionally replacing it with mod.
+func (it *Intercept) ForwardResp(id string, mod *store.Response) bool {
+	return it.resolve(id, iAction{resp: mod})
 }
 
 // Drop discards the held request (the client receives a 502).

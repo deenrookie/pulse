@@ -14,16 +14,22 @@ func (s *Server) handleIntercept(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, s.interceptSummary())
 	case http.MethodPut:
 		var body struct {
-			Enabled *bool `json:"enabled"`
+			Enabled    *bool `json:"enabled"`
+			RespEnabled *bool `json:"respEnabled"`
 		}
 		if !readJSON(w, r, &body, 1<<20) {
 			return
 		}
-		if body.Enabled == nil {
-			writeErr(w, http.StatusBadRequest, "missing \"enabled\" field")
+		if body.Enabled == nil && body.RespEnabled == nil {
+			writeErr(w, http.StatusBadRequest, "missing \"enabled\" / \"respEnabled\" field")
 			return
 		}
-		s.eng.Inter.SetEnabled(*body.Enabled)
+		if body.Enabled != nil {
+			s.eng.Inter.SetEnabled(*body.Enabled)
+		}
+		if body.RespEnabled != nil {
+			s.eng.Inter.SetRespEnabled(*body.RespEnabled)
+		}
 		writeJSON(w, http.StatusOK, s.interceptSummary())
 	default:
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -38,11 +44,31 @@ func (s *Server) interceptSummary() map[string]any {
 			"id": req.ID, "method": req.Method, "url": req.URL,
 		})
 	}
-	return map[string]any{
-		"enabled":  s.eng.Inter.Enabled(),
-		"capacity": 50,
-		"pending":  metas,
+	respHeld := s.eng.Inter.PendingResp()
+	respMetas := make([]map[string]any, 0, len(respHeld))
+	for _, h := range respHeld {
+		respMetas = append(respMetas, map[string]any{
+			"id": h.ID, "method": h.Req.Method, "url": h.Req.URL,
+			"status": h.Resp.StatusCode, "reason": h.Resp.Reason,
+			"contentType": headerValueOf(h.Resp.Headers, "Content-Type"),
+		})
 	}
+	return map[string]any{
+		"enabled":     s.eng.Inter.Enabled(),
+		"respEnabled": s.eng.Inter.RespEnabled(),
+		"capacity":    50,
+		"pending":     metas,
+		"pendingResp": respMetas,
+	}
+}
+
+func headerValueOf(headers []store.Header, name string) string {
+	for _, h := range headers {
+		if strings.EqualFold(h.Name, name) {
+			return h.Value
+		}
+	}
+	return ""
 }
 
 // handleInterceptID: GET /{id} full held request, POST /{id}/forward|drop.

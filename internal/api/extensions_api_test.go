@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"pulse/internal/plugins"
 	"pulse/internal/rewrite"
@@ -735,4 +736,109 @@ func TestFlowAnnotations(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(e.dir, "flow-notes.json")); err != nil {
 		t.Fatalf("notes file missing: %v", err)
 	}
+}
+
+func TestResponseInterception(t *testing.T) {
+	e := newEnv(t)
+	var gotStatus int
+	up := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte("secret-response"))
+	}))
+	defer up.Close()
+
+	// 开启响应拦截
+	e.do(t, "PUT", "/api/intercept", map[string]any{"respEnabled": true})
+	_, data := e.do(t, "GET", "/api/intercept", nil)
+	var st0 struct {
+		RespEnabled bool `json:"respEnabled"`
+	}
+	json.Unmarshal(data, &st0)
+	if !st0.RespEnabled {
+		t.Fatal("respEnabled not on")
+	}
+
+	type result struct {
+		status int
+		body   string
+		err    error
+	}
+	done := make(chan result, 1)
+	go func() {
+		resp, err := proxiedClient(e.proxyAddr).Get(up.URL + "/ri")
+		if err != nil {
+			done <- result{err: err}
+			return
+		}
+		b, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		done <- result{status: resp.StatusCode, body: string(b)}
+	}()
+
+	// 等待响应进入队列
+	var heldID string
+	for i := 0; i < 40 && heldID == ""; i++ {
+		time.Sleep(100 * time.Millisecond)
+		_, data = e.do(t, "GET", "/api/intercept", nil)
+		var st struct {
+			PendingResp []struct {
+				ID     string `json:"id"`
+				Status int    `json:"status"`
+			} `json:"pendingResp"`
+		}
+		json.Unmarshal(data, &st)
+		if len(st.PendingResp) > 0 {
+			heldID = st.PendingResp[0].ID
+		}
+	}
+	if heldID == "" {
+		t.Fatal("response never held")
+	}
+
+	// 放行 → 客户端收到完整响应
+	resp, _ := e.do(t, "POST", "/api/intercept/"+heldID+"/forward", nil)
+	if resp.StatusCode != 200 {
+		t.Fatalf("forward = %d", resp.StatusCode)
+	}
+	r := <-done
+	if r.err != nil || r.status != 200 || r.body != "secret-response" {
+		t.Fatalf("client result = %+v", r)
+	}
+
+	// drop 路径：客户端收 502
+	e.do(t, "PUT", "/api/intercept", map[string]any{"respEnabled": true})
+	up.Config.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.Write([]byte("x")) })
+	done2 := make(chan result, 1)
+	go func() {
+		resp, err := proxiedClient(e.proxyAddr).Get(up.URL + "/ri2")
+		if err != nil {
+			done2 <- result{err: err}
+			return
+		}
+		b, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		done2 <- result{status: resp.StatusCode, body: string(b)}
+	}()
+	var held2 string
+	for i := 0; i < 40 && held2 == ""; i++ {
+		time.Sleep(100 * time.Millisecond)
+		_, data = e.do(t, "GET", "/api/intercept", nil)
+		var st struct {
+			PendingResp []struct {
+				ID string `json:"id"`
+			} `json:"pendingResp"`
+		}
+		json.Unmarshal(data, &st)
+		if len(st.PendingResp) > 0 {
+			held2 = st.PendingResp[0].ID
+		}
+	}
+	if held2 == "" {
+		t.Fatal("second response never held")
+	}
+	e.do(t, "POST", "/api/intercept/"+held2+"/drop", nil)
+	r2 := <-done2
+	if r2.err == nil && r2.status != 502 {
+		t.Fatalf("drop should 502, got %+v", r2)
+	}
+	_ = gotStatus
 }

@@ -340,6 +340,24 @@ func (e *Engine) executeRequest(req *store.Request, respond respondFunc) (*Resul
 	if e.Rewrite != nil && e.Rewrite.ApplyResponse(res.Resp) {
 		fl.Resp = res.Resp
 	}
+	// response interception: hold after plugins/rewrites, before the client
+	if e.Inter.RespEnabled() {
+		held, ok := e.Inter.HoldResp(e.ctx, req, res.Resp)
+		if !ok {
+			if e.ctx.Err() != nil {
+				return nil, nil, false
+			}
+			fl.Error = "response dropped by interceptor"
+			_ = e.store.Update(fl)
+			e.publishFlow("flow_update", fl)
+			_ = respond(nil, errDroppedByInterceptor)
+			return nil, fl, false
+		}
+		if held != res.Resp {
+			*res.Resp = *held
+			fl.Resp = res.Resp
+		}
+	}
 	_ = respond(res.Resp, nil)
 	// memory guard: the client already received the full payload — strip
 	// oversized media/binary bodies before they are stored so they never

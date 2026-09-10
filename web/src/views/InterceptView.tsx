@@ -395,6 +395,15 @@ export default function InterceptView({ pulse }: { pulse: PulseState }) {
             Rules
             {rules.length > 0 && <span className="badge">{rules.length}</span>}
           </button>
+          <label className="switch" title="Hold responses after the upstream replies, before they reach the client">
+            <input
+              type="checkbox"
+              checked={!!pulse.intercept.respEnabled}
+              onChange={(e) => void pulse.toggleInterceptResp(e.target.checked)}
+            />
+            <span className="track" />
+            Responses
+          </label>
           <div className="spacer" />
           {pulse.intercept.enabled ? (
             <span className="meta" style={{ color: 'var(--accent)' }}>
@@ -500,6 +509,32 @@ export default function InterceptView({ pulse }: { pulse: PulseState }) {
 
       {rulesPos && (
         <HoldRules rules={rules} onChange={saveRules} x={rulesPos.x} y={rulesPos.y} onClose={() => setRulesPos(null)} />
+      )}
+      {(pulse.intercept.pendingResp?.length ?? 0) > 0 && (
+        <div className="resp-hold">
+          <div className="resp-hold-head">
+            <Icon name="waves" size={13} />
+            <span>Held responses</span>
+            <span className="faint" style={{ fontSize: 11 }}>
+              paused before the client — forward or drop
+            </span>
+          </div>
+          {pulse.intercept.pendingResp!.map((h) => (
+            <div key={h.id} className="resp-hold-row">
+              <span className={`mono status${Math.floor(h.status / 100)}`}>{h.status}</span>
+              <span className="mono" style={{ fontWeight: 600 }}>{h.method}</span>
+              <span className="mono faint" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>{h.url}</span>
+              <button className="btn sm" onClick={() => void api.forwardHeld(h.id).catch(() => {})}>
+                <Icon name="check" size={12} />
+                Forward
+              </button>
+              <button className="btn danger sm" onClick={() => void api.dropHeld(h.id).catch(() => {})}>
+                <Icon name="x" size={12} />
+                Drop
+              </button>
+            </div>
+          ))}
+        </div>
       )}
       {menu && <ContextMenu x={menu.x} y={menu.y} items={queueMenu(menu.item)} onClose={() => setMenu(null)} />}
     </div>

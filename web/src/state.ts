@@ -170,6 +170,20 @@ export function usePulse() {
     [selectedId, notify],
   )
 
+  const toggleInterceptResp = useCallback(
+    async (respEnabled: boolean) => {
+      setIntercept((prev) => ({ ...prev, respEnabled }))
+      try {
+        const s = await api.setInterceptRespEnabled(respEnabled)
+        setIntercept(s)
+        notify(respEnabled ? 'Response intercept is on — responses are held before the client' : 'Response intercept is off')
+      } catch (e) {
+        notify(`Toggle failed: ${(e as Error).message}`, 'err')
+      }
+    },
+    [notify],
+  )
+
   const toggleIntercept = useCallback(
     async (enabled: boolean) => {
       setIntercept((prev) => ({ ...prev, enabled }))
@@ -287,6 +301,7 @@ export function usePulse() {
     removeFlow,
     intercept,
     toggleIntercept,
+    toggleInterceptResp,
     refreshIntercept,
     forwardPending,
     dropPending,

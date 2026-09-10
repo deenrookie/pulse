@@ -77,10 +77,21 @@ export interface PendingItem {
   url: string
 }
 
+export interface PendingRespItem {
+  id: string
+  method: string
+  url: string
+  status: number
+  reason: string
+  contentType: string
+}
+
 export interface InterceptSummary {
   enabled: boolean
+  respEnabled?: boolean
   capacity: number
   pending: PendingItem[]
+  pendingResp?: PendingRespItem[]
 }
 
 export interface RepeaterHistoryEntry {

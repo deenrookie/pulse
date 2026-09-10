@@ -70,6 +70,9 @@ export const getIntercept = () => api<InterceptSummary>('/api/intercept')
 export const setInterceptEnabled = (enabled: boolean) =>
   api<InterceptSummary>('/api/intercept', { method: 'PUT', body: JSON.stringify({ enabled }) })
 
+export const setInterceptRespEnabled = (respEnabled: boolean) =>
+  api<InterceptSummary>('/api/intercept', { method: 'PUT', body: JSON.stringify({ respEnabled }) })
+
 export const getHeldRequest = (id: string) => api<HttpRequest>(`/api/intercept/${id}`)
 
 export const forwardHeld = (id: string, request?: EditableRequest) =>
