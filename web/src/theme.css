@@ -1106,12 +1106,64 @@ table.flows tbody tr.hl.selected td { background: var(--accent-bg); box-shadow: 
   margin: 0 0 2px; font-size: 13px; display: flex; align-items: center; gap: 8px;
 }
 .popover .sub { color: var(--text-faint); font-size: 11.5px; margin-bottom: 10px; line-height: 1.5; }
+.popover .sub.tight { margin-bottom: 0; margin-top: 2px; }
+.popover-head { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+.popover-head h4 { margin: 0; flex: 1; }
+.seg { display: inline-flex; border: 1px solid var(--border); border-radius: 7px; overflow: hidden; flex: none; }
+.seg button {
+  border: none; background: transparent; padding: 4px 11px; font: inherit; font-size: 11.5px;
+  color: var(--text-muted); cursor: pointer;
+  transition: background var(--t-fast) ease, color var(--t-fast) ease;
+}
+.seg button + button { border-left: 1px solid var(--border); }
+.seg button:hover { color: var(--text); background: var(--bg-hover); }
+.seg button.on { background: var(--accent-dim); color: var(--accent); font-weight: 600; }
+.quick-add { display: flex; gap: 6px; align-items: center; margin-bottom: 8px; }
+.quick-add .mini {
+  background: var(--bg-input); color: var(--text);
+  border: 1px solid var(--border); border-radius: var(--radius-xs);
+  font: inherit; font-size: 12px; padding: 6px 8px; min-width: 0;
+  font-family: var(--mono);
+}
+.quick-add .grow { flex: 1; min-width: 0; }
+.mchips { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
+.mchip {
+  font-family: var(--mono); font-size: 10.5px; padding: 3px 10px; border-radius: 999px;
+  border: 1px solid var(--border); background: transparent; color: var(--text-muted); cursor: pointer;
+  transition: color var(--t-fast) ease, border-color var(--t-fast) ease, background var(--t-fast) ease;
+}
+.mchip:hover { border-color: var(--border-strong); color: var(--text); }
+.mchip.on { background: var(--accent-dim); border-color: var(--accent); color: var(--accent); }
+.rule-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+.rule-chip {
+  display: inline-flex; align-items: stretch; border: 1px solid var(--border); border-radius: 999px;
+  overflow: hidden; font-size: 11.5px; background: var(--bg-raised); max-width: 100%;
+  transition: opacity var(--t-fast) ease, border-color var(--t-fast) ease;
+}
+.rule-chip .chip-body {
+  display: inline-flex; align-items: center; gap: 6px; border: none; background: transparent;
+  padding: 4px 4px 4px 11px; cursor: pointer; color: var(--text); font: inherit; min-width: 0;
+}
+.rule-chip .chip-body:hover { background: var(--bg-hover); }
+.rule-chip .faint { color: var(--text-faint); flex: none; }
+.rule-chip .chip-match {
+  font-family: var(--mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  min-width: 0; max-width: 220px;
+}
+.rule-chip.off { opacity: 0.5; border-style: dashed; }
+.rule-chip .chip-x {
+  display: inline-flex; align-items: center; border: none; background: transparent;
+  padding: 4px 9px 4px 5px; cursor: pointer; color: var(--text-faint);
+}
+.rule-chip .chip-x:hover { color: var(--danger); background: var(--bg-hover); }
 .rule-row {
-  display: grid; grid-template-columns: 104px 112px 92px 26px;
+  display: grid; grid-template-columns: 18px minmax(0, 1fr) 92px 26px;
   gap: 6px; align-items: center; padding: 7px; border-radius: var(--radius-sm);
 }
 .rule-row:hover { background: var(--bg-hover); }
 .rule-row + .rule-row { margin-top: 2px; }
+.rule-row.off .mini, .rule-row.off .match-line { opacity: 0.55; }
+.rule-check { accent-color: var(--accent); margin: 0; cursor: pointer; }
 .rule-row .mini {
   background: var(--bg-input); color: var(--text);
   border: 1px solid var(--border); border-radius: var(--radius-xs);

@@ -15,13 +15,15 @@ const COLS_KEY = 'pulse.intercept.cols'
 const COL_MIN = 170
 const COL_DEFAULT: [number, number] = [280, 400]
 
-/** client-side hold rules: when non-empty, only matching requests are held;
-    everything else is auto-forwarded the moment it arrives */
+/** client-side hold rules: when any are enabled, only matching requests are
+    held; everything else is auto-forwarded the moment it arrives. A rule can
+    be disabled (enabled:false) to widen the net without losing it. */
 export interface HoldRule {
   id: string
   field: 'host' | 'path' | 'method' | 'url'
   mode: 'contains' | 'regex'
   match: string
+  enabled?: boolean
 }
 
 function loadRules(): HoldRule[] {
@@ -57,7 +59,11 @@ function ruleMatchesUrl(r: HoldRule, method: string, url: string): boolean {
   return value.toLowerCase().includes(r.match.toLowerCase())
 }
 
-// tiny inline rules popover (reuses .popover styles)
+// rules popover: Quick (one-line composer + chips) and Advanced (full editor)
+type RulesMode = 'quick' | 'advanced'
+const RULES_MODE_KEY = 'pulse.holdrules.mode'
+const QUICK_METHODS = ['GET', 'POST', 'PUT', 'DELETE', 'PATCH']
+
 function HoldRules({
   rules,
   onChange,
@@ -71,6 +77,20 @@ function HoldRules({
   y: number
   onClose: () => void
 }) {
+  const [mode, setMode] = useState<RulesMode>(() => (localStorage.getItem(RULES_MODE_KEY) === 'advanced' ? 'advanced' : 'quick'))
+  const [qField, setQField] = useState<HoldRule['field']>('host')
+  const [qMode, setQMode] = useState<HoldRule['mode']>('contains')
+  const [qMatch, setQMatch] = useState('')
+
+  const pickMode = (m: RulesMode) => {
+    setMode(m)
+    try {
+      localStorage.setItem(RULES_MODE_KEY, m)
+    } catch {
+      /* ignore */
+    }
+  }
+
   useEffect(() => {
     const onDoc = () => onClose()
     const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose()
@@ -104,63 +124,171 @@ function HoldRules({
     })
   }
 
+  const activeCount = rules.filter((r) => r.enabled !== false).length
+
+  const addQuick = () => {
+    const match = qMatch.trim()
+    if (!match) return
+    onChange([...rules, { id: crypto.randomUUID(), field: qField, mode: qMode, match, enabled: true }])
+    setQMatch('')
+  }
+
+  const methodOn = (m: string) =>
+    rules.some((r) => r.enabled !== false && r.field === 'method' && r.mode === 'contains' && r.match.toLowerCase() === m.toLowerCase())
+
+  const toggleMethod = (m: string) => {
+    const hit = rules.find((r) => r.field === 'method' && r.mode === 'contains' && r.match.toLowerCase() === m)
+    onChange(
+      hit
+        ? rules.filter((r) => r.id !== hit.id)
+        : [...rules, { id: crypto.randomUUID(), field: 'method', mode: 'contains', match: m, enabled: true }],
+    )
+  }
+
   return (
     <div
       className="popover"
-      style={{ left: Math.max(8, Math.min(x, window.innerWidth - 440)), top: Math.max(8, Math.min(y, window.innerHeight - 320)) }}
+      style={{ left: Math.max(8, Math.min(x, window.innerWidth - 480)), top: Math.max(8, Math.min(y, window.innerHeight - 380)) }}
       onMouseDown={(e) => e.stopPropagation()}
     >
-      <h4>
-        <Icon name="sliders" size={14} />
-        Hold rules
-      </h4>
-      <div className="sub">
-        With no rules every request is held. With rules, only requests matching at least one rule pause here — the rest
-        are auto-forwarded instantly. Needs the console to stay open.
+      <div className="popover-head">
+        <h4>
+          <Icon name="sliders" size={14} />
+          Hold rules
+        </h4>
+        <div className="seg">
+          <button className={mode === 'quick' ? 'on' : ''} onClick={() => pickMode('quick')}>
+            Quick
+          </button>
+          <button className={mode === 'advanced' ? 'on' : ''} onClick={() => pickMode('advanced')}>
+            Advanced
+          </button>
+        </div>
       </div>
-      <div className="rule-list">
-        {rules.length === 0 && <div className="rule-empty">No rules — currently holding everything.</div>}
-        {rules.map((r) => (
-          <div key={r.id} className="rule-row" style={{ gridTemplateColumns: '118px 96px 26px' }}>
-            <select className="mini" value={r.field} onChange={(e) => update(r.id, { field: e.target.value as HoldRule['field'] })}>
+      {mode === 'quick' ? (
+        <>
+          <div className="sub">
+            Only requests matching a rule pause here — everything else is auto-forwarded the moment it arrives.
+          </div>
+          <div className="quick-add">
+            <select className="mini" value={qField} onChange={(e) => setQField(e.target.value as HoldRule['field'])}>
               <option value="host">host</option>
               <option value="path">path</option>
               <option value="url">url</option>
               <option value="method">method</option>
             </select>
-            <select className="mini" value={r.mode} onChange={(e) => update(r.id, { mode: e.target.value as HoldRule['mode'] })}>
+            <select className="mini" value={qMode} onChange={(e) => setQMode(e.target.value as HoldRule['mode'])}>
               <option value="contains">contains</option>
               <option value="regex">regex</option>
             </select>
-            <button
-              className="btn ghost sm icon-btn"
-              title="Remove rule"
-              onClick={() => onChange(rules.filter((x) => x.id !== r.id))}
-            >
-              <Icon name="x" size={12} />
+            <input
+              className="mini grow"
+              placeholder={qField === 'method' ? 'e.g. OPTIONS' : 'match…'}
+              value={qMatch}
+              spellCheck={false}
+              autoFocus
+              onChange={(e) => setQMatch(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && addQuick()}
+            />
+            <button className="btn sm" disabled={!qMatch.trim()} onClick={addQuick} title="Add rule (Enter)">
+              <Icon name="plus" size={13} />
+              Add
             </button>
-            <div className="match-line">
-              <input
-                className="mini"
-                placeholder="match…"
-                value={r.match}
-                spellCheck={false}
-                onChange={(e) => update(r.id, { match: e.target.value })}
-              />
-            </div>
           </div>
-        ))}
-      </div>
-      <button
-        className="btn sm"
-        onClick={() => {
-          onChange([...rules, { id: crypto.randomUUID(), field: 'host', mode: 'contains', match: '' }])
-          focusLastMatch()
-        }}
-      >
-        <Icon name="plus" size={13} />
-        Add rule
-      </button>
+          <div className="mchips">
+            {QUICK_METHODS.map((m) => (
+              <button key={m} className={`mchip ${methodOn(m) ? 'on' : ''}`} title={`Hold only ${m} requests`} onClick={() => toggleMethod(m)}>
+                {m}
+              </button>
+            ))}
+          </div>
+          {rules.length > 0 ? (
+            <div className="rule-chips">
+              {rules.map((r) => (
+                <span key={r.id} className={`rule-chip ${r.enabled === false ? 'off' : ''}`}>
+                  <button
+                    className="chip-body"
+                    title={`${r.field} ${r.mode} ${r.match || '∅'} — click to ${r.enabled === false ? 're-enable' : 'disable'}`}
+                    onClick={() => update(r.id, { enabled: r.enabled === false })}
+                  >
+                    <span className="faint">{r.field}</span>
+                    <span className="chip-match">
+                      {r.mode === 'regex' ? '~ ' : ''}
+                      {r.match || '∅'}
+                    </span>
+                  </button>
+                  <button className="chip-x" title="Remove rule" onClick={() => onChange(rules.filter((x) => x.id !== r.id))}>
+                    <Icon name="x" size={10} />
+                  </button>
+                </span>
+              ))}
+            </div>
+          ) : (
+            <div className="rule-empty">No rules — currently holding everything.</div>
+          )}
+          <div className="sub tight">
+            {activeCount === 0
+              ? 'No active rules — every request is held.'
+              : `${activeCount} active rule${activeCount > 1 ? 's' : ''} — everything else is auto-forwarded.`}
+          </div>
+        </>
+      ) : (
+        <>
+          <div className="sub">
+            A request pauses here when ANY enabled rule matches. Untick one to widen the net without losing it.
+          </div>
+          <div className="rule-list">
+            {rules.length === 0 && <div className="rule-empty">No rules — currently holding everything.</div>}
+            {rules.map((r) => (
+              <div key={r.id} className={`rule-row ${r.enabled === false ? 'off' : ''}`}>
+                <input
+                  type="checkbox"
+                  className="rule-check"
+                  checked={r.enabled !== false}
+                  title={r.enabled !== false ? 'Disable rule' : 'Enable rule'}
+                  onChange={(e) => update(r.id, { enabled: e.target.checked })}
+                />
+                <select className="mini" value={r.field} onChange={(e) => update(r.id, { field: e.target.value as HoldRule['field'] })}>
+                  <option value="host">host</option>
+                  <option value="path">path</option>
+                  <option value="url">url</option>
+                  <option value="method">method</option>
+                </select>
+                <select className="mini" value={r.mode} onChange={(e) => update(r.id, { mode: e.target.value as HoldRule['mode'] })}>
+                  <option value="contains">contains</option>
+                  <option value="regex">regex</option>
+                </select>
+                <button
+                  className="btn ghost sm icon-btn"
+                  title="Remove rule"
+                  onClick={() => onChange(rules.filter((x) => x.id !== r.id))}
+                >
+                  <Icon name="x" size={12} />
+                </button>
+                <div className="match-line">
+                  <input
+                    className="mini"
+                    placeholder="match…"
+                    value={r.match}
+                    spellCheck={false}
+                    onChange={(e) => update(r.id, { match: e.target.value })}
+                  />
+                </div>
+              </div>
+            ))}
+          </div>
+          <button
+            className="btn sm"
+            onClick={() => {
+              onChange([...rules, { id: crypto.randomUUID(), field: 'host', mode: 'contains', match: '', enabled: true }])
+              focusLastMatch()
+            }}
+          >
+            <Icon name="plus" size={13} />
+            Add rule
+          </button>
+        </>
+      )}
     </div>
   )
 }
@@ -201,12 +329,14 @@ export default function InterceptView({ pulse }: { pulse: PulseState }) {
     }
   }
 
-  // auto-forward engine: non-matching held requests are released instantly
+  // auto-forward engine: non-matching held requests are released instantly.
+  // Only enabled rules gate the queue — with none active, everything is held.
+  const activeRules = rules.filter((r) => r.enabled !== false)
   useEffect(() => {
-    if (rules.length === 0 || pending.length === 0) return
+    if (activeRules.length === 0 || pending.length === 0) return
     for (const p of pending) {
       if (autoForwarded.current.has(p.id)) continue
-      const matched = rules.some((r) => ruleMatchesUrl(r, p.method, p.url))
+      const matched = activeRules.some((r) => ruleMatchesUrl(r, p.method, p.url))
       if (!matched) {
         autoForwarded.current.add(p.id)
         void api.forwardHeld(p.id).catch(() => autoForwarded.current.delete(p.id))
@@ -565,9 +695,9 @@ export default function InterceptView({ pulse }: { pulse: PulseState }) {
           {pending.length === 0 ? (
             <Empty icon={pulse.intercept.enabled ? 'hand' : 'circle'} title={pulse.intercept.enabled ? 'Nothing held' : 'Intercept is off'}>
               {pulse.intercept.enabled ? (
-                rules.length > 0 ? (
+                activeRules.length > 0 ? (
                   <>
-                    Only requests matching the {rules.length} hold rule{rules.length > 1 ? 's' : ''} pause here.
+                    Only requests matching the {activeRules.length} hold rule{activeRules.length > 1 ? 's' : ''} pause here.
                     <br />
                     Everything else flows straight through.
                   </>
