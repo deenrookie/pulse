@@ -37,6 +37,7 @@ type Server struct {
 	plug *plugins.Runtime
 	set  *Settings
 	intr *intruderStore
+	anno *annoStore
 }
 
 func New(st *store.Store, eng *proxy.Engine, rep *repeater.Manager, auth *certs.Authority, bus *events.Bus,
@@ -67,6 +68,7 @@ func New(st *store.Store, eng *proxy.Engine, rep *repeater.Manager, auth *certs.
 		Version: version, ProxyAddr: proxyAddr, UIAddr: uiAddr, DataDir: dataDir,
 		st: st, eng: eng, rep: rep, auth: auth, bus: bus, rw: rw, plug: plug, set: set,
 		intr: newIntruderStore(dataDir),
+		anno: newAnnoStore(dataDir),
 	}, nil
 }
 

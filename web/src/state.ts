@@ -80,6 +80,14 @@ export function usePulse() {
         setFlows(items.slice(-MAX_ROWS))
       })
       .catch(() => {})
+    // flow annotations (star/note) update the affected row in place
+    const onAnno = (e: Event) => {
+      const d = (e as CustomEvent<{ id: string; star?: boolean; note?: string }>).detail
+      if (!d?.id) return
+      setFlows((prev) => prev.map((m) => (m.id === d.id ? { ...m, star: d.star ?? m.star, note: d.note ?? m.note } : m)))
+    }
+    window.addEventListener('pulse:flow-annotated', onAnno)
+
     refreshStatus()
     refreshIntercept()
     refreshRepeater()
@@ -113,6 +121,7 @@ export function usePulse() {
       alive = false
       close()
       window.clearInterval(statusTimer)
+      window.removeEventListener('pulse:flow-annotated', onAnno)
     }
   }, [])
 

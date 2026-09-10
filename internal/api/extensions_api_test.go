@@ -687,3 +687,52 @@ func TestIntruderAPI(t *testing.T) {
 		t.Fatalf("after delete = %+v", list)
 	}
 }
+
+func TestFlowAnnotations(t *testing.T) {
+	e := newEnv(t)
+	up := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.Write([]byte("x")) }))
+	defer up.Close()
+	if _, err := proxiedClient(e.proxyAddr).Get(up.URL + "/a"); err != nil {
+		t.Fatal(err)
+	}
+	if !waitFlows(t, e, 1) {
+		t.Fatal("flow never appeared")
+	}
+	_, data := e.do(t, "GET", "/api/flows", nil)
+	var list struct {
+		Items []struct {
+			ID   string `json:"id"`
+			Star bool   `json:"star"`
+			Note string `json:"note"`
+		} `json:"items"`
+	}
+	json.Unmarshal(data, &list)
+	id := list.Items[0].ID
+
+	// star + note
+	resp, _ := e.do(t, "PUT", "/api/flows/"+id+"/annotate", map[string]any{"star": true, "note": "interesting"})
+	if resp.StatusCode != 200 {
+		t.Fatalf("annotate = %d", resp.StatusCode)
+	}
+	_, data = e.do(t, "GET", "/api/flows", nil)
+	json.Unmarshal(data, &list)
+	var hit *struct {
+		ID   string `json:"id"`
+		Star bool   `json:"star"`
+		Note string `json:"note"`
+	}
+	for i := range list.Items {
+		if list.Items[i].ID == id {
+			hit = &list.Items[i]
+		}
+	}
+	if hit == nil || !hit.Star || hit.Note != "interesting" {
+		t.Fatalf("annotated item = %+v", hit)
+	}
+
+	// 清空后条目移除
+	e.do(t, "PUT", "/api/flows/"+id+"/annotate", map[string]any{"star": false, "note": ""})
+	if _, err := os.Stat(filepath.Join(e.dir, "flow-notes.json")); err != nil {
+		t.Fatalf("notes file missing: %v", err)
+	}
+}

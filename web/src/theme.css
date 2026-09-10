@@ -1761,3 +1761,8 @@ textarea.editor.raw.over-mirror:focus { border-color: var(--accent-dim); box-sha
 /* intruder grep-match columns */
 .intruder-table .grep-col { max-width: 90px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; }
 .intruder-table .grep-cell { text-align: center; color: var(--ok); font-weight: 700; }
+
+/* flow star column */
+.flows .star-cell { text-align: center; color: var(--text-faint); cursor: pointer; user-select: none; font-size: 12px; }
+.flows .star-cell:hover { color: var(--warn); }
+.flows .star-cell.on { color: var(--warn); }

@@ -67,6 +67,8 @@ export interface FlowMeta {
   timestamp: string
   source: string
   wsCount: number
+  star?: boolean
+  note?: string
 }
 
 export interface PendingItem {

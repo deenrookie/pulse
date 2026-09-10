@@ -77,6 +77,7 @@ export default function ProxyView({ pulse }: { pulse: PulseState }) {
   const [rulesPos, setRulesPos] = useState<{ x: number; y: number } | null>(null)
   const [rawEdit, setRawEdit] = useState<{ id: string; text: string } | null>(null)
   const [filter, setFilter] = useState<FilterModel>(loadFilter)
+  const [starOnly, setStarOnly] = useState(false)
   const [filterOpen, setFilterOpen] = useState(false)
   const scope = useScope()
 
@@ -157,6 +158,7 @@ export default function ProxyView({ pulse }: { pulse: PulseState }) {
     }
     if (hideStatic) out = out.filter((m) => !isStatic(m))
     if (scope.scopeOnly && scope.rules.length > 0) out = out.filter((m) => hostInScope(m.host))
+    if (starOnly) out = out.filter((m) => m.star)
     if (filterActive(filter)) {
       out = out.filter((m) =>
         passesFilter(
@@ -184,7 +186,7 @@ export default function ProxyView({ pulse }: { pulse: PulseState }) {
     }
     return out
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pulse.flows, q, method, statuses, hideStatic, sort, filter, scope.scopeOnly, scope.rules])
+  }, [pulse.flows, q, method, statuses, hideStatic, sort, filter, scope.scopeOnly, scope.rules, starOnly])
 
   const toggleStatus = (s: string) => {
     setStatuses((prev) => {
@@ -273,6 +275,13 @@ export default function ProxyView({ pulse }: { pulse: PulseState }) {
                 ))}
               </select>
               <button
+                className={`tchip ${starOnly ? 'on' : ''}`}
+                onClick={() => setStarOnly((v) => !v)}
+                title="Only starred flows — click ★ in the table to star"
+              >
+                ★
+              </button>
+              <button
                 className={`tchip ${hideStatic ? 'on' : ''}`}
                 onClick={() => setHideStatic((v) => !v)}
                 title="Hide images, styles, scripts and fonts"
@@ -302,6 +311,7 @@ export default function ProxyView({ pulse }: { pulse: PulseState }) {
                     setStatuses(new Set())
                     setHideStatic(false)
                     setScopeOnly(false)
+                    setStarOnly(false)
                   }}
                 >
                   <Icon name="x" size={11} />

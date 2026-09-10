@@ -21,6 +21,9 @@ import type {
 export const deepSearch = (q: string) =>
   api<{ q: string; hits: SearchHit[]; total: number }>(`/api/search?q=${encodeURIComponent(q)}`)
 
+export const annotateFlow = (id: string, patch: { star?: boolean; note?: string }) =>
+  api<{ star: boolean; note: string }>(`/api/flows/${encodeURIComponent(id)}/annotate`, { method: 'PUT', body: JSON.stringify(patch) })
+
 // ---------- intruder ----------
 
 export const listAttacks = () => api<{ attacks: Attack[] }>('/api/intruder')

@@ -21,9 +21,16 @@ func (s *Server) handleFlows(w http.ResponseWriter, r *http.Request) {
 		if end > len(items) {
 			end = len(items)
 		}
+		annotated := make([]annotatedMeta, 0, end-start)
+		s.anno.mu.Lock()
+		for _, m := range items[start:end] {
+			a := s.anno.m[m.ID]
+			annotated = append(annotated, annotatedMeta{FlowMeta: m, Star: a.Star, Note: a.Note})
+		}
+		s.anno.mu.Unlock()
 		writeJSON(w, http.StatusOK, map[string]any{
 			"total": total,
-			"items": items[start:end],
+			"items": annotated,
 		})
 	case http.MethodDelete:
 		if err := s.st.Clear(); err != nil {
@@ -40,8 +47,12 @@ func (s *Server) handleFlows(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleFlow(w http.ResponseWriter, r *http.Request) {
 	rest := strings.TrimPrefix(r.URL.Path, "/api/flows/")
 	id, action, hasAction := strings.Cut(rest, "/")
-	if id == "" || (hasAction && action != "render") {
+	if id == "" || (hasAction && action != "render" && action != "annotate") {
 		http.NotFound(w, r)
+		return
+	}
+	if hasAction && action == "annotate" {
+		s.handleAnnotate(w, r, id)
 		return
 	}
 	if hasAction && action == "render" {

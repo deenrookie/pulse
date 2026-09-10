@@ -9,6 +9,8 @@ import ContextMenu, { type MenuItem } from './ContextMenu'
 import Icon from '../ui/Icon'
 import { requestToRaw } from './RawEditor'
 import { addHostToScope, bareHost, hostInScope, removeHostFromScope } from '../scope'
+import { annotateFlow } from '../api'
+import InputDialog from '../ui/InputDialog'
 import Empty from '../ui/Empty'
 import { colorTriplet } from '../ui/palette'
 
@@ -109,6 +111,7 @@ export default function FlowTable({
   const knownIds = useRef<Set<string>>(new Set())
   const [newIds, setNewIds] = useState<Set<string>>(new Set())
   const [menu, setMenu] = useState<{ x: number; y: number; flow: FlowMeta } | null>(null)
+  const [noteFor, setNoteFor] = useState<{ id: string; note: string } | null>(null)
 
   // ---- column widths (draggable) ----
   const [widths, setWidths] = useState<Record<ColKey, number>>(loadWidths)
@@ -240,6 +243,13 @@ export default function FlowTable({
       },
     },
     {
+      icon: 'tag',
+      label: m.note ? 'Edit note' : 'Add note',
+      onClick: () => {
+        setNoteFor({ id: m.id, note: m.note ?? '' })
+      },
+    },
+    {
       icon: 'external',
       label: 'Show response in browser',
       disabled: m.statusCode === 0,
@@ -358,6 +368,7 @@ export default function FlowTable({
         ) : (
           <table className="flows">
             <colgroup>
+              <col style={{ width: 26 }} />
               <col style={{ width: widths.id }} />
               <col style={{ width: widths.time }} />
               <col style={{ width: widths.method }} />
@@ -372,6 +383,7 @@ export default function FlowTable({
             </colgroup>
             <thead>
               <tr>
+                <th title="Starred">★</th>
                 <th className="col-id" title="Flow id">#</th>
                 {th('time', 'Time')}
                 {th('method', 'Method')}
@@ -393,7 +405,7 @@ export default function FlowTable({
             <tbody>
               {start > 0 && (
                 <tr className="vspacer" style={{ height: start * ROW_H }}>
-                  <td colSpan={11} />
+                  <td colSpan={12} />
                 </tr>
               )}
               {visible.map((m) => {
@@ -411,7 +423,19 @@ export default function FlowTable({
                     }}
                     title={`${m.url} — right-click for actions`}
                   >
-                    <td className="col-id" title={m.id}>
+                    <td
+                      className={`star-cell ${m.star ? 'on' : ''}`}
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        const star = !m.star
+                        window.dispatchEvent(new CustomEvent('pulse:flow-annotated', { detail: { id: m.id, star } }))
+                        void annotateFlow(m.id, { star }).catch(() => notify('Annotate failed', 'err'))
+                      }}
+                      title={m.note ? `★ ${m.note}` : 'Click to star'}
+                    >
+                      {m.star ? '★' : m.note ? '·' : ''}
+                    </td>
+                    <td className="col-id" title={m.note ? `${m.id} — ${m.note}` : m.id}>
                       {m.id.replace('req-', '')}
                     </td>
                     <td className="col-time" title={m.timestamp}>
@@ -459,7 +483,7 @@ export default function FlowTable({
               })}
               {end < flows.length && (
                 <tr className="vspacer" style={{ height: (flows.length - end) * ROW_H }}>
-                  <td colSpan={11} />
+                  <td colSpan={12} />
                 </tr>
               )}
             </tbody>
@@ -472,6 +496,18 @@ export default function FlowTable({
         </button>
       )}
       {menu && <ContextMenu x={menu.x} y={menu.y} items={menuItems(menu.flow)} onClose={() => setMenu(null)} />}
+      {noteFor && (
+        <InputDialog
+          title="Flow note"
+          label="Shown in the row tooltip and the ★ column."
+          initial={noteFor.note}
+          onSubmit={(note) => {
+            window.dispatchEvent(new CustomEvent('pulse:flow-annotated', { detail: { id: noteFor.id, note } }))
+            void annotateFlow(noteFor.id, { note }).catch(() => notify('Annotate failed', 'err'))
+          }}
+          onClose={() => setNoteFor(null)}
+        />
+      )}
     </div>
   )
 }
