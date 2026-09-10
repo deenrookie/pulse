@@ -78,6 +78,7 @@ export default function SiteMapView({ pulse, goProxy }: { pulse: PulseState; goP
   const [search, setSearch] = useState('')
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
   const [treeSel, setTreeSel] = useState<TreeSel | null>(null)
+  const [statusFilter, setStatusFilter] = useState<number | null>(null)
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [flow, setFlow] = useState<Flow | null>(null)
   const [rawEdit, setRawEdit] = useState<{ id: string; text: string } | null>(null)
@@ -133,7 +134,11 @@ export default function SiteMapView({ pulse, goProxy }: { pulse: PulseState; goP
   const [listScroll, setListScroll] = useState(0)
   const [listViewH, setListViewH] = useState(400)
 
-  const listFlows = useMemo(() => {
+  useEffect(() => {
+    setStatusFilter(null)
+  }, [treeSel?.host, treeSel?.path, treeSel?.method])
+
+  const treeFlows = useMemo(() => {
     if (!treeSel) return []
     return pulse.flows
       .filter((f) => {
@@ -145,6 +150,21 @@ export default function SiteMapView({ pulse, goProxy }: { pulse: PulseState; goP
       .slice()
       .reverse() // newest first
   }, [pulse.flows, treeSel])
+
+  // variants: same endpoint grouped by response status — spot the 500s among 200s
+  const statusGroups = useMemo(() => {
+    const m = new Map<number, number>()
+    for (const f of treeFlows) {
+      const key = f.statusCode === 0 ? -1 : Math.floor(f.statusCode / 100) * 100
+      m.set(key, (m.get(key) ?? 0) + 1)
+    }
+    return [...m.entries()].sort((a, b) => b[1] - a[1])
+  }, [treeFlows])
+
+  const listFlows = useMemo(
+    () => (statusFilter === null ? treeFlows : treeFlows.filter((f) => (f.statusCode === 0 ? -1 : Math.floor(f.statusCode / 100) * 100) === statusFilter)),
+    [treeFlows, statusFilter],
+  )
 
   const listRange = windowRange(listScroll, listViewH, listFlows.length)
   const listVisible = listFlows.slice(listRange.start, listRange.end)
@@ -481,6 +501,20 @@ export default function SiteMapView({ pulse, goProxy }: { pulse: PulseState; goP
                   )}
                   <div className="spacer" />
                   <span className="meta">{listFlows.length.toLocaleString()} rows</span>
+                  {statusGroups.length > 1 && (
+                    <span className="variant-chips">
+                      {statusGroups.map(([code, n]) => (
+                        <button
+                          key={code}
+                          className={`tchip ${statusFilter === code ? 'on' : ''}`}
+                          title={`Only ${code === -1 ? 'pending' : code + 'xx'} responses`}
+                          onClick={() => setStatusFilter((cur) => (cur === code ? null : code))}
+                        >
+                          {code === -1 ? 'pending' : `${code}xx`} · {n}
+                        </button>
+                      ))}
+                    </span>
+                  )}
                 </div>
                 <div
                   className="tree-wrap"
