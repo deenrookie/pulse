@@ -227,7 +227,7 @@ export default function App() {
           >
             <Icon name={v.icon} size={17} />
             <span className="rail-label">{v.label}</span>
-            {v.id === 'intercept' && <span className="rail-badge">{pulse.intercept.pending.length || ''}</span>}
+            {v.id === 'intercept' && <span className="rail-badge">{(pulse.intercept.pending.length + (pulse.intercept.pendingResp?.length ?? 0)) || ''}</span>}
             {v.id === 'repeater' && repeaterCount > 0 && <span className="rail-badge">{repeaterCount}</span>}
           </button>
         ))}

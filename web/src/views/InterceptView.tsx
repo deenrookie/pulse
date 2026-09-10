@@ -6,6 +6,7 @@ import Icon from '../ui/Icon'
 import Empty from '../ui/Empty'
 import ContextMenu, { type MenuItem } from '../components/ContextMenu'
 import { copyToClipboard } from '../api'
+import { confirm } from '../ui/Confirm'
 import type { PulseState } from '../state'
 import type { HttpRequest, PendingItem } from '../types'
 
@@ -262,6 +263,46 @@ export default function InterceptView({ pulse }: { pulse: PulseState }) {
     act(() => pulse.dropPending(currentId))
   }
 
+  // bulk release: sequential API calls — local server, no thundering herd
+  const forwardAllHeld = async (ids: string[]) => {
+    setBusy(true)
+    let n = 0
+    for (const id of ids) {
+      try {
+        await api.forwardHeld(id)
+        n++
+      } catch {
+        /* item already gone */
+      }
+    }
+    setBusy(false)
+    if (n > 0) pulse.notify(`Forwarded ${n} held item${n > 1 ? 's' : ''}`)
+  }
+
+  const dropAllResponses = async () => {
+    const held = pulse.intercept.pendingResp ?? []
+    if (held.length === 0) return
+    const ok = await confirm({
+      title: `Drop ${held.length} held responses?`,
+      message: 'The client receives a 502 for each. This cannot be undone.',
+      confirmLabel: 'Drop all',
+      danger: true,
+    })
+    if (!ok) return
+    setBusy(true)
+    let n = 0
+    for (const h of held) {
+      try {
+        await api.dropHeld(h.id)
+        n++
+      } catch {
+        /* already resolved */
+      }
+    }
+    setBusy(false)
+    if (n > 0) pulse.notify(`Dropped ${n} response${n > 1 ? 's' : ''}`)
+  }
+
   // copy the currently held request into a Repeater tab (parity with Live Traffic);
   // when the raw buffer has been edited, the edited version is what gets sent
   const sendHeldToRepeater = async () => {
@@ -416,6 +457,14 @@ export default function InterceptView({ pulse }: { pulse: PulseState }) {
           )}
         </div>
         <div className="panel-body">
+          {pending.length > 1 && (
+            <div className="bulk-row">
+              <button className="btn ghost sm" disabled={busy} onClick={() => void forwardAllHeld(pending.map((p) => p.id))} title="Release every held request unchanged">
+                <Icon name="play" size={12} />
+                Forward all ({pending.length})
+              </button>
+            </div>
+          )}
           {pending.length === 0 ? (
             <Empty icon={pulse.intercept.enabled ? 'hand' : 'circle'} title={pulse.intercept.enabled ? 'Nothing held' : 'Intercept is off'}>
               {pulse.intercept.enabled ? (
@@ -514,26 +563,48 @@ export default function InterceptView({ pulse }: { pulse: PulseState }) {
         <div className="resp-hold">
           <div className="resp-hold-head">
             <Icon name="waves" size={13} />
-            <span>Held responses</span>
+            <span>Held responses · {pulse.intercept.pendingResp!.length}</span>
             <span className="faint" style={{ fontSize: 11 }}>
-              paused before the client — forward or drop
+              paused before the client
             </span>
+            <div className="spacer" style={{ flex: 1 }} />
+            <button className="btn ghost sm" disabled={busy} onClick={() => void forwardAllHeld(pulse.intercept.pendingResp!.map((h) => h.id))} title="Release every held response to the client">
+              <Icon name="play" size={12} />
+              Forward all
+            </button>
+            <button className="btn danger sm" disabled={busy} onClick={() => void dropAllResponses()}>
+              <Icon name="x" size={12} />
+              Drop all
+            </button>
           </div>
-          {pulse.intercept.pendingResp!.map((h) => (
-            <div key={h.id} className="resp-hold-row">
-              <span className={`mono status${Math.floor(h.status / 100)}`}>{h.status}</span>
-              <span className="mono" style={{ fontWeight: 600 }}>{h.method}</span>
-              <span className="mono faint" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>{h.url}</span>
-              <button className="btn sm" onClick={() => void api.forwardHeld(h.id).catch(() => {})}>
-                <Icon name="check" size={12} />
-                Forward
-              </button>
-              <button className="btn danger sm" onClick={() => void api.dropHeld(h.id).catch(() => {})}>
-                <Icon name="x" size={12} />
-                Drop
-              </button>
-            </div>
-          ))}
+          {pulse.intercept.pendingResp!.map((h) => {
+            let host = ''
+            let path = ''
+            try {
+              const u = new URL(h.url)
+              host = u.host
+              path = u.pathname + u.search
+            } catch {
+              host = h.url
+            }
+            return (
+              <div key={h.id} className="resp-hold-row" title={h.url}>
+                <span className={`mono status${Math.floor(h.status / 100)}`}>{h.status}</span>
+                <span className="mono" style={{ fontWeight: 600 }}>{h.method}</span>
+                <span className="mono" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
+                  <span className="faint">{host}</span>
+                  {path}
+                </span>
+                {h.contentType && <span className="faint mono" style={{ fontSize: 10.5, flex: 'none' }}>{h.contentType.split(';')[0]}</span>}
+                <button className="btn sm icon-btn" title="Forward to the client" onClick={() => void api.forwardHeld(h.id).catch(() => {})}>
+                  <Icon name="check" size={12} />
+                </button>
+                <button className="btn danger sm icon-btn" title="Drop (client gets 502)" onClick={() => void api.dropHeld(h.id).catch(() => {})}>
+                  <Icon name="x" size={12} />
+                </button>
+              </div>
+            )
+          })}
         </div>
       )}
       {menu && <ContextMenu x={menu.x} y={menu.y} items={queueMenu(menu.item)} onClose={() => setMenu(null)} />}

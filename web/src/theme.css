@@ -1797,3 +1797,8 @@ textarea.editor.raw.over-mirror:focus { border-color: var(--accent-dim); box-sha
 /* site-map endpoint variants (status groups) */
 .variant-chips { display: inline-flex; gap: 4px; margin-left: 8px; }
 .variant-chips .tchip { font-size: 10px; padding: 1px 7px; }
+
+/* intercept bulk row + response queue density */
+.bulk-row { display: flex; gap: 8px; padding: 8px 10px; border-bottom: 1px solid var(--border); flex: none; }
+.resp-hold { max-height: 40%; }
+.resp-hold-head .btn { padding: 3px 8px; }
