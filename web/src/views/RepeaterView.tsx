@@ -9,7 +9,8 @@ import Empty from '../ui/Empty'
 import ContextMenu, { type MenuItem } from '../components/ContextMenu'
 import MarkEditor, { type Mark } from '../ui/MarkEditor'
 import { colorTriplet } from '../ui/palette'
-import { copyToClipboard, createRepeaterTab, listRepeater, updateRepeaterTab } from '../api'
+import { bodyToText, copyToClipboard, createRepeaterTab, listRepeater, updateRepeaterTab } from '../api'
+import { DiffView } from '../ui/Diff'
 import type { PulseState } from '../state'
 import type { RepeaterTab } from '../types'
 
@@ -439,6 +440,19 @@ export default function RepeaterView({ pulse, goProxy }: { pulse: PulseState; go
   const respError = entry && !entry.response ? entry.error : undefined
   const currentMark = currentId ? marks[currentId] : undefined
 
+  // Burp-style compare: current response vs the previous send
+  const [diffOn, setDiffOn] = useState(false)
+  const responseText = (r?: { statusCode: number; reason: string; httpVersion?: string; headers?: { name: string; value: string }[]; body?: string | null } | null) =>
+    r
+      ? `${r.httpVersion || 'HTTP/1.1'} ${r.statusCode} ${r.reason}\n` +
+        (r.headers ?? []).map((h) => `${h.name}: ${h.value}`).join('\n') +
+        '\n\n' +
+        bodyToText(r.body ?? '')
+      : ''
+  const canDiff = hist.length >= 2 && shownIdx > 0 && hist[shownIdx]?.response
+  const diffA = canDiff ? responseText(hist[shownIdx - 1]?.response) : ''
+  const diffB = canDiff ? responseText(hist[shownIdx]?.response) : ''
+
   // parse the edited raw into a request-like object for the shared inspector
   const reqView = useMemo(() => {
     if (!raw || !tab) return tab ? tab.request : null
@@ -627,6 +641,14 @@ export default function RepeaterView({ pulse, goProxy }: { pulse: PulseState; go
                   >
                     <Icon name="chevronRight" size={12} />
                   </button>
+                  <button
+                    className={`btn ghost sm icon-btn ${diffOn ? 'active' : ''}`}
+                    title="Diff with the previous response"
+                    disabled={!canDiff}
+                    onClick={() => setDiffOn((v) => !v)}
+                  >
+                    <Icon name="arrowDownUp" size={12} />
+                  </button>
                 </span>
               )}
               {currentMark && (
@@ -678,7 +700,7 @@ export default function RepeaterView({ pulse, goProxy }: { pulse: PulseState; go
                       />
                     ) : null
                   }
-                  b={<ResponseInspector resp={resp} error={respError} busy={busy} />}
+                  b={diffOn && canDiff ? <DiffView a={diffA} b={diffB} labelA={`send #${shownIdx}`} labelB={`send #${shownIdx + 1}`} /> : <ResponseInspector resp={resp} error={respError} busy={busy} />}
                 />
               ) : (
                 <Empty icon="repeat" title="Create a tab first">

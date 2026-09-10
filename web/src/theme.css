@@ -1300,6 +1300,22 @@ table.flows tbody tr.hl.selected td { background: var(--accent-bg); box-shadow: 
   color: var(--accent);
   border-radius: 3px; padding: 0 1px;
 }
+
+/* unified diff view (Repeater diff / Comparer) */
+.diff-view { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.diff-head { padding: 6px 14px; border-bottom: 1px solid var(--border); flex: none; font-size: 12px; }
+.diff-head .da { color: var(--ok); }
+.diff-head .dd { color: var(--danger); }
+.diff-body { flex: 1; min-height: 0; overflow: auto; margin: 0; padding: 6px 0; font-family: var(--mono); font-size: 12px; line-height: 1.6; }
+.diff-line { padding: 0 14px 0 8px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.diff-line .sign { display: inline-block; width: 16px; color: var(--text-faint); user-select: none; }
+.diff-line.add { background: rgb(var(--ok-rgb) / .1); }
+.diff-line.add .sign { color: var(--ok); }
+.diff-line.del { background: rgb(var(--danger-rgb) / .1); }
+.diff-line.del .sign { color: var(--danger); }
+.word-hit { background: rgb(var(--warn-rgb) / .3); border-radius: 2px; }
+.diff-line.add .word-hit { background: rgb(var(--ok-rgb) / .3); }
+.diff-line.del .word-hit { background: rgb(var(--danger-rgb) / .3); }
 /* visible search entry — dead-center of the shared banner, opens the deep-search modal */
 .banner-search {
   position: absolute; left: 50%; transform: translateX(-50%);
