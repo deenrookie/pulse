@@ -27,6 +27,7 @@ export default function IntruderView({ pulse, openSeed }: { pulse: PulseState; o
   const [title, setTitle] = useState('')
   const [raw, setRaw] = useState(TEMPLATE_HINT)
   const [payloads, setPayloads] = useState('admin\nroot\nguest')
+  const [grep, setGrep] = useState('')
   const [running, setRunning] = useState(false)
   const [progress, setProgress] = useState('')
   const [results, setResults] = useState<AttackResult[]>([])
@@ -118,6 +119,7 @@ export default function IntruderView({ pulse, openSeed }: { pulse: PulseState; o
   // ---- attack execution: substitute every §position§ with each payload ----
   const start = async () => {
     const list = payloads.split('\n').map((p) => p.trim()).filter(Boolean)
+    const grepList = grep.split('\n').map((p) => p.trim()).filter(Boolean)
     if (!raw.includes('§')) {
       pulse.notify('Mark at least one position with §payload§ in the template', 'err')
       return

@@ -197,6 +197,8 @@ export interface Attack {
   raw: string
   /** payload list, one per line */
   payloads: string
+  /** grep-match keywords, one per line — hits become result columns */
+  grep: string
   createdAt: string
   updatedAt: string
 }
