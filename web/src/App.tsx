@@ -8,6 +8,7 @@ import SiteMapView from './views/SiteMapView'
 import SettingsView from './views/SettingsView'
 import Icon, { type IconName } from './ui/Icon'
 import Decoder from './ui/Decoder'
+import Comparer from './ui/Comparer'
 import GlobalSearch from './ui/GlobalSearch'
 import { applyFontSize, loadFontSize } from './ui/fontSize'
 import { usePulse } from './state'
@@ -73,6 +74,7 @@ export default function App() {
   })
   const [theme, setTheme] = useState<Theme>(readTheme)
   const [decoderOpen, setDecoderOpen] = useState(false)
+  const [comparerOpen, setComparerOpen] = useState(false)
   const [decoderSeed, setDecoderSeed] = useState<{ text: string; n: number } | null>(null)
   const [intruderSeed, setIntruderSeed] = useState<{ raw: string; n: number } | null>(null)
 
@@ -298,6 +300,14 @@ export default function App() {
           <Icon name="terminal" size={13} />
           Decoder
         </button>
+        <button
+          className="foot-tool"
+          title="Comparer — diff two raw messages"
+          onClick={() => setComparerOpen(true)}
+        >
+          <Icon name="arrowDownUp" size={13} />
+          Comparer
+        </button>
         <span className="foot-sep" />
         <span className="foot-tool ghosted" title="More tools are on the way">
           <Icon name="puzzle" size={13} />
@@ -330,6 +340,7 @@ export default function App() {
       </div>
 
       {decoderOpen && <Decoder onClose={() => setDecoderOpen(false)} seed={decoderSeed} />}
+      {comparerOpen && <Comparer onClose={() => setComparerOpen(false)} />}
       <GlobalSearch />
 
       {pulse.toast && (
