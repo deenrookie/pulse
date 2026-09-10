@@ -350,10 +350,10 @@ export async function bodyToTextDecoded(
 /** serialize one side of a message into Burp-style raw text */
 export function rawOfMessage(
   head: string, // request/status line
-  headers: { name: string; value: string }[],
+  headers: { name: string; value: string }[] | undefined,
   bodyText: string,
 ): string {
-  const lines = [head, ...headers.map((h) => `${h.name}: ${h.value}`), '', bodyText]
+  const lines = [head, ...(headers ?? []).map((h) => `${h.name}: ${h.value}`), '', bodyText]
   return lines.join('\n')
 }
 

@@ -29,7 +29,8 @@ export function requestToRaw(req: HttpRequest): string {
   const rest = i >= 0 ? req.url.slice(i + 3) : req.url
   const slash = rest.indexOf('/')
   const path = slash >= 0 ? rest.slice(slash) : '/'
-  const headers = req.headers.map((h) => `${h.name}: ${h.value}`).join('\n')
+  // Go omits nil header slices as JSON null — bare API-created requests land here
+  const headers = (req.headers ?? []).map((h) => `${h.name}: ${h.value}`).join('\n')
   const body = bodyToText(req.body)
   return `${req.method} ${path} ${req.httpVersion || 'HTTP/1.1'}\n${headers}\n\n${body}`
 }

@@ -86,7 +86,7 @@ export function RequestInspector({
         />
         {/* Raw (request line + headers + body) is always available — GET and
             other body-less requests still have a raw form */}
-        <SubTabs tab={tab} setTab={setTab} hasBody={hasBody} alwaysRaw />
+        <SubTabs tab={tab} setTab={setTab} hasBody={hasBody} alwaysRaw hasParams={params.length > 0} />
       </div>
       <div className="summary-strip">
         <span>
@@ -381,6 +381,7 @@ function SubTabs({
   hasBody,
   alwaysRaw,
   wsCount,
+  hasParams,
 }: {
   tab: Tab
   setTab: (t: Tab) => void
@@ -388,9 +389,12 @@ function SubTabs({
   /** show Raw (start line + headers + body) even when there is no body */
   alwaysRaw?: boolean
   wsCount?: number
+  /** request has query/cookie/form params — show the Params tab */
+  hasParams?: boolean
 }) {
   const tabs: [Tab, string][] = [
     ...(alwaysRaw || hasBody ? ([['raw', 'Raw']] as [Tab, string][]) : [['headers', 'Headers']] as [Tab, string][]),
+    ...(hasParams ? ([['params', 'Params']] as [Tab, string][]) : []),
     ...(hasBody ? ([['pretty', 'Pretty'], ['hex', 'Hex']] as [Tab, string][]) : []),
     ...(wsCount ? ([['ws', `WebSocket (${wsCount})`]] as [Tab, string][]) : []),
   ]
@@ -914,12 +918,12 @@ function CookieValue({ value }: { value: string }) {
 /** headers table with per-row context menu + hover copy buttons */
 function HeadersTable({ headers }: { headers: Header[] }) {
   const [menu, setMenu] = useState<{ x: number; y: number; h: Header } | null>(null)
-  const allText = headers.map((h) => `${h.name}: ${h.value}`).join(String.fromCharCode(10))
+  const allText = (headers ?? []).map((h) => `${h.name}: ${h.value}`).join(String.fromCharCode(10))
   return (
     <>
       <table className="kv-table">
         <tbody>
-          {headers.map((h, i) => (
+          {(headers ?? []).map((h, i) => (
             <tr
               key={i}
               onContextMenu={(e) => {
@@ -978,8 +982,9 @@ function CopyableText({ text, className }: { text: string; className?: string })
 }
 
 
-function collectParams(url: string, headers: Header[], bodyB64: string | null): [string, string, string][] {
+function collectParams(url: string, headers: Header[] | undefined, bodyB64: string | null): [string, string, string][] {
   const out: [string, string, string][] = []
+  headers = headers ?? []
   try {
     const q = url.slice(url.indexOf('?') + 1)
     if (url.includes('?') && q) {

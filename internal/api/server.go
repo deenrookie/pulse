@@ -203,6 +203,9 @@ func parseEditableRequest(w http.ResponseWriter, r *store.Request) bool {
 	if r.Body == nil {
 		r.Body = []byte{}
 	}
+	if r.Headers == nil {
+		r.Headers = []store.Header{} // nil would serialize as JSON null and trip the UI
+	}
 	u := r.URL
 	if !strings.Contains(u, "://") {
 		writeErr(w, http.StatusBadRequest, "request URL must be absolute (http:// or https://)")
