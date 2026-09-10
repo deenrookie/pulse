@@ -38,7 +38,7 @@
 | **Proxy** | HTTP/HTTPS MITM 抓包，SSE 实时**虚拟化**表格（5000 行、列宽拖拽、列头排序），多维过滤 + 高级过滤器 + 8 色高亮规则，gzip/br 自动解压，JSONL 持久化重启恢复，**★ 收藏与备注**（仅看收藏过滤），右键 Send to Repeater / Copy as cURL / 深链接直达；**Scope 目标范围**（右键加入 host，一键只看目标流量，规则含子域，站点地图盾牌标记）；**全局深搜**（`Ctrl+Shift+F`，覆盖 traffic + repeater 的请求与响应）；**HAR 导出** |
 | **Intercept** | 请求挂起队列，改方法/URL/头/体后放行或丢弃，`F` / `D` 快捷操作；**响应拦截**（回包到达客户端前挂起） |
 | **Intruder** | Burp 式批量模糊测试：raw 模板中用 `§…§` 标记位置 + 载荷列表，逐发比对状态/长度/耗时，基线偏差高亮、**Grep 命中列**、单集 & **Pitchfork 每位置载荷集**模式、响应检查器（`Ctrl+7`，流量右键 Send to Intruder） |
-| **Site Map** | host→path→method 端点树聚合（状态着色、搜索），点击检查最新请求/响应 |
+| **Site Map** | host→path→method 端点树聚合（状态着色、搜索），端点级**状态变体**分组（200·12 / 500·2），点击检查最新请求/响应；页脚 **Comparer** 工具比对任意两段 raw |
 | **Repeater** | raw 编辑器改包重发，标签持久化/搜索/标记，响应即查，**与上次响应 Diff**（字级高亮）；**Params 标签可编辑**直写回 raw |
 | **Extensions** | **Match & Replace**（5 作用域、正则/字面量、命中计数）；**JS 插件**（onRequest/onResponse 钩子，隔离 VM + 2s 超时，热重载，日志面板，**CodeMirror 在线编辑器**：Check 干跑校验 / 沙箱 Test run / 一键写入插件目录，**插件目录可配置**，内置样例代码） |
 | **WebSocket** | RFC 6455 帧级捕获：text/binary/close/ping/pong 双向记录，检查器内专页查看 |
