@@ -1299,6 +1299,22 @@ table.flows tbody tr.hl.selected td { background: var(--accent-bg); box-shadow: 
   color: var(--accent);
   border-radius: 3px; padding: 0 1px;
 }
+/* visible search entry in the shared banner — opens the deep-search modal */
+.banner-search {
+  display: inline-flex; align-items: center; gap: 8px;
+  min-width: 230px; padding: 6px 10px;
+  background: var(--bg-input); border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm); color: var(--text-faint);
+  font-family: var(--sans); font-size: 12.5px; cursor: pointer;
+  transition: border-color var(--t-fast) ease, box-shadow var(--t-fast) ease;
+}
+.banner-search:hover { border-color: var(--hover-border); color: var(--text-muted); }
+.banner-search .ph { flex: 1; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.banner-search kbd {
+  font-family: var(--mono); font-size: 10px; color: var(--text-faint);
+  border: 1px solid var(--border); border-radius: 4px; padding: 1px 5px;
+  background: var(--bg);
+}
 .intruder-table tbody tr { cursor: pointer; }
 .intruder-table tr.selected { background: var(--sel); }
 .intruder-table tr.deviates { background: rgb(var(--warn-rgb) / .1); }

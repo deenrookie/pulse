@@ -257,11 +257,13 @@ export default function App() {
           </div>
           <div className="spacer" />
           <button
-            className="btn ghost sm icon-btn"
-            title="Deep search — Ctrl+Shift+F: keyword across traffic + repeater, requests & responses"
+            className="banner-search"
+            title="Deep search across traffic + repeater — requests & responses"
             onClick={() => window.dispatchEvent(new CustomEvent('pulse:open-search'))}
           >
-            <Icon name="search" size={13} />
+            <Icon name="search" size={12} />
+            <span className="ph">Search traffic & repeater…</span>
+            <kbd>⌃⇧F</kbd>
           </button>
           <label className="switch" title="Hold every request before it reaches the server">
             <input
