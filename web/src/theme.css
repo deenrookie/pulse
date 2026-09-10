@@ -397,6 +397,7 @@ kbd {
   height: var(--header-h); flex: none;
   display: flex; align-items: center; gap: 14px;
   padding: 0 16px;
+  position: relative; /* banner-search is dead-centered against it */
   background: var(--bg-deep);
   border-bottom: 1px solid var(--border);
 }
@@ -1299,10 +1300,11 @@ table.flows tbody tr.hl.selected td { background: var(--accent-bg); box-shadow: 
   color: var(--accent);
   border-radius: 3px; padding: 0 1px;
 }
-/* visible search entry in the shared banner — opens the deep-search modal */
+/* visible search entry — dead-center of the shared banner, opens the deep-search modal */
 .banner-search {
+  position: absolute; left: 50%; transform: translateX(-50%);
   display: inline-flex; align-items: center; gap: 8px;
-  min-width: 230px; padding: 6px 10px;
+  min-width: 230px; max-width: 40vw; padding: 6px 10px;
   background: var(--bg-input); border: 1px solid var(--border-strong);
   border-radius: var(--radius-sm); color: var(--text-faint);
   font-family: var(--sans); font-size: 12.5px; cursor: pointer;
