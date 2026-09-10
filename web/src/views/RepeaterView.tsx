@@ -9,7 +9,7 @@ import Empty from '../ui/Empty'
 import ContextMenu, { type MenuItem } from '../components/ContextMenu'
 import MarkEditor, { type Mark } from '../ui/MarkEditor'
 import { colorTriplet } from '../ui/palette'
-import { bodyToText, copyToClipboard, createRepeaterTab, listRepeater, updateRepeaterTab } from '../api'
+import { bodyToText, copyToClipboard, createRepeaterTab, encodeBody, listRepeater, updateRepeaterTab } from '../api'
 import { DiffView } from '../ui/Diff'
 import type { PulseState } from '../state'
 import type { RepeaterTab } from '../types'
@@ -440,6 +440,52 @@ export default function RepeaterView({ pulse, goProxy }: { pulse: PulseState; go
   const respError = entry && !entry.response ? entry.error : undefined
   const currentMark = currentId ? marks[currentId] : undefined
 
+  // Params-tab edits write straight back into the raw buffer (query → URL,
+  // form body → re-encoded body), Burp-style
+  const editParam = (where: 'query' | 'body', name: string, value: string) => {
+    if (!raw || !tab) return
+    const parsed = rawToRequest(raw.text, tab.request.url)
+    if ('error' in parsed) return
+    const dec = (x: string) => {
+      try {
+        return decodeURIComponent(x.replace(/\+/g, ' '))
+      } catch {
+        return x
+      }
+    }
+    if (where === 'query') {
+      const i = parsed.url.indexOf('?')
+      const base = i >= 0 ? parsed.url.slice(0, i) : parsed.url
+      const pairs = (i >= 0 ? parsed.url.slice(i + 1) : '').split('&').filter(Boolean)
+      let done = false
+      const next = pairs.map((p) => {
+        const [k] = p.split('=')
+        if (!done && dec(k) === name) {
+          done = true
+          return `${k}=${encodeURIComponent(value)}`
+        }
+        return p
+      })
+      if (!done) next.push(`${encodeURIComponent(name)}=${encodeURIComponent(value)}`)
+      parsed.url = next.length ? `${base}?${next.join('&')}` : base
+    } else {
+      const text = bodyToText(parsed.body)
+      if (!text) return
+      let done = false
+      const next = text.split('&').map((p) => {
+        const [k] = p.split('=')
+        if (!done && dec(k) === name) {
+          done = true
+          return `${k}=${encodeURIComponent(value)}`
+        }
+        return p
+      })
+      if (!done) next.push(`${encodeURIComponent(name)}=${encodeURIComponent(value)}`)
+      parsed.body = encodeBody(new TextEncoder().encode(next.join('&')))
+    }
+    setRaw({ text: requestToRaw({ ...parsed, id: '', truncated: false, timestamp: '', source: '' }), __id: currentId })
+  }
+
   // Burp-style compare: current response vs the previous send
   const [diffOn, setDiffOn] = useState(false)
   const responseText = (r?: { statusCode: number; reason: string; httpVersion?: string; headers?: { name: string; value: string }[]; body?: string | null } | null) =>
@@ -696,6 +742,7 @@ export default function RepeaterView({ pulse, goProxy }: { pulse: PulseState; go
                         req={reqView}
                         raw={raw.text}
                         onRawChange={(text) => setRaw({ text, __id: currentId })}
+                        onParamEdit={editParam}
                         headerExtra={<RequestOptions autoCL={autoCL} setAutoCL={setAutoCL} />}
                       />
                     ) : null

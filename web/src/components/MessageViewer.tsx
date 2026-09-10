@@ -51,6 +51,7 @@ export function RequestInspector({
   raw,
   onRawChange,
   headerExtra,
+  onParamEdit,
 }: {
   req: RequestLike
   flowId?: string
@@ -59,6 +60,8 @@ export function RequestInspector({
   onRawChange?: (v: string) => void
   /** slot right after the URL meta in the header (e.g. Repeater settings) */
   headerExtra?: React.ReactNode
+  /** edit a query/form param and write it back into the raw buffer */
+  onParamEdit?: (where: 'query' | 'body', name: string, value: string) => void
 }) {
   const [tab, setTab] = useState<Tab>('raw')
   const params = useMemo(() => collectParams(req.url, req.headers, req.body), [req.url, req.headers, req.body])
@@ -103,7 +106,7 @@ export function RequestInspector({
         {tab === 'raw' && editableRaw ? (
           <RawEditor value={raw} onChange={onRawChange} />
         ) : (
-          <TabBody tab={tab} headers={req.headers} params={params} text={text} b64={req.body} kind="request" req={req} curlFlowId={flowId} curlRequest={editableRaw ? req : undefined} />
+          <TabBody tab={tab} headers={req.headers} params={params} text={text} b64={req.body} kind="request" req={req} curlFlowId={flowId} curlRequest={editableRaw ? req : undefined} onParamEdit={editableRaw ? onParamEdit : undefined} />
         )}
       </div>
     </div>
@@ -414,6 +417,7 @@ function TabBody({
   curlRequest,
   decompressed,
   statusLine,
+  onParamEdit,
 }: {
   tab: Tab
   headers: Header[]
@@ -430,6 +434,8 @@ function TabBody({
   curlRequest?: RequestLike
   /** response status line (e.g. "HTTP/1.1 200 OK") */
   statusLine?: string
+  /** edit a query/form param and write it back (Repeater editable context) */
+  onParamEdit?: (where: 'query' | 'body', name: string, value: string) => void
 }) {
   switch (tab) {
     case 'headers':
@@ -438,15 +444,33 @@ function TabBody({
       return (
         <table className="kv-table">
           <tbody>
-            {params.map(([where, k, v], i) => (
-              <tr key={i}>
-                <td>{k}</td>
-                <td>
-                  <span className="src-tag">[{where}]</span>
-                  {v}
-                </td>
-              </tr>
-            ))}
+            {params.map(([where, k, v], i) => {
+              const editable = onParamEdit && (where === 'query' || where === 'body')
+              return (
+                <tr key={i}>
+                  <td>{k}</td>
+                  <td>
+                    <span className="src-tag">[{where}]</span>
+                    {editable ? (
+                      <input
+                        className="input param-edit"
+                        defaultValue={v}
+                        spellCheck={false}
+                        title="Edit — writes back into the raw request on Enter/blur"
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') (e.target as HTMLInputElement).blur()
+                        }}
+                        onBlur={(e) => {
+                          if (e.target.value !== v) onParamEdit(where as 'query' | 'body', k, e.target.value)
+                        }}
+                      />
+                    ) : (
+                      v
+                    )}
+                  </td>
+                </tr>
+              )
+            })}
           </tbody>
         </table>
       )
