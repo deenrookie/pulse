@@ -87,7 +87,19 @@ func (s *Server) handleInterceptID(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 		}
-		writeErr(w, http.StatusNotFound, "no such held request: "+id)
+		// response ids are "<reqID>-r": return the held response with its
+		// request context for the details panel
+		for _, h := range s.eng.Inter.PendingResp() {
+			if h.ID == id {
+				writeJSON(w, http.StatusOK, map[string]any{
+					"id":      h.ID,
+					"request": map[string]any{"method": h.Req.Method, "url": h.Req.URL},
+					"response": h.Resp,
+				})
+				return
+			}
+		}
+		writeErr(w, http.StatusNotFound, "no such held item: "+id)
 	case r.Method == http.MethodPost && action == "forward":
 		var body struct {
 			Request *store.Request `json:"request"`

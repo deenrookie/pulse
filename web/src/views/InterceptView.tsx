@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { requestToRaw, rawToRequest } from '../components/RawEditor'
-import { RequestInspector } from '../components/MessageViewer'
+import { RequestInspector, ResponseInspector } from '../components/MessageViewer'
 import * as api from '../api'
 import Icon from '../ui/Icon'
 import Empty from '../ui/Empty'
@@ -170,6 +170,8 @@ export default function InterceptView({ pulse }: { pulse: PulseState }) {
   const [selectedPending, setSelectedPending] = useState<string | null>(null)
   const [heldFull, setHeldFull] = useState<HttpRequest | null>(null)
   const [raw, setRaw] = useState<string | null>(null)
+  const [selectedResp, setSelectedResp] = useState<string | null>(null)
+  const [respDetail, setRespDetail] = useState<api.HeldResponseDetail | null>(null)
 
   // request-like view for the shared inspector: parse the edited raw when it
   // is valid, otherwise fall back to the held shape
@@ -239,6 +241,54 @@ export default function InterceptView({ pulse }: { pulse: PulseState }) {
       alive = false
     }
   }, [currentId, pulse.intercept.pending.length])
+
+  // held-response selection: fetch the full response for the details panel
+  useEffect(() => {
+    if (!selectedResp) {
+      setRespDetail(null)
+      return
+    }
+    let alive = true
+    api
+      .getHeldResponse(selectedResp)
+      .then((d) => alive && setRespDetail(d))
+      .catch(() => alive && setRespDetail(null))
+    return () => {
+      alive = false
+    }
+  }, [selectedResp, pulse.intercept.pendingResp?.length])
+
+  // prune a selected response once it is forwarded or dropped
+  useEffect(() => {
+    if (selectedResp && !(pulse.intercept.pendingResp ?? []).some((h) => h.id === selectedResp)) {
+      setSelectedResp(null)
+    }
+  }, [pulse.intercept.pendingResp, selectedResp])
+
+  const selectResp = (id: string) => {
+    setSelectedPending(null)
+    setSelectedResp(id)
+  }
+
+  const onForwardResp = () => {
+    if (!selectedResp) return
+    setBusy(true)
+    api
+      .forwardHeld(selectedResp)
+      .then(() => setSelectedResp(null))
+      .catch((e) => setErr(String(e)))
+      .finally(() => setBusy(false))
+  }
+
+  const onDropResp = () => {
+    if (!selectedResp) return
+    setBusy(true)
+    api
+      .dropHeld(selectedResp)
+      .then(() => setSelectedResp(null))
+      .catch((e) => setErr(String(e)))
+      .finally(() => setBusy(false))
+  }
 
   const act = async (fn: () => Promise<void>) => {
     setBusy(true)
@@ -396,7 +446,7 @@ export default function InterceptView({ pulse }: { pulse: PulseState }) {
   // F / D forward & drop the held request — but never while typing
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (busy || !currentId) return
+      if (busy || !currentId || selectedResp) return
       const target = e.target as HTMLElement
       if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT' || target.isContentEditable) return
       if (e.key === 'f' || e.key === 'F') {
@@ -410,7 +460,7 @@ export default function InterceptView({ pulse }: { pulse: PulseState }) {
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [busy, currentId, raw, heldFull])
+  }, [busy, currentId, raw, heldFull, selectedResp])
 
   const queueMenu = (p: PendingItem): MenuItem[] => [
     {
@@ -538,8 +588,11 @@ export default function InterceptView({ pulse }: { pulse: PulseState }) {
             pending.map((p) => (
               <div
                 key={p.id}
-                className={`side-item ${currentId === p.id ? 'selected' : ''}`}
-                onClick={() => setSelectedPending(p.id)}
+                className={`side-item ${currentId === p.id && !selectedResp ? 'selected' : ''}`}
+                onClick={() => {
+                  setSelectedResp(null)
+                  setSelectedPending(p.id)
+                }}
                 onContextMenu={(e) => {
                   e.preventDefault()
                   setSelectedPending(p.id)
@@ -615,7 +668,12 @@ export default function InterceptView({ pulse }: { pulse: PulseState }) {
                 host = h.url
               }
               return (
-                <div key={h.id} className="resp-hold-row" title={h.url}>
+                <div
+                  key={h.id}
+                  className={`resp-hold-row ${selectedResp === h.id ? 'selected' : ''}`}
+                  title={h.url}
+                  onClick={() => selectResp(h.id)}
+                >
                   <span className={`mono status${Math.floor(h.status / 100)}`}>{h.status}</span>
                   <span className="mono" style={{ fontWeight: 600 }}>{h.method}</span>
                   <span className="mono url">
@@ -623,10 +681,24 @@ export default function InterceptView({ pulse }: { pulse: PulseState }) {
                     {path}
                   </span>
                   {h.contentType && <span className="faint mono" style={{ fontSize: 10.5, flex: 'none' }}>{h.contentType.split(';')[0]}</span>}
-                  <button className="btn sm icon-btn" title="Forward to the client" onClick={() => void api.forwardHeld(h.id).catch(() => {})}>
+                  <button
+                    className="btn sm icon-btn"
+                    title="Forward to the client"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      void api.forwardHeld(h.id).catch(() => {})
+                    }}
+                  >
                     <Icon name="check" size={12} />
                   </button>
-                  <button className="btn danger sm icon-btn" title="Drop (client gets 502)" onClick={() => void api.dropHeld(h.id).catch(() => {})}>
+                  <button
+                    className="btn danger sm icon-btn"
+                    title="Drop (client gets 502)"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      void api.dropHeld(h.id).catch(() => {})
+                    }}
+                  >
                     <Icon name="x" size={12} />
                   </button>
                 </div>
@@ -640,12 +712,31 @@ export default function InterceptView({ pulse }: { pulse: PulseState }) {
 
       <div className="panel" style={{ flex: 1 }}>
         <div className="panel-head">
-          {/* common actions on the left, next to the title */}
-          <button className="btn primary" disabled={!currentId || busy} onClick={onForward} title="Forward (F)">
-            {busy ? <span className="spinner" /> : <Icon name="play" size={13} />}
-            Forward
-            <kbd>F</kbd>
-          </button>
+          {selectedResp ? (
+            <>
+              <button className="btn primary" disabled={busy || !respDetail} onClick={onForwardResp} title="Forward this response to the client">
+                {busy ? <span className="spinner" /> : <Icon name="play" size={13} />}
+                Forward
+              </button>
+              <button className="btn danger" disabled={busy || !respDetail} onClick={onDropResp} title="Drop (client gets 502)">
+                <Icon name="x" size={13} />
+                Drop
+              </button>
+              <div className="spacer" />
+              {respDetail && (
+                <span className="meta" title={respDetail.request.url}>
+                  {respDetail.request.method} {respDetail.request.url}
+                </span>
+              )}
+            </>
+          ) : (
+            <>
+              {/* common actions on the left, next to the title */}
+              <button className="btn primary" disabled={!currentId || busy} onClick={onForward} title="Forward (F)">
+                {busy ? <span className="spinner" /> : <Icon name="play" size={13} />}
+                Forward
+                <kbd>F</kbd>
+              </button>
           <button className="btn sm" disabled={!heldFull} onClick={() => void sendHeldToRepeater()} title="Copy this held request into a Repeater tab">
             <Icon name="send" size={13} />
             Send to Repeater
@@ -663,9 +754,19 @@ export default function InterceptView({ pulse }: { pulse: PulseState }) {
             </span>
           )}
           {heldFull && <span className="meta">{heldFull.id}</span>}
+            </>
+          )}
         </div>
         <div className="panel-body" style={{ display: 'flex', flexDirection: 'column' }}>
-          {reqView && raw !== null ? (
+          {selectedResp ? (
+            respDetail ? (
+              <div style={{ display: 'flex', flex: 1, minHeight: 0 }}>
+                <ResponseInspector resp={respDetail.response} />
+              </div>
+            ) : (
+              <Empty icon="waves" title="Loading held response…" />
+            )
+          ) : reqView && raw !== null ? (
             <div style={{ display: 'flex', flex: 1, minHeight: 0 }}>
               <RequestInspector
                 req={reqView}

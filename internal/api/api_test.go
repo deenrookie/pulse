@@ -306,6 +306,72 @@ func TestInterceptAPIForwardWithModification(t *testing.T) {
 	}
 }
 
+// GET /api/intercept/{id} on a held-response id ("<reqID>-r") returns the
+// response with its request context for the details panel.
+func TestHeldResponseDetail(t *testing.T) {
+	e := newEnv(t)
+	up := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/plain")
+		w.Write([]byte("detail-body"))
+	}))
+	defer up.Close()
+
+	e.do(t, "PUT", "/api/intercept", map[string]bool{"respEnabled": true})
+
+	go proxiedClient(e.proxyAddr).Get(up.URL + "/detail")
+
+	deadline := time.Now().Add(3 * time.Second)
+	var heldID string
+	for time.Now().Before(deadline) && heldID == "" {
+		_, data := e.do(t, "GET", "/api/intercept", nil)
+		var sum struct {
+			PendingResp []struct {
+				ID string `json:"id"`
+			} `json:"pendingResp"`
+		}
+		json.Unmarshal(data, &sum)
+		if len(sum.PendingResp) > 0 {
+			heldID = sum.PendingResp[0].ID
+		} else {
+			time.Sleep(20 * time.Millisecond)
+		}
+	}
+	if heldID == "" {
+		t.Fatal("no held response appeared")
+	}
+
+	resp, data := e.do(t, "GET", "/api/intercept/"+heldID, nil)
+	if resp.StatusCode != 200 {
+		t.Fatalf("detail = %d", resp.StatusCode)
+	}
+	var detail struct {
+		ID  string `json:"id"`
+		Req struct {
+			Method string `json:"method"`
+			URL    string `json:"url"`
+		} `json:"request"`
+		Resp struct {
+			StatusCode int    `json:"statusCode"`
+			Body       []byte `json:"body"`
+		} `json:"response"`
+	}
+	json.Unmarshal(data, &detail)
+	if detail.ID != heldID || detail.Req.Method != "GET" || detail.Req.URL != up.URL+"/detail" {
+		t.Fatalf("detail = %s", data)
+	}
+	if detail.Resp.StatusCode != 200 || string(detail.Resp.Body) != "detail-body" {
+		t.Fatalf("response = %+v", detail.Resp)
+	}
+
+	resp, _ = e.do(t, "GET", "/api/intercept/req-nope-r", nil)
+	if resp.StatusCode != 404 {
+		t.Fatalf("unknown id = %d", resp.StatusCode)
+	}
+
+	// release the held response so the proxied client unblocks
+	e.do(t, "POST", "/api/intercept/"+heldID+"/drop", nil)
+}
+
 func TestRepeaterLifecycle(t *testing.T) {
 	e := newEnv(t)
 	up := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

@@ -1793,8 +1793,9 @@ textarea.editor.raw.over-mirror:focus { border-color: var(--accent-dim); box-sha
 .col-split:hover { background: var(--border-strong); }
 body.col-resizing { cursor: col-resize; user-select: none; }
 body.col-resizing .col-split { background: var(--accent); }
-.resp-hold-row { display: flex; align-items: center; gap: 10px; padding: 9px 12px; border-bottom: 1px solid var(--border); min-width: 0; }
+.resp-hold-row { display: flex; align-items: center; gap: 10px; padding: 9px 12px; border-bottom: 1px solid var(--border); min-width: 0; cursor: pointer; }
 .resp-hold-row:hover { background: var(--bg-hover); }
+.resp-hold-row.selected { background: var(--accent-bg); box-shadow: inset 2px 0 0 var(--accent); }
 .resp-hold-row .url { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* site-map endpoint variants (status groups) */

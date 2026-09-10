@@ -5,6 +5,7 @@ import type {
   Flow,
   FlowMeta,
   HttpRequest,
+  HttpResponse,
   InterceptSummary,
   PluginInfo,
   PluginInspection,
@@ -74,6 +75,15 @@ export const setInterceptRespEnabled = (respEnabled: boolean) =>
   api<InterceptSummary>('/api/intercept', { method: 'PUT', body: JSON.stringify({ respEnabled }) })
 
 export const getHeldRequest = (id: string) => api<HttpRequest>(`/api/intercept/${id}`)
+
+/** a held response ("<reqID>-r") with its request context for the details panel */
+export interface HeldResponseDetail {
+  id: string
+  request: { method: string; url: string }
+  response: HttpResponse
+}
+
+export const getHeldResponse = (id: string) => api<HeldResponseDetail>(`/api/intercept/${id}`)
 
 export const forwardHeld = (id: string, request?: EditableRequest) =>
   api<{ ok: boolean }>(`/api/intercept/${id}/forward`, {
