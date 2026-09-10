@@ -11,6 +11,9 @@ import type { PulseState } from '../state'
 import type { HttpRequest, PendingItem } from '../types'
 
 const RULES_KEY = 'pulse.holdrules'
+const COLS_KEY = 'pulse.intercept.cols'
+const COL_MIN = 170
+const COL_DEFAULT: [number, number] = [280, 400]
 
 /** client-side hold rules: when non-empty, only matching requests are held;
     everything else is auto-forwarded the moment it arrives */
@@ -252,6 +255,59 @@ export default function InterceptView({ pulse }: { pulse: PulseState }) {
     }
   }
 
+  // three columns with drag-to-resize splitters; widths persist across reloads
+  const rootRef = useRef<HTMLDivElement>(null)
+  const [colW, setColW] = useState<[number, number]>(() => {
+    try {
+      const v = JSON.parse(localStorage.getItem(COLS_KEY) ?? 'null') as unknown
+      if (Array.isArray(v) && v.length === 2 && v.every((n) => typeof n === 'number' && n >= COL_MIN)) return [v[0], v[1]]
+    } catch {
+      /* corrupted entry — fall back to defaults */
+    }
+    return COL_DEFAULT
+  })
+  const colWRef = useRef(colW)
+  colWRef.current = colW
+
+  const dragCol = (which: 0 | 1) => (e: React.PointerEvent<HTMLDivElement>) => {
+    e.preventDefault()
+    const el = e.currentTarget
+    el.setPointerCapture(e.pointerId)
+    const startX = e.clientX
+    const startW = colW[which]
+    // keep the details panel usable: never squeeze it below ~420px
+    const maxW = () => {
+      const total = rootRef.current?.clientWidth ?? window.innerWidth
+      return Math.max(COL_MIN, total - colWRef.current[which === 0 ? 1 : 0] - 420)
+    }
+    const move = (ev: PointerEvent) => {
+      const w = Math.min(Math.max(startW + ev.clientX - startX, COL_MIN), maxW())
+      setColW((c) => (which === 0 ? [w, c[1]] : [c[0], w]))
+    }
+    const up = () => {
+      el.removeEventListener('pointermove', move)
+      el.removeEventListener('pointerup', up)
+      document.body.classList.remove('col-resizing')
+      try {
+        localStorage.setItem(COLS_KEY, JSON.stringify(colWRef.current))
+      } catch {
+        /* storage unavailable */
+      }
+    }
+    document.body.classList.add('col-resizing')
+    el.addEventListener('pointermove', move)
+    el.addEventListener('pointerup', up)
+  }
+
+  const resetCols = () => {
+    setColW(COL_DEFAULT)
+    try {
+      localStorage.setItem(COLS_KEY, JSON.stringify(COL_DEFAULT))
+    } catch {
+      /* storage unavailable */
+    }
+  }
+
   const onForward = () => {
     if (!currentId || raw === null || !heldFull) return
     const req = rawToRequest(raw, heldFull.url)
@@ -419,9 +475,8 @@ export default function InterceptView({ pulse }: { pulse: PulseState }) {
   ]
 
   return (
-    <div className="view padded">
-      <div className="intercept-cols">
-      <div className="panel" style={{ flex: 1 }}>
+    <div className="view padded row" ref={rootRef}>
+      <div className="panel" style={{ width: colW[0], flex: 'none' }}>
         <div className="panel-head">
           <span className="title">Held requests</span>
           <span className={`badge ${pending.length ? 'hot' : ''}`}>{pending.length || ''}</span>
@@ -437,15 +492,6 @@ export default function InterceptView({ pulse }: { pulse: PulseState }) {
             Rules
             {rules.length > 0 && <span className="badge">{rules.length}</span>}
           </button>
-          <label className="switch" title="Hold responses after the upstream replies, before they reach the client">
-            <input
-              type="checkbox"
-              checked={!!pulse.intercept.respEnabled}
-              onChange={(e) => void pulse.toggleInterceptResp(e.target.checked)}
-            />
-            <span className="track" />
-            Responses
-          </label>
           <div className="spacer" />
           {pulse.intercept.enabled ? (
             <span className="meta" style={{ color: 'var(--accent)' }}>
@@ -514,7 +560,85 @@ export default function InterceptView({ pulse }: { pulse: PulseState }) {
         </div>
       </div>
 
-      <div className="panel" style={{ flex: 3 }}>
+      <div className="col-split" onPointerDown={dragCol(0)} onDoubleClick={resetCols} title="Drag to resize · double-click to reset" />
+
+      <div className="panel" style={{ width: colW[1], flex: 'none' }}>
+        <div className="panel-head">
+          <span className="title">Responses</span>
+          <span className={`badge ${(pulse.intercept.pendingResp?.length ?? 0) ? 'hot' : ''}`}>
+            {(pulse.intercept.pendingResp?.length ?? 0) || ''}
+          </span>
+          <label className="switch" title="Hold responses after the upstream replies, before they reach the client">
+            <input
+              type="checkbox"
+              checked={!!pulse.intercept.respEnabled}
+              onChange={(e) => void pulse.toggleInterceptResp(e.target.checked)}
+            />
+            <span className="track" />
+            Hold
+          </label>
+          <div className="spacer" />
+          <button
+            className="btn ghost sm"
+            disabled={busy || (pulse.intercept.pendingResp?.length ?? 0) === 0}
+            onClick={() => void forwardAllHeld(pulse.intercept.pendingResp!.map((h) => h.id))}
+            title="Release every held response to the client"
+          >
+            <Icon name="play" size={12} />
+            Forward all
+          </button>
+          <button
+            className="btn danger sm"
+            disabled={busy || (pulse.intercept.pendingResp?.length ?? 0) === 0}
+            onClick={() => void dropAllResponses()}
+          >
+            <Icon name="x" size={12} />
+            Drop all
+          </button>
+        </div>
+        <div className="panel-body">
+          {(pulse.intercept.pendingResp?.length ?? 0) === 0 ? (
+            <Empty icon="waves" title={pulse.intercept.respEnabled ? 'Nothing held' : 'Response hold is off'}>
+              {pulse.intercept.respEnabled
+                ? 'When the upstream replies, the response pauses here before it reaches the client.'
+                : 'Flip the toggle to pause responses before they reach the client.'}
+            </Empty>
+          ) : (
+            pulse.intercept.pendingResp!.map((h) => {
+              let host = ''
+              let path = ''
+              try {
+                const u = new URL(h.url)
+                host = u.host
+                path = u.pathname + u.search
+              } catch {
+                host = h.url
+              }
+              return (
+                <div key={h.id} className="resp-hold-row" title={h.url}>
+                  <span className={`mono status${Math.floor(h.status / 100)}`}>{h.status}</span>
+                  <span className="mono" style={{ fontWeight: 600 }}>{h.method}</span>
+                  <span className="mono url">
+                    <span className="faint">{host}</span>
+                    {path}
+                  </span>
+                  {h.contentType && <span className="faint mono" style={{ fontSize: 10.5, flex: 'none' }}>{h.contentType.split(';')[0]}</span>}
+                  <button className="btn sm icon-btn" title="Forward to the client" onClick={() => void api.forwardHeld(h.id).catch(() => {})}>
+                    <Icon name="check" size={12} />
+                  </button>
+                  <button className="btn danger sm icon-btn" title="Drop (client gets 502)" onClick={() => void api.dropHeld(h.id).catch(() => {})}>
+                    <Icon name="x" size={12} />
+                  </button>
+                </div>
+              )
+            })
+          )}
+        </div>
+      </div>
+
+      <div className="col-split" onPointerDown={dragCol(1)} onDoubleClick={resetCols} title="Drag to resize · double-click to reset" />
+
+      <div className="panel" style={{ flex: 1 }}>
         <div className="panel-head">
           {/* common actions on the left, next to the title */}
           <button className="btn primary" disabled={!currentId || busy} onClick={onForward} title="Forward (F)">
@@ -556,58 +680,9 @@ export default function InterceptView({ pulse }: { pulse: PulseState }) {
           )}
         </div>
       </div>
-      </div>
 
       {rulesPos && (
         <HoldRules rules={rules} onChange={saveRules} x={rulesPos.x} y={rulesPos.y} onClose={() => setRulesPos(null)} />
-      )}
-      {(pulse.intercept.pendingResp?.length ?? 0) > 0 && (
-        <div className="resp-hold">
-          <div className="resp-hold-head">
-            <Icon name="waves" size={13} />
-            <span>Held responses · {pulse.intercept.pendingResp!.length}</span>
-            <span className="faint" style={{ fontSize: 11 }}>
-              paused before the client
-            </span>
-            <div className="spacer" style={{ flex: 1 }} />
-            <button className="btn ghost sm" disabled={busy} onClick={() => void forwardAllHeld(pulse.intercept.pendingResp!.map((h) => h.id))} title="Release every held response to the client">
-              <Icon name="play" size={12} />
-              Forward all
-            </button>
-            <button className="btn danger sm" disabled={busy} onClick={() => void dropAllResponses()}>
-              <Icon name="x" size={12} />
-              Drop all
-            </button>
-          </div>
-          {pulse.intercept.pendingResp!.map((h) => {
-            let host = ''
-            let path = ''
-            try {
-              const u = new URL(h.url)
-              host = u.host
-              path = u.pathname + u.search
-            } catch {
-              host = h.url
-            }
-            return (
-              <div key={h.id} className="resp-hold-row" title={h.url}>
-                <span className={`mono status${Math.floor(h.status / 100)}`}>{h.status}</span>
-                <span className="mono" style={{ fontWeight: 600 }}>{h.method}</span>
-                <span className="mono url">
-                  <span className="faint">{host}</span>
-                  {path}
-                </span>
-                {h.contentType && <span className="faint mono" style={{ fontSize: 10.5, flex: 'none' }}>{h.contentType.split(';')[0]}</span>}
-                <button className="btn sm icon-btn" title="Forward to the client" onClick={() => void api.forwardHeld(h.id).catch(() => {})}>
-                  <Icon name="check" size={12} />
-                </button>
-                <button className="btn danger sm icon-btn" title="Drop (client gets 502)" onClick={() => void api.dropHeld(h.id).catch(() => {})}>
-                  <Icon name="x" size={12} />
-                </button>
-              </div>
-            )
-          })}
-        </div>
       )}
       {menu && <ContextMenu x={menu.x} y={menu.y} items={queueMenu(menu.item)} onClose={() => setMenu(null)} />}
     </div>

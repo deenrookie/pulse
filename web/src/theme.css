@@ -1788,12 +1788,12 @@ textarea.editor.raw.over-mirror:focus { border-color: var(--accent-dim); box-sha
   background: rgb(var(--accent-rgb) / .12); border-radius: 4px; padding: 2px 7px;
 }
 
-/* held-response queue (intercept) */
-.intercept-cols { display: flex; flex: 1; min-height: 0; min-width: 0; gap: 10px; }
-.resp-hold { border-top: 1px solid var(--border); flex: none; max-height: 40%; min-width: 0; overflow: auto; }
-.resp-hold-head { display: flex; align-items: center; gap: 8px; padding: 8px 14px; font-size: 12px; color: var(--text-muted); }
-.resp-hold-head .btn { padding: 3px 8px; }
-.resp-hold-row { display: flex; align-items: center; gap: 10px; padding: 6px 14px; min-width: 0; }
+/* intercept three-column layout: drag-to-resize splitters between panels */
+.col-split { flex: none; width: 6px; border-radius: 3px; cursor: col-resize; background: var(--border); transition: background var(--t-fast) ease; }
+.col-split:hover { background: var(--border-strong); }
+body.col-resizing { cursor: col-resize; user-select: none; }
+body.col-resizing .col-split { background: var(--accent); }
+.resp-hold-row { display: flex; align-items: center; gap: 10px; padding: 9px 12px; border-bottom: 1px solid var(--border); min-width: 0; }
 .resp-hold-row:hover { background: var(--bg-hover); }
 .resp-hold-row .url { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
