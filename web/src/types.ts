@@ -209,4 +209,6 @@ export interface AttackResult {
   length: number
   ms: number
   flow: Flow | null
+  /** labels of grep keywords found in this response */
+  grepHits: string[]
 }

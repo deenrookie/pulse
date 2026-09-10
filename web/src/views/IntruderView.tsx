@@ -44,7 +44,7 @@ export default function IntruderView({ pulse, openSeed }: { pulse: PulseState; o
     if (!openSeed?.raw) return
     void (async () => {
       try {
-        const a = await api.createAttack({ title: '', raw: openSeed.raw, payloads: '' })
+        const a = await api.createAttack({ title: '', raw: openSeed.raw, payloads: '', grep: '' })
         await refresh()
         open(a)
         pulse.notify('Sent to Intruder — mark positions with §…§ and add payloads')
@@ -74,6 +74,7 @@ export default function IntruderView({ pulse, openSeed }: { pulse: PulseState; o
     setTitle(a.title)
     setRaw(a.raw)
     setPayloads(a.payloads)
+    setGrep(a.grep ?? '')
     setResults([])
     setSelectedIdx(null)
   }
@@ -84,7 +85,7 @@ export default function IntruderView({ pulse, openSeed }: { pulse: PulseState; o
   }
 
   const create = async () => {
-    const a = await api.createAttack({ title: '', raw: TEMPLATE_HINT, payloads: '' })
+    const a = await api.createAttack({ title: '', raw: TEMPLATE_HINT, payloads: '', grep: '' })
     await refresh()
     open(a)
   }
@@ -92,7 +93,7 @@ export default function IntruderView({ pulse, openSeed }: { pulse: PulseState; o
   const save = async () => {
     if (!currentId) return
     try {
-      await api.updateAttack(currentId, { title: title.trim() || autoTitle(), raw, payloads })
+      await api.updateAttack(currentId, { title: title.trim() || autoTitle(), raw, payloads, grep })
       await refresh()
       pulse.notify('Attack saved')
     } catch (e) {
@@ -136,7 +137,7 @@ export default function IntruderView({ pulse, openSeed }: { pulse: PulseState; o
       const substituted = raw.replaceAll('§', '\x00').split('\x00').map((part, idx) => (idx % 2 === 1 ? payload : part)).join('')
       const parsed = rawToRequest(substituted, templateBaseURL(raw))
       if ('error' in parsed) {
-        out.push({ payload, statusCode: 0, reason: 'parse: ' + parsed.error, length: 0, ms: 0, flow: null })
+        out.push({ payload, statusCode: 0, reason: 'parse: ' + parsed.error, length: 0, ms: 0, flow: null, grepHits: [] })
         setResults([...out])
         continue
       }
@@ -151,9 +152,10 @@ export default function IntruderView({ pulse, openSeed }: { pulse: PulseState; o
           length: fl.response ? bodySize(fl) : 0,
           ms: fl.response?.durationMs ?? 0,
           flow: fl,
+          grepHits: grepHitsFor(fl, grepList),
         })
       } catch (e) {
-        out.push({ payload, statusCode: 0, reason: (e as Error).message, length: 0, ms: 0, flow: null })
+        out.push({ payload, statusCode: 0, reason: (e as Error).message, length: 0, ms: 0, flow: null, grepHits: [] })
       }
       setResults([...out])
     }
@@ -166,6 +168,7 @@ export default function IntruderView({ pulse, openSeed }: { pulse: PulseState; o
     stopRef.current = true
   }
 
+  const grepListHeaders = () => grep.split('\n').map((p) => p.trim()).filter(Boolean).slice(0, 8)
   const baseline = results[0]
   const selected = selectedIdx !== null ? results[selectedIdx] : null
 
@@ -241,7 +244,7 @@ export default function IntruderView({ pulse, openSeed }: { pulse: PulseState; o
                     </div>
                     <RawEditor value={raw} onChange={setRaw} markPositions />
                   </div>
-                  <div className="cfg-col" style={{ flex: 0.7 }}>
+                  <div className="cfg-col" style={{ flex: 0.6 }}>
                     <div className="cfg-label">
                       Payloads <span className="faint">— one per line ({countPositions(raw)} positions, single-set mode)</span>
                     </div>
@@ -250,6 +253,18 @@ export default function IntruderView({ pulse, openSeed }: { pulse: PulseState; o
                       value={payloads}
                       spellCheck={false}
                       onChange={(e) => setPayloads(e.target.value)}
+                    />
+                  </div>
+                  <div className="cfg-col" style={{ flex: 0.35 }}>
+                    <div className="cfg-label">
+                      Grep match <span className="faint">— hits light up columns</span>
+                    </div>
+                    <textarea
+                      className="cfg-src"
+                      value={grep}
+                      spellCheck={false}
+                      placeholder={'error\nadmin\nroot'}
+                      onChange={(e) => setGrep(e.target.value)}
                     />
                   </div>
                 </div>
@@ -272,6 +287,9 @@ export default function IntruderView({ pulse, openSeed }: { pulse: PulseState; o
                             <th style={{ width: 70 }}>Status</th>
                             <th style={{ width: 80 }}>Length</th>
                             <th style={{ width: 70 }}>Took</th>
+                            {grepListHeaders().map((k) => (
+                              <th key={k} className="grep-col" title={`grep: ${k}`}>{k}</th>
+                            ))}
                           </tr>
                         </thead>
                         <tbody>
@@ -289,6 +307,9 @@ export default function IntruderView({ pulse, openSeed }: { pulse: PulseState; o
                                 <td className={`mono ${r.statusCode ? `status${Math.floor(r.statusCode / 100)}` : ''}`}>{r.statusCode || '—'}</td>
                                 <td className="mono">{r.length || '—'}</td>
                                 <td className="mono faint">{r.ms}ms</td>
+                                {grepListHeaders().map((k) => (
+                                  <td key={k} className="grep-cell">{r.grepHits.includes(k) ? '✓' : ''}</td>
+                                ))}
                               </tr>
                             )
                           })}
@@ -322,6 +343,18 @@ function templateBaseURL(raw: string): string {
     if (m) return 'http://' + m[1]
   }
   return 'http://example.com'
+}
+
+/** which grep keywords appear in the response (status + headers + body) */
+function grepHitsFor(fl: Flow, keywords: string[]): string[] {
+  if (keywords.length === 0 || !fl.response) return []
+  const hay = (
+    `${fl.response.statusCode} ${fl.response.reason}\n` +
+    (fl.response.headers ?? []).map((h) => `${h.name}: ${h.value}`).join('\n') +
+    '\n' +
+    (fl.response.body ?? '')
+  ).toLowerCase()
+  return keywords.filter((k) => hay.includes(k.toLowerCase()))
 }
 
 function bodySize(fl: Flow): number {

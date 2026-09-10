@@ -25,10 +25,10 @@ export const deepSearch = (q: string) =>
 
 export const listAttacks = () => api<{ attacks: Attack[] }>('/api/intruder')
 
-export const createAttack = (payload: { title?: string; raw: string; payloads?: string }) =>
+export const createAttack = (payload: { title?: string; raw: string; payloads?: string; grep?: string }) =>
   api<Attack>('/api/intruder', { method: 'POST', body: JSON.stringify(payload) })
 
-export const updateAttack = (id: string, payload: { title?: string; raw: string; payloads: string }) =>
+export const updateAttack = (id: string, payload: { title?: string; raw: string; payloads: string; grep: string }) =>
   api<Attack>(`/api/intruder/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify(payload) })
 
 export const deleteAttack = (id: string) =>

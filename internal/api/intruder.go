@@ -23,6 +23,7 @@ type IntruderAttack struct {
 	Title     string    `json:"title"`
 	Raw       string    `json:"raw"`      // request template, §payload§ marks positions
 	Payloads  string    `json:"payloads"` // one per line
+	Grep      string    `json:"grep"`     // match keywords, one per line — hits become result columns
 	CreatedAt time.Time `json:"createdAt"`
 	UpdatedAt time.Time `json:"updatedAt"`
 }
@@ -84,7 +85,7 @@ func (s *intruderStore) get(id string) (*IntruderAttack, bool) {
 	return nil, false
 }
 
-func (s *intruderStore) create(title, raw, payloads string) *IntruderAttack {
+func (s *intruderStore) create(title, raw, payloads, grep string) *IntruderAttack {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	a := &IntruderAttack{
@@ -92,6 +93,7 @@ func (s *intruderStore) create(title, raw, payloads string) *IntruderAttack {
 		Title:     title,
 		Raw:       raw,
 		Payloads:  payloads,
+		Grep:      grep,
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
 	}
@@ -101,7 +103,7 @@ func (s *intruderStore) create(title, raw, payloads string) *IntruderAttack {
 	return a
 }
 
-func (s *intruderStore) update(id, title, raw, payloads string) (*IntruderAttack, bool) {
+func (s *intruderStore) update(id, title, raw, payloads, grep string) (*IntruderAttack, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	a, ok := s.get(id)
@@ -111,7 +113,7 @@ func (s *intruderStore) update(id, title, raw, payloads string) (*IntruderAttack
 	if title != "" {
 		a.Title = title
 	}
-	a.Raw, a.Payloads, a.UpdatedAt = raw, payloads, time.Now()
+	a.Raw, a.Payloads, a.Grep, a.UpdatedAt = raw, payloads, grep, time.Now()
 	s.save()
 	return a, true
 }
@@ -168,22 +170,24 @@ func (s *Server) handleIntruder(w http.ResponseWriter, r *http.Request) {
 			Title    string `json:"title"`
 			Raw      string `json:"raw"`
 			Payloads string `json:"payloads"`
+			Grep     string `json:"grep"`
 		}
 		if !readJSON(w, r, &body, 4<<20) || strings.TrimSpace(body.Raw) == "" {
 			writeErr(w, http.StatusBadRequest, "missing \"raw\" request template")
 			return
 		}
-		writeJSON(w, http.StatusCreated, s.intr.create(strings.TrimSpace(body.Title), body.Raw, body.Payloads))
+		writeJSON(w, http.StatusCreated, s.intr.create(strings.TrimSpace(body.Title), body.Raw, body.Payloads, body.Grep))
 	case r.Method == http.MethodPut && id != "":
 		var body struct {
 			Title    string `json:"title"`
 			Raw      string `json:"raw"`
 			Payloads string `json:"payloads"`
+			Grep     string `json:"grep"`
 		}
 		if !readJSON(w, r, &body, 4<<20) {
 			return
 		}
-		a, ok := s.intr.update(id, body.Title, body.Raw, body.Payloads)
+		a, ok := s.intr.update(id, body.Title, body.Raw, body.Payloads, body.Grep)
 		if !ok {
 			writeErr(w, http.StatusNotFound, "no such attack: "+id)
 			return

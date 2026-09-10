@@ -1757,3 +1757,7 @@ textarea.editor.raw.over-mirror:focus { border-color: var(--accent-dim); box-sha
   font: inherit; font-size: 10.5px; padding: 2px 8px; cursor: pointer;
 }
 .raw-cap .mini:hover { color: var(--warn); border-color: rgb(var(--warn-rgb) / 0.4); }
+
+/* intruder grep-match columns */
+.intruder-table .grep-col { max-width: 90px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; }
+.intruder-table .grep-cell { text-align: center; color: var(--ok); font-weight: 700; }
