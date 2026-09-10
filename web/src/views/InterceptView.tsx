@@ -419,7 +419,8 @@ export default function InterceptView({ pulse }: { pulse: PulseState }) {
   ]
 
   return (
-    <div className="view padded row">
+    <div className="view padded">
+      <div className="intercept-cols">
       <div className="panel" style={{ flex: 1 }}>
         <div className="panel-head">
           <span className="title">Held requests</span>
@@ -481,7 +482,7 @@ export default function InterceptView({ pulse }: { pulse: PulseState }) {
                 'Every request currently flows straight to the server.'
               )}
               {!pulse.intercept.enabled && (
-                <button className="btn primary" style={{ marginTop: 8 }} onClick={() => pulse.toggleIntercept(true)}>
+                <button className="btn primary" onClick={() => pulse.toggleIntercept(true)}>
                   <Icon name="hand" size={13} />
                   Turn on Intercept
                 </button>
@@ -555,6 +556,7 @@ export default function InterceptView({ pulse }: { pulse: PulseState }) {
           )}
         </div>
       </div>
+      </div>
 
       {rulesPos && (
         <HoldRules rules={rules} onChange={saveRules} x={rulesPos.x} y={rulesPos.y} onClose={() => setRulesPos(null)} />
@@ -591,7 +593,7 @@ export default function InterceptView({ pulse }: { pulse: PulseState }) {
               <div key={h.id} className="resp-hold-row" title={h.url}>
                 <span className={`mono status${Math.floor(h.status / 100)}`}>{h.status}</span>
                 <span className="mono" style={{ fontWeight: 600 }}>{h.method}</span>
-                <span className="mono" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
+                <span className="mono url">
                   <span className="faint">{host}</span>
                   {path}
                 </span>
