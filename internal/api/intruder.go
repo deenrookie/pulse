@@ -22,7 +22,8 @@ type IntruderAttack struct {
 	ID        string    `json:"id"`
 	Title     string    `json:"title"`
 	Raw       string    `json:"raw"`      // request template, §payload§ marks positions
-	Payloads  string    `json:"payloads"` // one per line
+	Payloads   string   `json:"payloads"`           // single set: one per line
+	PayloadSets []string `json:"payloadSets,omitempty"` // pitchfork: one set (one per line) per §position§
 	Grep      string    `json:"grep"`     // match keywords, one per line — hits become result columns
 	CreatedAt time.Time `json:"createdAt"`
 	UpdatedAt time.Time `json:"updatedAt"`
@@ -85,15 +86,16 @@ func (s *intruderStore) get(id string) (*IntruderAttack, bool) {
 	return nil, false
 }
 
-func (s *intruderStore) create(title, raw, payloads, grep string) *IntruderAttack {
+func (s *intruderStore) create(title, raw, payloads string, payloadSets []string, grep string) *IntruderAttack {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	a := &IntruderAttack{
 		ID:        "atk-" + strconv.Itoa(s.nextID),
-		Title:     title,
-		Raw:       raw,
-		Payloads:  payloads,
-		Grep:      grep,
+		Title:       title,
+		Raw:         raw,
+		Payloads:    payloads,
+		PayloadSets: payloadSets,
+		Grep:        grep,
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
 	}
@@ -103,7 +105,7 @@ func (s *intruderStore) create(title, raw, payloads, grep string) *IntruderAttac
 	return a
 }
 
-func (s *intruderStore) update(id, title, raw, payloads, grep string) (*IntruderAttack, bool) {
+func (s *intruderStore) update(id, title, raw, payloads string, payloadSets []string, grep string) (*IntruderAttack, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	a, ok := s.get(id)
@@ -113,7 +115,7 @@ func (s *intruderStore) update(id, title, raw, payloads, grep string) (*Intruder
 	if title != "" {
 		a.Title = title
 	}
-	a.Raw, a.Payloads, a.Grep, a.UpdatedAt = raw, payloads, grep, time.Now()
+	a.Raw, a.Payloads, a.PayloadSets, a.Grep, a.UpdatedAt = raw, payloads, payloadSets, grep, time.Now()
 	s.save()
 	return a, true
 }
@@ -169,25 +171,27 @@ func (s *Server) handleIntruder(w http.ResponseWriter, r *http.Request) {
 		var body struct {
 			Title    string `json:"title"`
 			Raw      string `json:"raw"`
-			Payloads string `json:"payloads"`
-			Grep     string `json:"grep"`
+			Payloads    string   `json:"payloads"`
+			PayloadSets []string `json:"payloadSets"`
+			Grep        string   `json:"grep"`
 		}
 		if !readJSON(w, r, &body, 4<<20) || strings.TrimSpace(body.Raw) == "" {
 			writeErr(w, http.StatusBadRequest, "missing \"raw\" request template")
 			return
 		}
-		writeJSON(w, http.StatusCreated, s.intr.create(strings.TrimSpace(body.Title), body.Raw, body.Payloads, body.Grep))
+		writeJSON(w, http.StatusCreated, s.intr.create(strings.TrimSpace(body.Title), body.Raw, body.Payloads, body.PayloadSets, body.Grep))
 	case r.Method == http.MethodPut && id != "":
 		var body struct {
 			Title    string `json:"title"`
 			Raw      string `json:"raw"`
-			Payloads string `json:"payloads"`
-			Grep     string `json:"grep"`
+			Payloads    string   `json:"payloads"`
+			PayloadSets []string `json:"payloadSets"`
+			Grep        string   `json:"grep"`
 		}
 		if !readJSON(w, r, &body, 4<<20) {
 			return
 		}
-		a, ok := s.intr.update(id, body.Title, body.Raw, body.Payloads, body.Grep)
+		a, ok := s.intr.update(id, body.Title, body.Raw, body.Payloads, body.PayloadSets, body.Grep)
 		if !ok {
 			writeErr(w, http.StatusNotFound, "no such attack: "+id)
 			return

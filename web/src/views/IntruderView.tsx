@@ -28,6 +28,8 @@ export default function IntruderView({ pulse, openSeed }: { pulse: PulseState; o
   const [raw, setRaw] = useState(TEMPLATE_HINT)
   const [payloads, setPayloads] = useState('admin\nroot\nguest')
   const [grep, setGrep] = useState('')
+  const [perPosition, setPerPosition] = useState(false)
+  const [sets, setSets] = useState<string[]>([])
   const [running, setRunning] = useState(false)
   const [progress, setProgress] = useState('')
   const [results, setResults] = useState<AttackResult[]>([])
@@ -76,6 +78,8 @@ export default function IntruderView({ pulse, openSeed }: { pulse: PulseState; o
     setRaw(a.raw)
     setPayloads(a.payloads)
     setGrep(a.grep ?? '')
+    setPerPosition(!!a.payloadSets && a.payloadSets.length > 0)
+    setSets(a.payloadSets ?? [])
     setResults([])
     setSelectedIdx(null)
   }
@@ -94,7 +98,7 @@ export default function IntruderView({ pulse, openSeed }: { pulse: PulseState; o
   const save = async () => {
     if (!currentId) return
     try {
-      await api.updateAttack(currentId, { title: title.trim() || autoTitle(), raw, payloads, grep })
+      await api.updateAttack(currentId, { title: title.trim() || autoTitle(), raw, payloads, payloadSets: perPosition ? sets.slice(0, countPositions(raw)) : undefined, grep })
       await refresh()
       pulse.notify('Attack saved')
     } catch (e) {
@@ -143,7 +147,7 @@ export default function IntruderView({ pulse, openSeed }: { pulse: PulseState; o
         setResults([...out])
         continue
       }
-      setProgress(`${i + 1}/${list.length} · ${payload}`)
+      setProgress(`${i + 1}/${rounds.length} · ${payload}`)
       try {
         const r = await api.fireAttack({ request: parsed })
         const fl: Flow = r.flow
@@ -248,14 +252,43 @@ export default function IntruderView({ pulse, openSeed }: { pulse: PulseState; o
                   </div>
                   <div className="cfg-col" style={{ flex: 0.6 }}>
                     <div className="cfg-label">
-                      Payloads <span className="faint">— one per line ({countPositions(raw)} positions, single-set mode)</span>
+                      Payloads{' '}
+                      <button
+                        className={`btn ghost sm ${perPosition ? 'active' : ''}`}
+                        style={{ padding: '1px 8px', fontSize: 10.5 }}
+                        title={perPosition ? 'Switch to a single shared payload set' : `Pitchfork: one set per §position§ (${countPositions(raw)} positions), zipped`}
+                        onClick={() => {
+                          const n = countPositions(raw)
+                          setPerPosition((v) => !v)
+                          setSets((prev) => (prev.length >= n ? prev : [...prev, ...Array(n - prev.length).fill('')]))
+                        }}
+                      >
+                        {perPosition ? `per-position ×${countPositions(raw)}` : 'single set'}
+                      </button>
                     </div>
-                    <textarea
-                      className="cfg-src"
-                      value={payloads}
-                      spellCheck={false}
-                      onChange={(e) => setPayloads(e.target.value)}
-                    />
+                    {perPosition ? (
+                      <div className="pos-sets">
+                        {Array.from({ length: countPositions(raw) }).map((_, j) => (
+                          <div key={j} className="pos-set">
+                            <span className="pos-tag mono" title={`§position ${j + 1}§`}>§{j + 1}§</span>
+                            <textarea
+                              className="cfg-src"
+                              value={sets[j] ?? ''}
+                              spellCheck={false}
+                              placeholder={'payload\npayload'}
+                              onChange={(e) => setSets((prev) => prev.map((v, k) => (k === j ? e.target.value : v)))}
+                            />
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <textarea
+                        className="cfg-src"
+                        value={payloads}
+                        spellCheck={false}
+                        onChange={(e) => setPayloads(e.target.value)}
+                      />
+                    )}
                   </div>
                   <div className="cfg-col" style={{ flex: 0.35 }}>
                     <div className="cfg-label">
