@@ -184,7 +184,11 @@ func (s *Server) gate(next http.Handler) http.Handler {
 	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		keyed := false
-		if !remoteIsLoopback(r.RemoteAddr) && strings.HasPrefix(r.URL.Path, "/api/") {
+		// /api/cert is exempt: the CA is public distribution material you
+		// install into clients' trust stores, and <a download> navigations
+		// cannot attach an auth header
+		apiPath := strings.HasPrefix(r.URL.Path, "/api/") && r.URL.Path != "/api/cert"
+		if !remoteIsLoopback(r.RemoteAddr) && apiPath {
 			preflight := r.Method == http.MethodOptions && r.Header.Get("Access-Control-Request-Method") != ""
 			if !preflight {
 				k := r.Header.Get("X-Pulse-Key")

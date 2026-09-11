@@ -472,6 +472,10 @@ func TestAccessKey(t *testing.T) {
 	if w := serve("GET", "/api/status?key=test-key", nil); w.Code != 200 {
 		t.Fatalf("non-loopback with key query = %d, want 200", w.Code)
 	}
+	// the CA certificate is public material — downloadable without a key
+	if w := serve("GET", "/api/cert", nil); w.Code != 200 || !strings.HasPrefix(w.Body.String(), "-----BEGIN CERTIFICATE-----") {
+		t.Fatalf("cert download without key = %d", w.Code)
+	}
 	// preflight carries no credentials by design — must pass for CORS to work
 	if w := serve("OPTIONS", "/api/intercept", map[string]string{
 		"Origin": "https://pulsesec.vercel.app", "Access-Control-Request-Method": "PUT",
