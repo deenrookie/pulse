@@ -1,5 +1,5 @@
 import Icon from '../ui/Icon'
-import { getSettings, putSettings } from '../api'
+import { getSettings, putSettings, API_BASE } from '../api'
 import type { PulseState } from '../state'
 import { useEffect, useState } from 'react'
 import { applyFontSize, loadFontSize, FONT_DEFAULT, FONT_MIN, FONT_MAX } from '../ui/fontSize'
@@ -77,7 +77,7 @@ export default function SettingsView({ pulse }: { pulse: PulseState }) {
             Install this certificate to let Pulse decrypt HTTPS traffic. Pulse never modifies your system
             trust store itself — remove the certificate when you stop testing.
           </div>
-          <a className="btn primary" href="/api/cert" download="pulse-ca.pem">
+          <a className="btn primary" href={API_BASE + '/api/cert'} download="pulse-ca.pem">
             <Icon name="download" size={13} />
             Download pulse-ca.pem
           </a>

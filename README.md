@@ -55,12 +55,12 @@ Prerequisites: Go 1.25+, Node 18+ (only to build the frontend).
 cd web && npm install && npm run build && cd ..
 go build -o pulse.exe ./cmd/pulse        # Linux/macOS: -o pulse
 
-# run — proxy on 127.0.0.1:8080, console on 127.0.0.1:8000
+# run — proxy on 127.0.0.1:8080, console on 127.0.0.1:8787
 ./pulse.exe
 # customize: --proxy :9090 --ui :9000 --data-dir D:/pulse-data
 ```
 
-Open the console at <http://127.0.0.1:8000>.
+Open the console at <http://127.0.0.1:8787>. The same build is hosted at <https://pulsesec.vercel.app/> — it talks to your local instance over CORS (API on `127.0.0.1:8787` only).
 
 ### Capturing HTTPS (once)
 
@@ -82,7 +82,7 @@ Open the console at <http://127.0.0.1:8000>.
 │ client     │                                │ (MITM core) │   │ servers  │
 └────────────┘                                └─────────────┘   └──────────┘
 ┌────────────┐  REST + SSE (control)          │             │
-│ console    ├───────────────────────────────▶│ Pulse :8000 │
+│ console    ├───────────────────────────────▶│ Pulse :8787 │
 │ browser    │                                └─────────────┘
 └────────────┘
 ```

@@ -101,7 +101,31 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/api/plugins/source/", s.handlePluginsSource)
 	mux.HandleFunc("/api/plugins/", s.handlePluginFile)
 	mux.HandleFunc("/", s.handleStatic)
-	return s.checkHost(mux)
+	return withCORS(s.checkHost(mux))
+}
+
+// hostedPanelOrigin is the deployed web panel allowed to call this local API
+// cross-origin. The loopback-served UI needs no CORS; the hosted panel's
+// browser context does. Everything else is left without CORS headers.
+const hostedPanelOrigin = "https://pulsesec.vercel.app"
+
+// withCORS answers preflights and tags responses for the one allowed origin.
+func withCORS(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Origin") == hostedPanelOrigin {
+			h := w.Header()
+			h.Set("Access-Control-Allow-Origin", hostedPanelOrigin)
+			h.Add("Vary", "Origin")
+			if r.Method == http.MethodOptions && r.Header.Get("Access-Control-Request-Method") != "" {
+				h.Set("Access-Control-Allow-Methods", "GET, PUT, POST, DELETE, OPTIONS")
+				h.Set("Access-Control-Allow-Headers", "Content-Type")
+				h.Set("Access-Control-Max-Age", "86400")
+				w.WriteHeader(http.StatusNoContent)
+				return
+			}
+		}
+		next.ServeHTTP(w, r)
+	})
 }
 
 // checkHost mitigates DNS-rebinding/CSRF: requests must target our own

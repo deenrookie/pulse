@@ -372,6 +372,64 @@ func TestHeldResponseDetail(t *testing.T) {
 	e.do(t, "POST", "/api/intercept/"+heldID+"/drop", nil)
 }
 
+// The hosted panel (pulsesec.vercel.app) may call the local API cross-origin;
+// every other origin gets no CORS headers.
+func TestCORS(t *testing.T) {
+	e := newEnv(t)
+	const allowed = "https://pulsesec.vercel.app"
+
+	do := func(origin string, method, acrm string) *http.Response {
+		t.Helper()
+		req, err := http.NewRequest(method, e.ts.URL+"/api/status", nil)
+		if err != nil {
+			t.Fatalf("new request: %v", err)
+		}
+		if origin != "" {
+			req.Header.Set("Origin", origin)
+		}
+		if acrm != "" {
+			req.Header.Set("Access-Control-Request-Method", acrm)
+		}
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatalf("%s %s: %v", method, origin, err)
+		}
+		resp.Body.Close()
+		return resp
+	}
+
+	// allowed origin: echoed back on normal responses
+	resp := do(allowed, "GET", "")
+	if got := resp.Header.Get("Access-Control-Allow-Origin"); got != allowed {
+		t.Fatalf("allow-origin = %q", got)
+	}
+	// preflight from the allowed origin: 204 + method/header grants
+	resp = do(allowed, "OPTIONS", "PUT")
+	if resp.StatusCode != http.StatusNoContent {
+		t.Fatalf("preflight = %d", resp.StatusCode)
+	}
+	if m := resp.Header.Get("Access-Control-Allow-Methods"); !strings.Contains(m, "PUT") || !strings.Contains(m, "DELETE") {
+		t.Fatalf("allow-methods = %q", m)
+	}
+	if h := resp.Header.Get("Access-Control-Allow-Headers"); !strings.Contains(h, "Content-Type") {
+		t.Fatalf("allow-headers = %q", h)
+	}
+	// any other origin: no CORS headers at all
+	resp = do("https://evil.example", "GET", "")
+	if got := resp.Header.Get("Access-Control-Allow-Origin"); got != "" {
+		t.Fatalf("evil origin got allow-origin %q", got)
+	}
+	resp = do("https://evil.example", "OPTIONS", "PUT")
+	if got := resp.Header.Get("Access-Control-Allow-Methods"); got != "" {
+		t.Fatalf("evil preflight got allow-methods %q", got)
+	}
+	// same-origin requests (no Origin header): untouched
+	resp = do("", "GET", "")
+	if got := resp.Header.Get("Access-Control-Allow-Origin"); got != "" {
+		t.Fatalf("no-origin request got allow-origin %q", got)
+	}
+}
+
 func TestRepeaterLifecycle(t *testing.T) {
 	e := newEnv(t)
 	up := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

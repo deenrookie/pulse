@@ -1,4 +1,10 @@
 // Typed REST + SSE client for the Pulse backend.
+
+/** Served from a non-loopback origin (the hosted panel on
+ *  pulsesec.vercel.app), the app talks to the user's local Pulse instance;
+ *  locally the API is same-origin (embedded UI or the Vite dev proxy). */
+const isLocalOrigin = ['127.0.0.1', 'localhost', '[::1]'].includes(location.hostname)
+export const API_BASE = isLocalOrigin ? '' : 'http://127.0.0.1:8787'
 import type {
   Attack,
   EditableRequest,
@@ -43,7 +49,7 @@ export const fireAttack = (payload: { request: EditableRequest }) =>
   api<{ flow: Flow }>('/api/intruder/fire', { method: 'POST', body: JSON.stringify(payload) })
 
 async function api<T>(path: string, init?: RequestInit): Promise<T> {
-  const resp = await fetch(path, {
+  const resp = await fetch(API_BASE + path, {
     ...init,
     headers: { 'Content-Type': 'application/json', ...(init?.headers ?? {}) },
   })
@@ -256,7 +262,7 @@ export async function copyToClipboard(text: string, opts?: { label?: string; sil
 }
 
 export function subscribeEvents(handlers: SseHandlers): () => void {
-  const es = new EventSource('/api/events')
+  const es = new EventSource(API_BASE + '/api/events')
   const on = (name: string, fn: (ev: MessageEvent) => void) => es.addEventListener(name, fn as EventListener)
   on('flow', (ev) => handlers.onFlow?.(JSON.parse((ev as MessageEvent).data)))
   on('flow_update', (ev) => handlers.onFlowUpdate?.(JSON.parse((ev as MessageEvent).data)))
@@ -290,7 +296,7 @@ export function bodyToText(b64: string | null | undefined): string {
  *  runtime lacks, notably br) — POSTs the base64 body to /api/decode */
 export async function serverDecodeBody(b64: string, encoding: string): Promise<Uint8Array | null> {
   try {
-    const r = await fetch('/api/decode', {
+    const r = await fetch(API_BASE + '/api/decode', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ body: b64, encoding }),

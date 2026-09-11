@@ -28,7 +28,7 @@ var version = "0.3.0"
 func main() {
 	var (
 		proxyAddr = flag.String("proxy", "127.0.0.1:8080", "proxy listen address")
-		uiAddr    = flag.String("ui", "127.0.0.1:8000", "web UI/API listen address")
+		uiAddr    = flag.String("ui", "127.0.0.1:8787", "web UI/API listen address (loopback only)")
 		dataDir   = flag.String("data-dir", defaultDataDir(), "data directory (CA, flows, repeater tabs)")
 		showVer   = flag.Bool("version", false, "print version and exit")
 	)

@@ -6,7 +6,7 @@ import Empty from '../ui/Empty'
 import Icon from '../ui/Icon'
 import { confirm } from '../ui/Confirm'
 import { rawToRequest, requestToRaw } from '../components/RawEditor'
-import { createRepeaterTab } from '../api'
+import { createRepeaterTab, API_BASE } from '../api'
 import HighlightRules, { ruleMatches, type HighlightRule } from '../ui/HighlightRules'
 import FilterDialog, { EMPTY_FILTER, filterActive, passesFilter, type FilterModel } from '../ui/FilterDialog'
 import type { PulseState } from '../state'
@@ -353,7 +353,7 @@ export default function ProxyView({ pulse }: { pulse: PulseState }) {
               </span>
               <a
                 className="btn ghost sm"
-                href="/api/flows/har"
+                href={API_BASE + '/api/flows/har'}
                 download
                 title="Export every completed flow as an HTTP Archive (.har) — importable in Burp, browsers, most tools"
               >
