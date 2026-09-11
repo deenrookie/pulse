@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"runtime/debug"
 	"strings"
 	"sync"
 	"time"
@@ -428,6 +429,9 @@ func (s *Store) Delete(id string) bool {
 
 // Clear drops all flows from memory and resets the log file. On Windows the
 // append-mode handle cannot truncate, so the file is reopened with O_TRUNC.
+// The dropped flows are garbage now — FreeOSMemory collects them and hands
+// the pages back to the OS, so clearing history actually releases memory
+// (the runtime would otherwise keep the heap arenas resident for minutes).
 func (s *Store) Clear() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -444,6 +448,7 @@ func (s *Store) Clear() error {
 		}
 		s.file = f
 	}
+	debug.FreeOSMemory()
 	return nil
 }
 

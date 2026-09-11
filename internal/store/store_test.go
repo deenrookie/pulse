@@ -1,7 +1,10 @@
 package store
 
 import (
+	"fmt"
 	"path/filepath"
+	"runtime"
+	"runtime/debug"
 	"testing"
 	"time"
 )
@@ -114,5 +117,45 @@ func TestStorePersistsAcrossReopen(t *testing.T) {
 	}
 	if st2.Count() != 0 {
 		t.Fatal("clear left flows behind")
+	}
+}
+
+// Clear must not just drop the references: the freed flows have to leave the
+// process heap (FreeOSMemory), so clearing history visibly releases memory.
+func TestClearReleasesMemory(t *testing.T) {
+	dir := t.TempDir()
+	st, err := Open(filepath.Join(dir, "flows.jsonl"))
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	defer st.Close()
+
+	for i := 0; i < 48; i++ { // ~96 MiB of distinct bodies (req+resp)
+		big := make([]byte, 1<<20)
+		fl := mkFlow(fmt.Sprintf("req-%d", i))
+		fl.Req.Body = big
+		fl.Resp = &Response{StatusCode: 200, Body: big}
+		if err := st.Add(fl); err != nil {
+			t.Fatalf("add: %v", err)
+		}
+	}
+	if st.BodyBytes() < 90<<20 {
+		t.Fatalf("expected ~96MiB of bodies, tracking %d", st.BodyBytes())
+	}
+
+	var before, after runtime.MemStats
+	debug.FreeOSMemory() // settle the baseline
+	runtime.ReadMemStats(&before)
+
+	if err := st.Clear(); err != nil {
+		t.Fatalf("clear: %v", err)
+	}
+	runtime.ReadMemStats(&after)
+
+	if st.Count() != 0 || st.BodyBytes() != 0 {
+		t.Fatalf("clear left %d flows / %d bytes", st.Count(), st.BodyBytes())
+	}
+	if freed := before.HeapAlloc - after.HeapAlloc; freed < 40<<20 {
+		t.Fatalf("heap only freed %d MiB after clear", freed>>20)
 	}
 }

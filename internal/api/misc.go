@@ -18,7 +18,10 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 	}
 	resp := map[string]any{
 		"memory": map[string]any{
-			"sysMB":     ms.Sys / 1048576,     // total obtained from the OS
+			// Sys is "ever obtained from the OS" and never shrinks; subtract
+			// HeapReleased so the number reflects memory actually held —
+			// clearing history (FreeOSMemory) visibly drops it
+			"sysMB":     (ms.Sys - ms.HeapReleased) / 1048576,
 			"heapMB":    ms.HeapAlloc / 1048576,
 			"goroutine": runtime.NumGoroutine(),
 		},
