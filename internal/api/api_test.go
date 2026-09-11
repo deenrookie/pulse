@@ -430,6 +430,88 @@ func TestCORS(t *testing.T) {
 	}
 }
 
+// Non-loopback API access requires the access key (header or query);
+// loopback stays keyless; preflights pass; static assets stay open.
+func TestAccessKey(t *testing.T) {
+	t.Setenv("PULSE_KEY", "test-key")
+	e := newEnv(t)
+
+	// serve through the real handler chain with a forged non-loopback peer
+	serve := func(method, target string, headers map[string]string) *httptest.ResponseRecorder {
+		t.Helper()
+		req := httptest.NewRequest(method, target, nil)
+		req.RemoteAddr = "192.168.1.9:54321"
+		req.Host = strings.TrimPrefix(e.ts.URL, "http://")
+		for k, v := range headers {
+			if k == "Host" {
+				req.Host = v
+				continue
+			}
+			req.Header.Set(k, v)
+		}
+		w := httptest.NewRecorder()
+		e.ts.Config.Handler.ServeHTTP(w, req)
+		return w
+	}
+
+	// loopback via the real server: still keyless
+	resp, _ := e.do(t, "GET", "/api/status", nil)
+	if resp.StatusCode != 200 {
+		t.Fatalf("loopback status = %d", resp.StatusCode)
+	}
+
+	if w := serve("GET", "/api/status", nil); w.Code != 401 {
+		t.Fatalf("non-loopback without key = %d, want 401", w.Code)
+	}
+	if w := serve("GET", "/api/status", map[string]string{"X-Pulse-Key": "wrong"}); w.Code != 401 {
+		t.Fatalf("non-loopback wrong key = %d, want 401", w.Code)
+	}
+	if w := serve("GET", "/api/status", map[string]string{"X-Pulse-Key": "test-key"}); w.Code != 200 {
+		t.Fatalf("non-loopback with key header = %d, want 200", w.Code)
+	}
+	if w := serve("GET", "/api/status?key=test-key", nil); w.Code != 200 {
+		t.Fatalf("non-loopback with key query = %d, want 200", w.Code)
+	}
+	// preflight carries no credentials by design — must pass for CORS to work
+	if w := serve("OPTIONS", "/api/intercept", map[string]string{
+		"Origin": "https://pulsesec.vercel.app", "Access-Control-Request-Method": "PUT",
+	}); w.Code != 204 {
+		t.Fatalf("preflight = %d, want 204", w.Code)
+	}
+	// keyed access may use any Host (LAN hostnames), the key is the auth
+	req := httptest.NewRequest("GET", "/api/status", nil)
+	req.RemoteAddr = "192.168.1.9:54321"
+	req.Host = "pulse.lan:8787"
+	req.Header.Set("X-Pulse-Key", "test-key")
+	w := httptest.NewRecorder()
+	e.ts.Config.Handler.ServeHTTP(w, req)
+	if w.Code != 200 {
+		t.Fatalf("keyed access with lan host = %d, want 200", w.Code)
+	}
+	// static assets carry no secrets (same code ships to the hosted panel);
+	// browsing a LAN-bound instance by its IP loads the shell (API stays
+	// keyed), while a hostname that isn't this listener still fails
+	_, uiPort, _ := net.SplitHostPort(strings.TrimPrefix(e.ts.URL, "http://"))
+	if w := serve("GET", "/", map[string]string{"Host": "192.168.1.5:" + uiPort}); w.Code != 200 {
+		t.Fatalf("static from lan IP = %d, want 200", w.Code)
+	}
+	if w := serve("GET", "/", map[string]string{"Host": "rebind.evil:" + uiPort}); w.Code != 403 {
+		t.Fatalf("static from rebind hostname = %d, want 403", w.Code)
+	}
+	// the key itself is only exposed to loopback requests
+	var stLoop map[string]any
+	_, data := e.do(t, "GET", "/api/status", nil)
+	json.Unmarshal(data, &stLoop)
+	if _, ok := stLoop["accessKey"]; !ok {
+		t.Fatal("loopback status should include accessKey")
+	}
+	var stRemote map[string]any
+	json.Unmarshal(serve("GET", "/api/status", map[string]string{"X-Pulse-Key": "test-key"}).Body.Bytes(), &stRemote)
+	if _, ok := stRemote["accessKey"]; ok {
+		t.Fatal("keyed non-loopback status must not include accessKey")
+	}
+}
+
 func TestRepeaterLifecycle(t *testing.T) {
 	e := newEnv(t)
 	up := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

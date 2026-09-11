@@ -1,10 +1,52 @@
 // Typed REST + SSE client for the Pulse backend.
 
-/** Served from a non-loopback origin (the hosted panel on
- *  pulsesec.vercel.app), the app talks to the user's local Pulse instance;
- *  locally the API is same-origin (embedded UI or the Vite dev proxy). */
-const isLocalOrigin = ['127.0.0.1', 'localhost', '[::1]'].includes(location.hostname)
-export const API_BASE = isLocalOrigin ? '' : 'http://127.0.0.1:8787'
+/** Remote-instance config: address + access key of a Pulse instance that may
+ *  live on another machine (intranet). Persisted in localStorage so the
+ *  hosted panel (pulsesec.vercel.app) can drive it after one-time setup. */
+export interface RemoteConfig {
+  server: string
+  key: string
+}
+const REMOTE_KEY = 'pulse.remote'
+
+export function getRemoteConfig(): RemoteConfig | null {
+  try {
+    const v = JSON.parse(localStorage.getItem(REMOTE_KEY) ?? 'null') as unknown
+    if (v && typeof (v as RemoteConfig).server === 'string' && (v as RemoteConfig).server) {
+      const server = ((v as RemoteConfig).server as string).trim().replace(/\/+$/, '')
+      const key = typeof (v as RemoteConfig).key === 'string' ? (v as RemoteConfig).key : ''
+      return { server, key }
+    }
+  } catch {
+    /* corrupted entry — ignore */
+  }
+  return null
+}
+
+export function saveRemoteConfig(rc: RemoteConfig | null) {
+  try {
+    if (rc && rc.server.trim()) localStorage.setItem(REMOTE_KEY, JSON.stringify({ server: rc.server.trim(), key: rc.key.trim() }))
+    else localStorage.removeItem(REMOTE_KEY)
+  } catch {
+    /* storage unavailable */
+  }
+}
+
+/** API root: a configured remote instance wins; otherwise a loopback origin
+ *  serves same-origin (embedded UI / Vite dev proxy), and any other origin
+ *  (the hosted panel) targets the local instance. */
+export function apiBase(): string {
+  const rc = getRemoteConfig()
+  if (rc) return rc.server
+  const isLocalOrigin = ['127.0.0.1', 'localhost', '[::1]'].includes(location.hostname)
+  return isLocalOrigin ? '' : 'http://127.0.0.1:8787'
+}
+
+/** X-Pulse-Key auth header when a remote instance with a key is configured. */
+export function authHeaders(): Record<string, string> {
+  const k = getRemoteConfig()?.key
+  return k ? { 'X-Pulse-Key': k } : {}
+}
 import type {
   Attack,
   EditableRequest,
@@ -49,9 +91,9 @@ export const fireAttack = (payload: { request: EditableRequest }) =>
   api<{ flow: Flow }>('/api/intruder/fire', { method: 'POST', body: JSON.stringify(payload) })
 
 async function api<T>(path: string, init?: RequestInit): Promise<T> {
-  const resp = await fetch(API_BASE + path, {
+  const resp = await fetch(apiBase() + path, {
     ...init,
-    headers: { 'Content-Type': 'application/json', ...(init?.headers ?? {}) },
+    headers: { 'Content-Type': 'application/json', ...authHeaders(), ...(init?.headers ?? {}) },
   })
   const text = await resp.text()
   const data = text ? JSON.parse(text) : {}
@@ -262,7 +304,10 @@ export async function copyToClipboard(text: string, opts?: { label?: string; sil
 }
 
 export function subscribeEvents(handlers: SseHandlers): () => void {
-  const es = new EventSource(API_BASE + '/api/events')
+  let url = apiBase() + '/api/events'
+  const k = getRemoteConfig()?.key
+  if (k) url += (url.includes('?') ? '&' : '?') + 'key=' + encodeURIComponent(k)
+  const es = new EventSource(url)
   const on = (name: string, fn: (ev: MessageEvent) => void) => es.addEventListener(name, fn as EventListener)
   on('flow', (ev) => handlers.onFlow?.(JSON.parse((ev as MessageEvent).data)))
   on('flow_update', (ev) => handlers.onFlowUpdate?.(JSON.parse((ev as MessageEvent).data)))
@@ -296,9 +341,9 @@ export function bodyToText(b64: string | null | undefined): string {
  *  runtime lacks, notably br) — POSTs the base64 body to /api/decode */
 export async function serverDecodeBody(b64: string, encoding: string): Promise<Uint8Array | null> {
   try {
-    const r = await fetch(API_BASE + '/api/decode', {
+    const r = await fetch(apiBase() + '/api/decode', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
       body: JSON.stringify({ body: b64, encoding }),
     })
     if (!r.ok) return null

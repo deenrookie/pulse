@@ -3,12 +3,16 @@
 package api
 
 import (
+	"crypto/rand"
+	"crypto/subtle"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
 	"log"
 	"net"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 
@@ -27,6 +31,9 @@ type Server struct {
 	ProxyAddr string
 	UIAddr    string
 	DataDir   string
+	// AccessKey guards non-loopback API access (loopback stays keyless).
+	// Set from PULSE_KEY or generated randomly at startup.
+	AccessKey string
 
 	st   *store.Store
 	eng  *proxy.Engine
@@ -38,6 +45,18 @@ type Server struct {
 	set  *Settings
 	intr *intruderStore
 	anno *annoStore
+}
+
+// accessKeyFromEnv returns PULSE_KEY when set, otherwise a fresh random key.
+func accessKeyFromEnv() (string, error) {
+	if k := os.Getenv("PULSE_KEY"); k != "" {
+		return k, nil
+	}
+	b := make([]byte, 16)
+	if _, err := rand.Read(b); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(b), nil
 }
 
 func New(st *store.Store, eng *proxy.Engine, rep *repeater.Manager, auth *certs.Authority, bus *events.Bus,
@@ -64,8 +83,12 @@ func New(st *store.Store, eng *proxy.Engine, rep *repeater.Manager, auth *certs.
 	}
 	eng.SetRepeaterTimeout(set.ResponseTimeoutSec)
 	st.SetMemoryGuard(set.MemoryGuardMB, set.LargeBodyMB)
+	key, err := accessKeyFromEnv()
+	if err != nil {
+		return nil, fmt.Errorf("generate access key: %w", err)
+	}
 	return &Server{
-		Version: version, ProxyAddr: proxyAddr, UIAddr: uiAddr, DataDir: dataDir,
+		Version: version, ProxyAddr: proxyAddr, UIAddr: uiAddr, DataDir: dataDir, AccessKey: key,
 		st: st, eng: eng, rep: rep, auth: auth, bus: bus, rw: rw, plug: plug, set: set,
 		intr: newIntruderStore(dataDir),
 		anno: newAnnoStore(dataDir),
@@ -101,7 +124,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/api/plugins/source/", s.handlePluginsSource)
 	mux.HandleFunc("/api/plugins/", s.handlePluginFile)
 	mux.HandleFunc("/", s.handleStatic)
-	return withCORS(s.checkHost(mux))
+	return withCORS(s.gate(mux))
 }
 
 // hostedPanelOrigin is the deployed web panel allowed to call this local API
@@ -118,8 +141,18 @@ func withCORS(next http.Handler) http.Handler {
 			h.Add("Vary", "Origin")
 			if r.Method == http.MethodOptions && r.Header.Get("Access-Control-Request-Method") != "" {
 				h.Set("Access-Control-Allow-Methods", "GET, PUT, POST, DELETE, OPTIONS")
-				h.Set("Access-Control-Allow-Headers", "Content-Type")
+				h.Set("Access-Control-Allow-Headers", "Content-Type, X-Pulse-Key")
 				h.Set("Access-Control-Max-Age", "86400")
+				// https page → http LAN target: answer the Private Network
+				// Access / Local Network Access preflights Chrome sends for
+				// private-network requests (the user still has to grant the
+				// browser's local-network permission)
+				if r.Header.Get("Access-Control-Request-Private-Network") == "true" {
+					h.Set("Access-Control-Allow-Private-Network", "true")
+				}
+				if r.Header.Get("Access-Control-Request-Local-Network") == "true" {
+					h.Set("Access-Control-Allow-Local-Network", "true")
+				}
 				w.WriteHeader(http.StatusNoContent)
 				return
 			}
@@ -128,30 +161,71 @@ func withCORS(next http.Handler) http.Handler {
 	})
 }
 
-// checkHost mitigates DNS-rebinding/CSRF: requests must target our own
-// listener address (the Vite dev proxy rewrites the Host accordingly).
-func (s *Server) checkHost(next http.Handler) http.Handler {
+// gate is the access gate for the whole surface. Loopback connections pass
+// freely but must still name this listener in the Host header (DNS-rebinding
+// guard). Non-loopback connections must present the access key — X-Pulse-Key
+// header, or ?key= query for SSE/EventSource which cannot set headers.
+// Keyed requests skip the Host check (the key is the auth). Preflights are
+// always let through: they carry no credentials and never reach a handler.
+// Static assets stay open (the same code ships to the hosted panel).
+func (s *Server) gate(next http.Handler) http.Handler {
 	expectedHost, expectedPort, err := net.SplitHostPort(s.UIAddr)
 	if err != nil {
-		expectedHost, expectedPort = "127.0.0.1", "8000"
+		expectedHost, expectedPort = "127.0.0.1", "8787"
 	}
 	allowed := map[string]bool{}
 	if expectedHost != "" {
 		allowed[expectedHost] = true
 	}
-	if isLoopback(expectedHost) {
+	if isLoopback(expectedHost) || isWildcard(expectedHost) {
 		allowed["localhost"] = true
 		allowed["127.0.0.1"] = true
 		allowed["::1"] = true
 	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		host, port, err := net.SplitHostPort(r.Host)
-		if err != nil || !allowed[host] || port != expectedPort {
-			http.Error(w, "forbidden host", http.StatusForbidden)
-			return
+		keyed := false
+		if !remoteIsLoopback(r.RemoteAddr) && strings.HasPrefix(r.URL.Path, "/api/") {
+			preflight := r.Method == http.MethodOptions && r.Header.Get("Access-Control-Request-Method") != ""
+			if !preflight {
+				k := r.Header.Get("X-Pulse-Key")
+				if k == "" {
+					k = r.URL.Query().Get("key")
+				}
+				if subtle.ConstantTimeCompare([]byte(k), []byte(s.AccessKey)) != 1 {
+					writeErr(w, http.StatusUnauthorized, "missing or invalid access key")
+					return
+				}
+				keyed = true
+			}
+		}
+		if !keyed {
+			host, port, err := net.SplitHostPort(r.Host)
+			// IP-literal hosts are fine (you cannot DNS-rebind to an IP you
+			// typed); hostnames must still name this listener — that lets the
+			// static shell load when browsing a LAN-bound instance directly
+			if err != nil || port != expectedPort || (!allowed[host] && !isIPLiteral(host)) {
+				http.Error(w, "forbidden host", http.StatusForbidden)
+				return
+			}
 		}
 		next.ServeHTTP(w, r)
 	})
+}
+
+func isIPLiteral(host string) bool {
+	return net.ParseIP(strings.Trim(host, "[]")) != nil
+}
+
+func remoteIsLoopback(remote string) bool {
+	host, _, err := net.SplitHostPort(remote)
+	if err != nil {
+		return false
+	}
+	return isLoopback(host)
+}
+
+func isWildcard(host string) bool {
+	return host == "" || host == "0.0.0.0" || host == "::"
 }
 
 func isLoopback(host string) bool {

@@ -16,7 +16,7 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 	if proxy == "" {
 		proxy = s.ProxyAddr
 	}
-	writeJSON(w, http.StatusOK, map[string]any{
+	resp := map[string]any{
 		"memory": map[string]any{
 			"sysMB":     ms.Sys / 1048576,     // total obtained from the OS
 			"heapMB":    ms.HeapAlloc / 1048576,
@@ -30,7 +30,12 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 		"flows":         map[string]int{"total": s.st.Count(), "pending": s.st.CountPending()},
 		"intercept":     map[string]any{"enabled": s.eng.Inter.Enabled(), "pending": len(s.eng.Inter.Pending())},
 		"pluginsDir":    s.plug.Dir(),
-	})
+	}
+	// the key is only shown to the local console user, never over the network
+	if remoteIsLoopback(r.RemoteAddr) {
+		resp["accessKey"] = s.AccessKey
+	}
+	writeJSON(w, http.StatusOK, resp)
 }
 
 func (s *Server) handleCert(w http.ResponseWriter, r *http.Request) {

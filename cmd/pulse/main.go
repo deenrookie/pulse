@@ -110,6 +110,7 @@ func run(proxyAddr, uiAddr, dataDir string) error {
 	log.Printf("Pulse %s starting", version)
 	log.Printf("  proxy : %s", proxyAddr)
 	log.Printf("  ui    : http://%s", uiAddr)
+	log.Printf("  key   : %s   (access key for non-loopback API requests; set PULSE_KEY to pin)", apiSrv.AccessKey)
 	log.Printf("  data  : %s", dataDir)
 	log.Printf("  ca    : %s", auth.Fingerprint())
 	warnNonLoopback(proxyAddr, "proxy")
@@ -138,7 +139,10 @@ func warnNonLoopback(addr, what string) {
 		host = addr
 	}
 	ip := net.ParseIP(host)
-	if host != "" && host != "localhost" && (ip == nil || !ip.IsLoopback()) {
-		log.Printf("  WARN: %s listener bound to non-loopback %s — anyone on the network can use this proxy and reach the API", what, addr)
+	if what == "ui" && host != "" && host != "localhost" && (ip == nil || !ip.IsLoopback()) {
+		log.Printf("  WARN: ui listener bound to non-loopback %s — API requests from the network must carry the access key (see key above)", addr)
+	}
+	if what == "proxy" && host != "" && host != "localhost" && (ip == nil || !ip.IsLoopback()) {
+		log.Printf("  WARN: proxy listener bound to non-loopback %s — anyone on the network can use this proxy", addr)
 	}
 }

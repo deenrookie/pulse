@@ -1,5 +1,5 @@
 import Icon from '../ui/Icon'
-import { getSettings, putSettings, API_BASE } from '../api'
+import { getSettings, putSettings, apiBase, getRemoteConfig, saveRemoteConfig } from '../api'
 import type { PulseState } from '../state'
 import { useEffect, useState } from 'react'
 import { applyFontSize, loadFontSize, FONT_DEFAULT, FONT_MIN, FONT_MAX } from '../ui/fontSize'
@@ -13,6 +13,33 @@ export default function SettingsView({ pulse }: { pulse: PulseState }) {
   const [savedAt, setSavedAt] = useState(0)
   const [saveErr, setSaveErr] = useState<string | null>(null)
   const [fontSize, setFontSize] = useState(loadFontSize)
+
+  // hosted-panel remote access: server address + access key, localStorage only
+  const [remoteServer, setRemoteServer] = useState(() => getRemoteConfig()?.server ?? '')
+  const [remoteKey, setRemoteKey] = useState(() => getRemoteConfig()?.key ?? '')
+  const [remoteTest, setRemoteTest] = useState<string | null>(null)
+
+  const saveRemote = () => {
+    const server = remoteServer.trim().replace(/\/+$/, '')
+    setRemoteServer(server)
+    saveRemoteConfig(server ? { server, key: remoteKey } : null)
+    setRemoteTest(null)
+    pulse.notify(server ? `Panel will use ${server}` : 'Remote instance cleared — using the local API')
+  }
+
+  const testRemote = async () => {
+    const server = remoteServer.trim().replace(/\/+$/, '')
+    if (!server) return
+    setRemoteTest('testing…')
+    try {
+      const r = await fetch(server + '/api/status', { headers: remoteKey ? { 'X-Pulse-Key': remoteKey } : {} })
+      if (!r.ok) throw new Error(`HTTP ${r.status}`)
+      await r.json()
+      setRemoteTest(`✓ reachable — panel will drive ${server}`)
+    } catch (e) {
+      setRemoteTest(`✗ ${(e as Error).message} — is Pulse running there, the key right, and is it bound to a reachable address?`)
+    }
+  }
 
   useEffect(() => {
     getSettings()
@@ -77,7 +104,7 @@ export default function SettingsView({ pulse }: { pulse: PulseState }) {
             Install this certificate to let Pulse decrypt HTTPS traffic. Pulse never modifies your system
             trust store itself — remove the certificate when you stop testing.
           </div>
-          <a className="btn primary" href={API_BASE + '/api/cert'} download="pulse-ca.pem">
+          <a className="btn primary" href={apiBase() + '/api/cert'} download="pulse-ca.pem">
             <Icon name="download" size={13} />
             Download pulse-ca.pem
           </a>
@@ -85,6 +112,75 @@ export default function SettingsView({ pulse }: { pulse: PulseState }) {
             <div className="fingerprint">
               <Icon name="shield" size={14} style={{ flex: 'none', color: 'var(--text-faint)' }} />
               <code title="SHA-256 fingerprint of this instance's CA">{st.caFingerprint}</code>
+            </div>
+          )}
+        </div>
+
+        <div className="card">
+          <h3>
+            <Icon name="globe" size={15} />
+            Remote instance
+          </h3>
+          <div className="sub">
+            Point this panel at a Pulse instance on another machine — run it there with{' '}
+            <code>--ui 0.0.0.0:8787</code>, then fill in its address and access key. Saved in this browser
+            (localStorage); the hosted panel then drives that instance instead of the local one.
+          </div>
+          <div className="kv-grid">
+            <div className="k">Server address</div>
+            <div className="v" style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+              <input
+                className="input mono"
+                style={{ width: 250 }}
+                placeholder="http://192.168.1.5:8787"
+                value={remoteServer}
+                spellCheck={false}
+                onChange={(e) => setRemoteServer(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && saveRemote()}
+              />
+            </div>
+            <div className="k">Access key</div>
+            <div className="v" style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+              <input
+                className="input mono"
+                style={{ width: 250 }}
+                placeholder="PULSE_KEY or the startup key"
+                value={remoteKey}
+                spellCheck={false}
+                onChange={(e) => setRemoteKey(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && saveRemote()}
+              />
+            </div>
+          </div>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', margin: '10px 0 6px' }}>
+            <button className="btn primary sm" onClick={saveRemote}>
+              <Icon name="check" size={13} />
+              Save
+            </button>
+            <button className="btn sm" onClick={() => void testRemote()}>
+              <Icon name="bolt" size={13} />
+              Test connection
+            </button>
+            {(remoteServer || remoteKey) && (
+              <button
+                className="btn ghost sm"
+                onClick={() => {
+                  setRemoteServer('')
+                  setRemoteKey('')
+                  setRemoteTest(null)
+                  saveRemoteConfig(null)
+                  pulse.notify('Remote instance cleared — using the local API')
+                }}
+              >
+                Clear
+              </button>
+            )}
+          </div>
+          {remoteTest && <div className="sub" style={{ marginBottom: 0 }}>{remoteTest}</div>}
+          {st?.accessKey && (
+            <div className="fingerprint" title="This instance's access key — copy it into the hosted panel">
+              <Icon name="lock" size={14} style={{ flex: 'none', color: 'var(--text-faint)' }} />
+              <code>this instance's key: {st.accessKey}</code>
             </div>
           )}
         </div>

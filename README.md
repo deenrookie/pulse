@@ -60,7 +60,24 @@ go build -o pulse.exe ./cmd/pulse        # Linux/macOS: -o pulse
 # customize: --proxy :9090 --ui :9000 --data-dir D:/pulse-data
 ```
 
-Open the console at <http://127.0.0.1:8787>. The same build is hosted at <https://pulsesec.vercel.app/> — it talks to your local instance over CORS (API on `127.0.0.1:8787` only).
+Open the console at <http://127.0.0.1:8787>. The same build is hosted at <https://pulsesec.vercel.app/> — it talks to your local instance over CORS.
+
+### Remote / hosted-panel access
+
+The console listens on loopback only by default. To drive it from the hosted
+panel (or another machine on your LAN):
+
+1. Bind the UI to a reachable address: `pulse --ui 0.0.0.0:8787`
+2. Pin or read the access key: `PULSE_KEY=... pulse ...` (otherwise a random
+   key is generated and printed at startup — loopback access never needs it)
+3. On the hosted panel open **Settings → Remote instance**, enter the
+   instance address (e.g. `http://192.168.1.5:8787`) and the key — stored in
+   that browser's localStorage — and the panel drives that instance
+
+Non-loopback API calls must carry the key (`X-Pulse-Key` header, or `?key=`
+for the SSE stream). Chrome gates HTTPS pages calling private-network HTTP
+services behind its *local network access* permission — allow the prompt on
+the hosted panel and the preflight is answered by the server.
 
 ### Capturing HTTPS (once)
 

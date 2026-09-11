@@ -118,6 +118,8 @@ export interface Status {
   flows: { total: number; pending: number }
   intercept: { enabled: boolean; pending: number }
   memory?: { sysMB: number; heapMB: number; goroutine: number }
+  /** shown only to loopback requests — copy into the hosted panel's config */
+  accessKey?: string
 }
 
 export interface EditableRequest {
