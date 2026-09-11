@@ -14,6 +14,7 @@ import { applyFontSize, loadFontSize } from './ui/fontSize'
 import { usePulse } from './state'
 import { apiBase, getRemoteConfig } from './api'
 
+
 type Tab = 'proxy' | 'intercept' | 'repeater' | 'intruder' | 'sitemap' | 'extensions' | 'settings'
 type Theme = 'warm' | 'midnight' | 'linear'
 
@@ -133,6 +134,28 @@ export default function App() {
   const [comparerOpen, setComparerOpen] = useState(false)
   const [decoderSeed, setDecoderSeed] = useState<{ text: string; n: number } | null>(null)
   const [intruderSeed, setIntruderSeed] = useState<{ raw: string; n: number } | null>(null)
+
+  // SSE down while REST answers — the signature of the browser proxy
+  // forwarding the panel's own API (the capture pipeline buffers the
+  // endless event stream, so it never arrives). Show a hint after it
+  // persists for a few seconds; it clears itself when the stream recovers.
+  const [sseWarn, setSseWarn] = useState(false)
+  const [sseWarnDismissed, setSseWarnDismissed] = useState(false)
+  useEffect(() => {
+    if (pulse.connected || !pulse.status) {
+      setSseWarn(false)
+      return
+    }
+    const t = window.setTimeout(() => setSseWarn(true), 5000)
+    return () => window.clearTimeout(t)
+  }, [pulse.connected, pulse.status])
+  const sseTargetHost = (() => {
+    try {
+      return new URL(apiBase() || location.origin).host
+    } catch {
+      return location.host
+    }
+  })()
 
   // "Send to Intruder": hand the raw request to the Intruder view as a seed
   // prop (dispatched before that view mounts, so an event listener would miss it)
@@ -337,6 +360,27 @@ export default function App() {
             {proxyShort}
           </span>
         </header>
+        {sseWarn && !sseWarnDismissed && (
+          <div className="sse-warn">
+            <Icon name="alert" size={13} />
+            <span>
+              Live updates are paused — the event stream is blocked while the API answers. This is almost always the
+              browser proxy forwarding the panel's own requests (the proxy buffers the stream). Add{' '}
+              <code>{sseTargetHost}</code> to the proxy bypass list
+              {!getRemoteConfig() && (
+                <>
+                  {' '}
+                  or open the console directly at <a href="http://127.0.0.1:8787">http://127.0.0.1:8787</a>
+                </>
+              )}
+              .
+            </span>
+            <div className="spacer" />
+            <button className="btn ghost sm" onClick={() => setSseWarnDismissed(true)}>
+              Dismiss
+            </button>
+          </div>
+        )}
         <div className="view-host">
           {pulse.apiError && !pulse.status && tab !== 'settings' ? (
             <ApiUnreachable />
