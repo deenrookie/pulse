@@ -48,6 +48,26 @@
 
 ## 🚀 快速开始
 
+**免构建** — 从 [Releases](https://github.com/deenrookie/pulse/releases) 一行命令下载运行（单文件、零运行时依赖）：
+
+```bash
+# macOS（Apple Silicon）
+curl -L https://github.com/deenrookie/pulse/releases/download/v0.3.0/pulse_0.3.0_darwin_arm64.tar.gz | tar xz && ./pulse
+
+# Linux（x64）
+curl -L https://github.com/deenrookie/pulse/releases/download/v0.3.0/pulse_0.3.0_linux_amd64.tar.gz | tar xz && ./pulse
+```
+
+```powershell
+# Windows（x64）— PowerShell
+curl.exe -L -o pulse.zip https://github.com/deenrookie/pulse/releases/download/v0.3.0/pulse_0.3.0_windows_amd64.zip
+Expand-Archive pulse.zip -Force; .\pulse.exe
+```
+
+压缩包内含 `pulse`（内嵌 Web UI 的二进制）和 `README.md`；升级版本时替换 URL 中的版本号即可。
+
+或者从源码构建：
+
 前置：Go 1.25+，Node 18+（仅构建前端需要）。
 
 ```bash

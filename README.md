@@ -48,6 +48,26 @@ Pipeline order: `plugins → rewrite rules → intercept → upstream`; stored f
 
 ## 🚀 Quick start
 
+**No build needed** — grab a prebuilt binary from the [releases](https://github.com/deenrookie/pulse/releases) (single file, zero runtime deps):
+
+```bash
+# macOS (Apple Silicon)
+curl -L https://github.com/deenrookie/pulse/releases/download/v0.3.0/pulse_0.3.0_darwin_arm64.tar.gz | tar xz && ./pulse
+
+# Linux (x64)
+curl -L https://github.com/deenrookie/pulse/releases/download/v0.3.0/pulse_0.3.0_linux_amd64.tar.gz | tar xz && ./pulse
+```
+
+```powershell
+# Windows (x64) — PowerShell
+curl.exe -L -o pulse.zip https://github.com/deenrookie/pulse/releases/download/v0.3.0/pulse_0.3.0_windows_amd64.zip
+Expand-Archive pulse.zip -Force; .\pulse.exe
+```
+
+Each archive carries `pulse` (binary with the web UI embedded) and `README.md`. Newer releases: swap the version in the URL.
+
+Or build from source:
+
 Prerequisites: Go 1.25+, Node 18+ (only to build the frontend).
 
 ```bash
