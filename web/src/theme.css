@@ -886,6 +886,8 @@ textarea.editor.raw {
 .empty .glyph .icon { width: 22px; height: 22px; opacity: 0.8; }
 .empty b { color: var(--text-muted); font-weight: 600; }
 .empty .actions { display: flex; gap: 8px; margin-top: 4px; }
+.empty.api-unreachable { max-width: 620px; margin: 0 auto; align-self: center; }
+.empty.api-unreachable .steps { text-align: left; margin: 4px 0; }
 
 /* ============ 14. Extensions ============ */
 .ext-tabs { display: flex; gap: 2px; padding: 8px 10px 0; border-bottom: 1px solid var(--border); background: var(--bg-raised); flex: none; }

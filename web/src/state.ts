@@ -13,6 +13,8 @@ export interface Toast {
 export function usePulse() {
   const [connected, setConnected] = useState(false)
   const [status, setStatus] = useState<Status | null>(null)
+  /** the API has never answered — the panel can't reach a Pulse instance */
+  const [apiError, setApiError] = useState(false)
   const [flows, setFlows] = useState<FlowMeta[]>([])
   const [total, setTotal] = useState(0)
   const [selectedId, setSelectedId] = useState<string | null>(null)
@@ -67,7 +69,15 @@ export function usePulse() {
   // Initial load + one long-lived SSE subscription.
   useEffect(() => {
     let alive = true
-    const refreshStatus = () => api.getPulseStatus().then((s) => alive && setStatus(s)).catch(() => {})
+    const refreshStatus = () =>
+      api
+        .getPulseStatus()
+        .then((s) => {
+          if (!alive) return
+          setStatus(s)
+          setApiError(false)
+        })
+        .catch(() => alive && setApiError(true))
     const refreshIntercept = () => api.getIntercept().then((s) => alive && setIntercept(s)).catch(() => {})
     const refreshRepeater = () => api.listRepeater().then((r) => alive && setRepeaterTabs(r.tabs)).catch(() => {})
     const refreshInterceptSoon = debounce(refreshIntercept, 150)
@@ -291,6 +301,7 @@ export function usePulse() {
 
   return {
     connected,
+    apiError,
     status,
     flows,
     total,

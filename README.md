@@ -75,9 +75,15 @@ panel (or another machine on your LAN):
    that browser's localStorage — and the panel drives that instance
 
 Non-loopback API calls must carry the key (`X-Pulse-Key` header, or `?key=`
-for the SSE stream). Chrome gates HTTPS pages calling private-network HTTP
-services behind its *local network access* permission — allow the prompt on
-the hosted panel and the preflight is answered by the server.
+for the SSE stream).
+
+**Chrome's local-network permission** — HTTPS pages (like the hosted panel)
+may only call `127.0.0.1` / LAN services after you grant the site the
+*local network access* permission. If the hosted panel says
+"Can't reach the Pulse instance": click the 🔒 / tune icon left of the
+address bar → **Site settings** → **Local network access** → **Allow** →
+reload. (Or skip the permission entirely by opening
+<http://127.0.0.1:8787> directly — same panel, zero setup.)
 
 ### Capturing HTTPS (once)
 

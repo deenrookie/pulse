@@ -12,9 +12,65 @@ import Comparer from './ui/Comparer'
 import GlobalSearch from './ui/GlobalSearch'
 import { applyFontSize, loadFontSize } from './ui/fontSize'
 import { usePulse } from './state'
+import { apiBase, getRemoteConfig } from './api'
 
 type Tab = 'proxy' | 'intercept' | 'repeater' | 'intruder' | 'sitemap' | 'extensions' | 'settings'
 type Theme = 'warm' | 'midnight' | 'linear'
+
+/** Full-panel fallback when no Pulse instance answers: on the hosted panel
+ *  this is almost always Chrome's local-network permission — show the exact
+ *  unblock path instead of a wall of empty views. */
+function ApiUnreachable() {
+  const rc = getRemoteConfig()
+  const target = apiBase() || location.origin
+  const hosted = !['127.0.0.1', 'localhost', '[::1]'].includes(location.hostname)
+  return (
+    <div className="view">
+      <div className="empty api-unreachable">
+        <div className="glyph">
+          <Icon name="alert" size={22} />
+        </div>
+        <b>Can't reach the Pulse instance</b>
+        <div>
+          Target: <code>{target}</code>
+          {rc ? ' (configured under Settings → Remote instance)' : ''}
+        </div>
+        {hosted ? (
+          <>
+            <div>
+              Chrome blocks HTTPS pages from calling local or intranet services until you allow it
+              for this site (Local Network Access):
+            </div>
+            <ol className="steps" style={{ textAlign: 'left' }}>
+              <li>
+                Click the <b>🔒 / tune icon</b> at the left of the address bar
+              </li>
+              <li>
+                Open <b>Site settings</b> and find <b>Local network access</b>
+              </li>
+              <li>
+                Set it to <b>Allow</b>, then reload this page
+              </li>
+            </ol>
+            {!rc && (
+              <div>
+                Or skip the permission entirely — open the local panel directly:{' '}
+                <a href="http://127.0.0.1:8787">http://127.0.0.1:8787</a>
+              </div>
+            )}
+          </>
+        ) : (
+          <div>Is Pulse running? Start it on this machine and reload.</div>
+        )}
+        <div className="actions">
+          <button className="btn primary" onClick={() => location.reload()}>
+            Reload
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
 
 const THEMES: { id: Theme; label: string; hint: string }[] = [
   { id: 'warm', label: 'Warm', hint: 'Warm charcoal + cream (Warp)' },
@@ -282,6 +338,10 @@ export default function App() {
           </span>
         </header>
         <div className="view-host">
+          {pulse.apiError && !pulse.status && tab !== 'settings' ? (
+            <ApiUnreachable />
+          ) : (
+          <>
           {tab === 'proxy' && <ProxyView pulse={pulse} />}
           {tab === 'intercept' && <InterceptView pulse={pulse} />}
           {tab === 'repeater' && <RepeaterView pulse={pulse} goProxy={() => go('proxy')} />}
@@ -289,6 +349,8 @@ export default function App() {
           {tab === 'sitemap' && <SiteMapView pulse={pulse} goProxy={() => go('proxy')} />}
           {tab === 'extensions' && <ExtensionsView notify={pulse.notify} />}
           {tab === 'settings' && <SettingsView pulse={pulse} />}
+          </>
+          )}
         </div>
 
         <footer className="footbar">
