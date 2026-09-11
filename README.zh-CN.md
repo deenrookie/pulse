@@ -52,15 +52,15 @@
 
 ```bash
 # macOS（Apple Silicon）
-curl -L https://github.com/deenrookie/pulse/releases/download/v0.3.0/pulse_0.3.0_darwin_arm64.tar.gz | tar xz && chmod +x pulse && ./pulse
+curl -L https://github.com/deenrookie/pulse/releases/download/v0.3.1/pulse_0.3.1_darwin_arm64.tar.gz | tar xz && chmod +x pulse && ./pulse
 
 # Linux（x64）
-curl -L https://github.com/deenrookie/pulse/releases/download/v0.3.0/pulse_0.3.0_linux_amd64.tar.gz | tar xz && chmod +x pulse && ./pulse
+curl -L https://github.com/deenrookie/pulse/releases/download/v0.3.1/pulse_0.3.1_linux_amd64.tar.gz | tar xz && chmod +x pulse && ./pulse
 ```
 
 ```powershell
 # Windows（x64）— PowerShell
-curl.exe -L -o pulse.zip https://github.com/deenrookie/pulse/releases/download/v0.3.0/pulse_0.3.0_windows_amd64.zip
+curl.exe -L -o pulse.zip https://github.com/deenrookie/pulse/releases/download/v0.3.1/pulse_0.3.1_windows_amd64.zip
 Expand-Archive pulse.zip -Force; .\pulse.exe
 ```
 
