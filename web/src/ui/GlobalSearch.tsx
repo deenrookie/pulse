@@ -1,9 +1,9 @@
 // Global deep search (Ctrl+Shift+F or the toolbar button): one keyword,
 // everything Pulse has captured — traffic requests/responses and Repeater
-// records. Rendered as a Decoder-style floating window: draggable by the
-// header, resizable via the corner grip, pinnable on top or ghost
-// (semi-transparent, hover to focus). Clicking a hit previews it in the
-// right pane instead of navigating; the footer keeps a tab per keyword.
+// records. Floating Decoder-style windows; several can coexist (one per
+// footer history tab, plus fresh ones from the top entry). Dragging,
+// resizing, pin/ghost and the preview pane (click a hit to see it with
+// every match highlighted — nothing navigates away) behave like Decoder.
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import Icon from './Icon'
@@ -30,6 +30,14 @@ function loadWin(): WinState {
     /* corrupted */
   }
   return { ...WIN_DEFAULTS }
+}
+
+function persistWin(w: WinState) {
+  try {
+    localStorage.setItem(WIN_KEY, JSON.stringify(w))
+  } catch {
+    /* storage unavailable */
+  }
 }
 
 /** the full message pair behind a hit, for the preview pane */
@@ -83,46 +91,54 @@ function Highlighted({ text, needle }: { text: string; needle: string }) {
   )
 }
 
-export default function GlobalSearch() {
-  const [open, setOpen] = useState(false)
-  const [q, setQ] = useState('')
+interface Session {
+  id: string
+  /** keyword identity for "this window is already open" checks ('' = fresh) */
+  keyword: string
+  initialQ: string
+  autoRun: boolean
+  /** only windows opened from the top entry create footer history tabs */
+  tracksHistory: boolean
+  z: number
+  /** cascade offset so stacked windows don't cover each other exactly */
+  cascade: number
+}
+
+// ---------- one search window ----------
+
+function SearchWindow({
+  session,
+  onFocus,
+  onClose,
+  onSearched,
+}: {
+  session: Session
+  onFocus: () => void
+  onClose: () => void
+  /** report the window's keyword identity so footer tabs focus it */
+  onSearched: (q: string) => void
+}) {
+  const [q, setQ] = useState(session.initialQ)
   const [hits, setHits] = useState<SearchHit[] | null>(null)
   const [busy, setBusy] = useState(false)
-  const [win, setWin] = useState<WinState>(loadWin)
+  const [win, setWin] = useState<WinState>(() => {
+    const w = loadWin()
+    const off = (session.cascade % 6) * 28
+    return { ...w, x: w.x + off, y: w.y + off }
+  })
   const [detail, setDetail] = useState<HitDetail | null>(null)
   const [detailBusy, setDetailBusy] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
 
-  const persist = (next: WinState) => {
-    try {
-      localStorage.setItem(WIN_KEY, JSON.stringify(next))
-    } catch {
-      /* storage unavailable */
-    }
-  }
-
   useEffect(() => {
-    const onOpen = (e: Event) => {
-      const prefill = (e as CustomEvent<{ q?: string }>).detail?.q
-      setOpen(true)
-      setDetail(null)
-      if (prefill) {
-        setQ(prefill)
-        void run(prefill)
-      } else {
-        setHits(null)
-      }
-      requestAnimationFrame(() => inputRef.current?.focus())
-    }
-    window.addEventListener('pulse:open-search', onOpen)
-    return () => window.removeEventListener('pulse:open-search', onOpen)
+    if (session.autoRun && session.initialQ) void run(session.initialQ)
+    requestAnimationFrame(() => inputRef.current?.focus())
+    // keep the window on screen if the viewport shrank while it was closed
+    const x = Math.min(Math.max(8, win.x), window.innerWidth - 200)
+    const y = Math.min(Math.max(8, win.y), window.innerHeight - 120)
+    if (x !== win.x || y !== win.y) setWin((prev) => ({ ...prev, x, y }))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
-
-  const close = () => {
-    setOpen(false)
-    setDetail(null)
-  }
 
   async function run(needleArg?: string) {
     const needle = (needleArg ?? q).trim()
@@ -132,7 +148,8 @@ export default function GlobalSearch() {
     try {
       const r = await deepSearch(needle)
       setHits(r.hits)
-      pushSearchHistory(needle)
+      onSearched(needle)
+      if (session.tracksHistory) pushSearchHistory(needle)
     } catch {
       setHits([])
     } finally {
@@ -150,7 +167,7 @@ export default function GlobalSearch() {
   }
 
   const jump = (h: SearchHit) => {
-    close()
+    onClose()
     window.history.replaceState(null, '', h.source === 'traffic' ? `#/proxy?flow=${h.id}` : `#/repeater?tab=${h.id}`)
     window.dispatchEvent(new HashChangeEvent('hashchange'))
   }
@@ -159,6 +176,7 @@ export default function GlobalSearch() {
   const dragRef = useRef<{ dx: number; dy: number } | null>(null)
   const [dragging, setDragging] = useState(false)
   const onHeadDown = (e: React.PointerEvent) => {
+    onFocus()
     if ((e.target as HTMLElement).closest('button, input')) return
     ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
     dragRef.current = { dx: e.clientX - win.x, dy: e.clientY - win.y }
@@ -174,7 +192,7 @@ export default function GlobalSearch() {
     if (!dragRef.current) return
     dragRef.current = null
     setDragging(false)
-    persist(win)
+    persistWin(win)
   }
 
   // ---- window resizing ----
@@ -196,27 +214,17 @@ export default function GlobalSearch() {
     if (!sizeRef.current) return
     sizeRef.current = null
     setResizing(false)
-    persist(win)
+    persistWin(win)
   }
-
-  // keep the window on screen if the viewport shrank while it was closed
-  useEffect(() => {
-    if (!open) return
-    const x = Math.min(Math.max(8, win.x), window.innerWidth - 200)
-    const y = Math.min(Math.max(8, win.y), window.innerHeight - 120)
-    if (x !== win.x || y !== win.y) setWin((prev) => ({ ...prev, x, y }))
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open])
-
-  if (!open) return null
 
   const shownText =
     detail && (detail.hit.side === 'response' ? detail.responseText : detail.requestText)
 
-  return createPortal(
+  return (
     <div
       className={`gsearch-win ${win.mode === 'ghost' ? 'ghost' : ''} ${dragging || resizing ? 'dragging' : ''}`}
-      style={{ left: win.x, top: win.y, width: win.w, height: win.h }}
+      style={{ left: win.x, top: win.y, width: win.w, height: win.h, zIndex: session.z }}
+      onPointerDown={onFocus}
     >
       <div
         className="decoder-head"
@@ -229,9 +237,7 @@ export default function GlobalSearch() {
           <Icon name="search" size={14} />
           Deep search
         </span>
-        <span className="faint" style={{ fontSize: 11, fontWeight: 400 }}>
-          traffic + repeater
-        </span>
+        {session.keyword && <span className="faint mono" style={{ fontSize: 11 }}>{session.keyword}</span>}
         <span className="spacer" />
         <button
           className="btn ghost sm icon-btn"
@@ -239,12 +245,12 @@ export default function GlobalSearch() {
           onClick={() => {
             const mode = win.mode === 'top' ? 'ghost' : 'top'
             setWin((prev) => ({ ...prev, mode }))
-            persist({ ...win, mode })
+            persistWin({ ...win, mode })
           }}
         >
           <Icon name={win.mode === 'top' ? 'shield' : 'circle'} size={13} />
         </button>
-        <button className="btn ghost sm icon-btn" title="Close (size and position are kept)" onClick={close}>
+        <button className="btn ghost sm icon-btn" title="Close (size and position are kept)" onClick={onClose}>
           <Icon name="x" size={13} />
         </button>
       </div>
@@ -259,7 +265,7 @@ export default function GlobalSearch() {
           onChange={(e) => setQ(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === 'Enter') void run()
-            if (e.key === 'Escape') close()
+            if (e.key === 'Escape') onClose()
           }}
         />
         <button className="btn sm" disabled={busy || !q.trim()} onClick={() => void run()}>
@@ -339,7 +345,73 @@ export default function GlobalSearch() {
         onPointerUp={onGripUp}
         title="Drag to resize"
       />
-    </div>,
+    </div>
+  )
+}
+
+// ---------- the multi-window host ----------
+
+export default function GlobalSearch() {
+  const [sessions, setSessions] = useState<Session[]>([])
+  const zCounter = useRef(400)
+
+  useEffect(() => {
+    const onOpen = (e: Event) => {
+      const prefill = (e as CustomEvent<{ q?: string }>).detail?.q?.trim()
+      setSessions((prev) => {
+        if (prefill) {
+          const existing = prev.find((s) => s.keyword === prefill)
+          if (existing) {
+            // already open: just raise it above the other windows
+            zCounter.current += 1
+            return prev.map((s) => (s.id === existing.id ? { ...s, z: zCounter.current } : s))
+          }
+        }
+        zCounter.current += 1
+        return [
+          ...prev,
+          {
+            id: crypto.randomUUID(),
+            keyword: prefill ?? '',
+            initialQ: prefill ?? '',
+            autoRun: !!prefill,
+            tracksHistory: !prefill,
+            z: zCounter.current,
+            cascade: prev.length,
+          },
+        ]
+      })
+    }
+    window.addEventListener('pulse:open-search', onOpen)
+    return () => window.removeEventListener('pulse:open-search', onOpen)
+  }, [])
+
+  const closeSession = (id: string) => setSessions((prev) => prev.filter((s) => s.id !== id))
+  const focusSession = (id: string) =>
+    setSessions((prev) => {
+      const top = Math.max(...prev.map((s) => s.z))
+      const hit = prev.find((s) => s.id === id)
+      if (!hit || hit.z === top) return prev
+      zCounter.current = Math.max(zCounter.current, top) + 1
+      return prev.map((s) => (s.id === id ? { ...s, z: zCounter.current } : s))
+    })
+  const markSearched = (id: string, q: string) =>
+    setSessions((prev) => prev.map((s) => (s.id === id ? { ...s, keyword: q } : s)))
+
+  if (sessions.length === 0) return null
+
+  return createPortal(
+    <>
+      {sessions.map((s) => (
+        <SearchWindow
+          key={s.id}
+          session={s}
+          onFocus={() => focusSession(s.id)}
+          onClose={() => closeSession(s.id)}
+          onSearched={(q) => markSearched(s.id, q)}
+        />
+      ))}
+    </>,
     document.body,
   )
 }

@@ -1314,8 +1314,8 @@ table.flows tbody tr.hl.selected td { background: var(--accent-bg); box-shadow: 
   opacity: 1;
   transition: opacity 160ms var(--ease-out);
 }
-.gsearch-win.ghost { opacity: 0.38; z-index: 5; }
-.gsearch-win.ghost:hover { opacity: 1; z-index: 400; }
+.gsearch-win.ghost { opacity: 0.38; }
+.gsearch-win.ghost:hover { opacity: 1; }
 .gsearch-win .decoder-head { cursor: grab; }
 .gsearch-bar { display: flex; gap: 8px; align-items: center; padding: 10px 12px 6px; flex: none; }
 .gsearch-bar .input { flex: 1; min-width: 0; }
@@ -1352,10 +1352,11 @@ table.flows tbody tr.hl.selected td { background: var(--accent-bg); box-shadow: 
 .foot-search-tab .tab-open .icon { flex: none; opacity: 0.7; }
 .foot-search-tab .kw { font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 .foot-search-tab .tab-x {
-  display: inline-flex; align-items: center; border: none; background: transparent;
-  padding: 3px 8px 3px 4px; cursor: pointer; color: var(--text-faint);
+  display: inline-flex; align-items: center; border: none;
+  background: rgb(var(--danger-rgb) / 0.08);
+  padding: 3px 9px 3px 5px; cursor: pointer; color: var(--text-muted);
 }
-.foot-search-tab .tab-x:hover { color: var(--danger); background: var(--bg-hover); }
+.foot-search-tab .tab-x:hover { color: var(--danger); background: rgb(var(--danger-rgb) / 0.18); }
 .src-tag, .side-tag {
   font-size: 10px; padding: 1px 6px; border-radius: 4px; text-transform: uppercase; letter-spacing: .4px;
   font-family: var(--mono);
