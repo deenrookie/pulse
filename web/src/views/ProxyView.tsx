@@ -38,7 +38,8 @@ function loadFilter(): FilterModel {
 function loadRules(): HighlightRule[] {
   try {
     const raw = JSON.parse(localStorage.getItem(HL_KEY) ?? '[]')
-    return Array.isArray(raw) ? raw.filter((r) => r && r.match !== undefined) : []
+    // blank rules are never worth keeping — they can't match anything
+    return Array.isArray(raw) ? raw.filter((r) => r && typeof r.match === 'string' && r.match.trim() !== '') : []
   } catch {
     return []
   }
@@ -238,6 +239,8 @@ export default function ProxyView({ pulse }: { pulse: PulseState }) {
   }, [fl, editedRaw])
 
   const filtersActive = q.trim() !== '' || method !== 'ANY' || statuses.size > 0 || hideStatic || filterActive(filter)
+  // blank rules don't count anywhere — not in the badge, not for styling
+  const activeRules = rules.filter((r) => r.match.trim() !== '').length
 
   return (
     <div className="view padded">
@@ -329,7 +332,7 @@ export default function ProxyView({ pulse }: { pulse: PulseState }) {
                 {filterActive(filter) && <span className="badge">on</span>}
               </button>
               <button
-                className={`btn sm ${rules.length > 0 ? 'primary' : ''}`}
+                className={`btn sm ${activeRules > 0 ? 'primary' : ''}`}
                 title="Highlight rules — color-code matching flows"
                 onClick={(e) => {
                   const r = (e.currentTarget as HTMLElement).getBoundingClientRect()
@@ -338,7 +341,7 @@ export default function ProxyView({ pulse }: { pulse: PulseState }) {
               >
                 <Icon name="bolt" size={13} />
                 Highlights
-                {rules.length > 0 && <span className="badge">{rules.length}</span>}
+                {activeRules > 0 && <span className="badge">{activeRules}</span>}
               </button>
               <button
                 className="btn ghost sm"
@@ -452,7 +455,11 @@ export default function ProxyView({ pulse }: { pulse: PulseState }) {
         <HighlightRules
           rules={rules}
           onChange={saveRules}
-          onClose={() => setRulesPos(null)}
+          onClose={() => {
+            // drop rows the user never typed a match into
+            saveRules(rules.filter((r) => r.match.trim() !== ''))
+            setRulesPos(null)
+          }}
         />
       )}
     </div>

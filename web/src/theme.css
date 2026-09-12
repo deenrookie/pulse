@@ -1298,7 +1298,10 @@ table.flows tbody tr.hl.selected td { background: var(--accent-bg); box-shadow: 
 .filter-modal .sub { margin-bottom: 8px; }
 /* highlights manager: centered modal (was an anchored popover whose rule
    rows clipped below the fold on small viewports) */
-.highlights-modal { width: 520px; max-width: calc(100vw - 40px); max-height: calc(100vh - 80px); display: flex; flex-direction: column; }
+.highlights-modal { width: 560px; max-width: calc(100vw - 40px); max-height: calc(100vh - 80px); display: flex; flex-direction: column; }
+/* this row has no enable-checkbox — three equal selects + the remove button
+ * (the generic .rule-row grid squeezes the scope select into 18px) */
+.highlights-modal .rule-row { grid-template-columns: repeat(3, minmax(0, 1fr)) 26px; }
 .highlights-modal .sub { margin-bottom: 8px; }
 .highlights-modal .rule-list { overflow: auto; min-height: 0; flex: 1; }
 
@@ -1838,7 +1841,7 @@ textarea.editor.raw.over-mirror:focus { border-color: var(--accent-dim); box-sha
 .raw-edit-stack { position: relative; }
 
 /* method filter select: fits 'All methods' comfortably */
-.select.method-select { width: 122px; flex: none; padding-right: 22px; }
+.select.method-select { width: auto; min-width: 136px; flex: none; padding-right: 24px; }
 
 /* back-to-top on the traffic table */
 .to-top {

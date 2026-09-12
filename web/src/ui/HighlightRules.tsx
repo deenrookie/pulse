@@ -72,7 +72,15 @@ export default function HighlightRules({
   const update = (id: string, patch: Partial<HighlightRule>) =>
     onChange(rules.map((r) => (r.id === id ? { ...r, ...patch } : r)))
 
-  const add = () =>
+  const add = () => {
+    // an untouched empty row already waiting for input — focus it instead
+    // of piling up more blank rules
+    const emptyRow = rules.findIndex((r) => r.match.trim() === '')
+    if (emptyRow >= 0) {
+      const rows = document.querySelectorAll('.highlights-modal .rule-row')
+      ;(rows[emptyRow]?.querySelector('input.mini') as HTMLInputElement | null)?.focus()
+      return
+    }
     onChange([
       ...rules,
       {
@@ -84,6 +92,7 @@ export default function HighlightRules({
         color: '#fb923c',
       },
     ])
+  }
 
   const del = (id: string) => onChange(rules.filter((r) => r.id !== id))
 
