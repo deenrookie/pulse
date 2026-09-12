@@ -7,11 +7,14 @@
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import Icon from './Icon'
-import { deepSearch, getFlow, listRepeater, rawOfMessage, bodyToText } from '../api'
+import { deepSearch, getFlow, listRepeater } from '../api'
 import type { SearchOptions } from '../api'
+import { RequestInspector, ResponseInspector } from '../components/MessageViewer'
+import ContextMenu, { type MenuItem } from '../components/ContextMenu'
 import { pushSearchHistory, renameSearchHistory } from './searchHistory'
 import { getSelected, setSelected } from './searchSel'
-import type { SearchHit, Flow, RepeaterTab } from '../types'
+import type { PulseState } from '../state'
+import type { SearchHit, Flow, HttpRequest, HttpResponse, WSMessage } from '../types'
 
 const WIN_KEY = 'pulse.gsearch.win'
 
@@ -70,69 +73,21 @@ function persistOpts(o: SearchOptions) {
 /** the full message pair behind a hit, for the preview pane */
 interface HitDetail {
   hit: SearchHit
-  requestText: string
-  responseText: string | null
+  req?: HttpRequest
+  resp?: HttpResponse
+  ws?: WSMessage[]
+  gone?: boolean
 }
 
 async function loadDetail(hit: SearchHit): Promise<HitDetail> {
   if (hit.source === 'traffic') {
     const fl: Flow = await getFlow(hit.id)
-    const req = rawOfMessage(
-      `${fl.request.method} ${fl.request.url}`,
-      fl.request.headers ?? [],
-      bodyToText(fl.request.body),
-    )
-    const resp = fl.response
-      ? rawOfMessage(`${fl.response.statusCode} ${fl.response.reason ?? ''}`, fl.response.headers ?? [], bodyToText(fl.response.body))
-      : null
-    return { hit, requestText: req, responseText: resp }
+    return { hit, req: fl.request, resp: fl.response, ws: fl.ws }
   }
   const { tabs } = await listRepeater()
-  const tab: RepeaterTab | undefined = tabs.find((t) => t.id === hit.id)
-  const req = tab
-    ? rawOfMessage(`${tab.request.method} ${tab.request.url}`, tab.request.headers ?? [], bodyToText(tab.request.body))
-    : '(repeater tab gone)'
-  const resp = tab?.lastResponse
-    ? rawOfMessage(`${tab.lastResponse.statusCode} ${tab.lastResponse.reason ?? ''}`, tab.lastResponse.headers ?? [], bodyToText(tab.lastResponse.body))
-    : null
-  return { hit, requestText: req, responseText: resp }
-}
-
-/** clamp huge bodies to a window around the first match, highlight hits */
-function Highlighted({ text, needle, opts }: { text: string; needle: string; opts: SearchOptions }) {
-  // build one splitter regex honouring the case/regex options; invalid
-  // patterns (user still typing) fall back to a plain escaped substring
-  const src = opts.re ? `(${needle})` : `(${needle.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`
-  let splitter: RegExp
-  try {
-    splitter = new RegExp(src, opts.cs ? '' : 'i')
-  } catch {
-    splitter = new RegExp(`(${needle.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, opts.cs ? '' : 'i')
-  }
-  let t = text
-  if (t.length > 24000) {
-    const m = splitter.exec(t)
-    const start = Math.max(0, (m ? m.index : 0) - 5000)
-    t = (start > 0 ? '…\n' : '') + t.slice(start, start + 18000) + (start + 18000 < text.length ? '\n…' : '')
-  }
-  const parts = t.split(splitter)
-  if (opts.re) {
-    // regex mode: re-test each split part instead of comparing literals
-    const exact = new RegExp(`^(?:${needle})$`, opts.cs ? '' : 'i')
-    return (
-      <>
-        {parts.map((p, i) => (p && exact.test(p) ? <mark key={i}>{p}</mark> : <span key={i}>{p}</span>))}
-      </>
-    )
-  }
-  const lower = needle.toLowerCase()
-  return (
-    <>
-      {parts.map((p, i) =>
-        needle && p.toLowerCase() === lower ? <mark key={i}>{p}</mark> : <span key={i}>{p}</span>,
-      )}
-    </>
-  )
+  const tab = tabs.find((t) => t.id === hit.id)
+  if (!tab) return { hit, gone: true }
+  return { hit, req: tab.request, resp: tab.lastResponse }
 }
 
 interface Session {
@@ -155,11 +110,13 @@ interface Session {
 
 function SearchWindow({
   session,
+  pulse,
   onFocus,
   onClose,
   onSearched,
 }: {
   session: Session
+  pulse: PulseState
   onFocus: () => void
   onClose: () => void
   /** report the window's keyword identity so footer tabs focus it */
@@ -180,6 +137,11 @@ function SearchWindow({
   })
   const [detail, setDetail] = useState<HitDetail | null>(null)
   const [detailBusy, setDetailBusy] = useState(false)
+  /** which side of the pair the preview shows */
+  const [pvSide, setPvSide] = useState<'request' | 'response'>('request')
+  /** keyboard-selected row in the results list (-1 = none) */
+  const [selIdx, setSelIdx] = useState(-1)
+  const [menu, setMenu] = useState<{ x: number; y: number; hit: SearchHit } | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
 
   const setOpt = (patch: SearchOptions) =>
@@ -224,12 +186,13 @@ function SearchWindow({
       // user last selected for this keyword
       if (session.autoRun) {
         const sel = getSelected(needle)
-        const hit = sel ? r.hits.find((h) => `${h.source}:${h.id}` === sel) : undefined
-        if (hit) {
-          preview(hit)
+        const idx = sel ? r.hits.findIndex((h) => `${h.source}:${h.id}` === sel) : -1
+        if (idx >= 0) {
+          preview(r.hits[idx])
+          setSelIdx(idx)
           requestAnimationFrame(() => {
             resultsRef.current
-              ?.querySelector(`[data-key="${hit.source}:${hit.id}"]`)
+              ?.querySelector(`[data-key="${r.hits[idx].source}:${r.hits[idx].id}"]`)
               ?.scrollIntoView({ block: 'nearest' })
           })
         }
@@ -247,7 +210,11 @@ function SearchWindow({
     setDetail(null)
     setDetailBusy(true)
     loadDetail(h)
-      .then(setDetail)
+      .then((d) => {
+        setDetail(d)
+        // open on the side the hit matched
+        setPvSide(h.side === 'response' && (d.resp !== undefined || d.gone) ? 'response' : 'request')
+      })
       .catch(() => setDetail(null))
       .finally(() => setDetailBusy(false))
   }
@@ -257,6 +224,39 @@ function SearchWindow({
     window.history.replaceState(null, '', h.source === 'traffic' ? `#/proxy?flow=${h.id}` : `#/repeater?tab=${h.id}`)
     window.dispatchEvent(new HashChangeEvent('hashchange'))
   }
+
+  const sendToRepeater = (h: SearchHit) => {
+    if (h.source !== 'traffic') return
+    void pulse.sendToRepeater(h.id)
+  }
+
+  // ---- keyboard: arrows walk results, R sends the selection to Repeater ----
+  const onWinKeyDown = (e: React.KeyboardEvent) => {
+    if (!hits || hits.length === 0) return
+    const tag = (e.target as HTMLElement).tagName
+    const typing = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT'
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault()
+      const dir = e.key === 'ArrowDown' ? 1 : -1
+      const next = selIdx < 0 ? (dir > 0 ? 0 : hits.length - 1) : Math.min(Math.max(selIdx + dir, 0), hits.length - 1)
+      setSelIdx(next)
+      preview(hits[next])
+      resultsRef.current
+        ?.querySelector(`[data-key="${hits[next].source}:${hits[next].id}"]`)
+        ?.scrollIntoView({ block: 'nearest' })
+    } else if (!typing && (e.key === 'r' || e.key === 'R') && selIdx >= 0) {
+      e.preventDefault()
+      sendToRepeater(hits[selIdx])
+    }
+  }
+
+  const menuItems = (h: SearchHit): MenuItem[] =>
+    h.source === 'traffic'
+      ? [
+          { icon: 'send', label: 'Send to Repeater', hint: 'R', onClick: () => sendToRepeater(h) },
+          { icon: 'chevronRight', label: 'Open in Live Traffic', onClick: () => jump(h) },
+        ]
+      : [{ icon: 'chevronRight', label: 'Open in Repeater', onClick: () => jump(h) }]
 
   // ---- window dragging (Decoder pattern) ----
   const dragRef = useRef<{ dx: number; dy: number } | null>(null)
@@ -303,14 +303,12 @@ function SearchWindow({
     persistWin(win)
   }
 
-  const shownText =
-    detail && (detail.hit.side === 'response' ? detail.responseText : detail.requestText)
-
   return (
     <div
       className={`gsearch-win ${win.mode === 'ghost' ? 'ghost' : ''} ${dragging || resizing ? 'dragging' : ''}`}
       style={{ left: win.x, top: win.y, width: win.w, height: win.h, zIndex: session.z }}
       onPointerDown={onFocus}
+      onKeyDown={onWinKeyDown}
     >
       <div
         className="decoder-head"
@@ -398,13 +396,21 @@ function SearchWindow({
           {hits === null && !err && <div className="gsearch-empty">Enter a keyword — bodies, headers, URLs and Repeater history are all scanned.</div>}
           {err && <div className="gsearch-empty">Search failed — {err}</div>}
           {!err && hits !== null && hits.length === 0 && <div className="gsearch-empty">No match. Try a shorter keyword.</div>}
-          {hits?.map((h) => (
+          {hits?.map((h, i) => (
             <button
               key={`${h.source}:${h.id}:${h.side}`}
               data-key={`${h.source}:${h.id}`}
-              className={`gsearch-hit ${detail?.hit === h ? 'selected' : ''}`}
-              onClick={() => preview(h)}
-              title="Preview on the right"
+              className={`gsearch-hit ${selIdx === i ? 'selected' : ''}`}
+              onClick={() => {
+                setSelIdx(i)
+                preview(h)
+              }}
+              onContextMenu={(e) => {
+                e.preventDefault()
+                setSelIdx(i)
+                setMenu({ x: e.clientX, y: e.clientY, hit: h })
+              }}
+              title="Preview on the right · right-click for actions (R sends to Repeater)"
             >
               <span className={`src-tag ${h.source}`}>{h.source}</span>
               <span className="title mono">{h.title}</span>
@@ -418,23 +424,24 @@ function SearchWindow({
         <div className="gsearch-preview">
           {!detail && !detailBusy && (
             <div className="gsearch-empty">
-              Click a result to preview it here — the match is highlighted, nothing navigates away.
+              Click a result to preview it here — nothing navigates away.
             </div>
           )}
           {detailBusy && <div className="gsearch-empty">Loading…</div>}
-          {detail && (
+          {detail?.gone && <div className="gsearch-empty">This Repeater tab no longer exists.</div>}
+          {detail && !detail.gone && (
             <>
               <div className="gs-preview-head">
                 <span className={`src-tag ${detail.hit.source}`}>{detail.hit.source}</span>
                 <span className="mono faint" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }} title={detail.hit.title}>
                   {detail.hit.title}
                 </span>
-                {detail.responseText && (
-                  <button className={`mini ${detail.hit.side === 'response' ? '' : 'faint'}`} onClick={() => setDetail({ ...detail, hit: { ...detail.hit, side: 'response' } })}>
+                {detail.resp && (
+                  <button className={`mini ${pvSide === 'response' ? '' : 'faint'}`} onClick={() => setPvSide('response')}>
                     response
                   </button>
                 )}
-                <button className={`mini ${detail.hit.side === 'request' ? '' : 'faint'}`} onClick={() => setDetail({ ...detail, hit: { ...detail.hit, side: 'request' } })}>
+                <button className={`mini ${pvSide === 'request' ? '' : 'faint'}`} onClick={() => setPvSide('request')}>
                   request
                 </button>
                 <button className="btn sm" onClick={() => jump(detail.hit)} title="Navigate to this flow / tab">
@@ -442,17 +449,25 @@ function SearchWindow({
                   Open
                 </button>
               </div>
-              {shownText !== null ? (
-                <pre className="gs-preview-body mono">
-                  <Highlighted text={shownText} needle={q.trim() || detail.hit.title.split(/\s+/)[0]} opts={opts} />
-                </pre>
-              ) : (
-                <div className="gsearch-empty">No response for this hit.</div>
-              )}
+              <div className="gs-preview-wrap">
+                {pvSide === 'request' ? (
+                  detail.req ? (
+                    <RequestInspector req={detail.req} />
+                  ) : (
+                    <div className="gsearch-empty">No request for this hit.</div>
+                  )
+                ) : detail.resp ? (
+                  <ResponseInspector resp={detail.resp} ws={detail.ws} />
+                ) : (
+                  <div className="gsearch-empty">No response for this hit.</div>
+                )}
+              </div>
             </>
           )}
         </div>
       </div>
+
+      {menu && <ContextMenu x={menu.x} y={menu.y} items={menuItems(menu.hit)} onClose={() => setMenu(null)} />}
 
       <div
         className={`decoder-grip ${resizing ? 'active' : ''}`}
@@ -467,7 +482,7 @@ function SearchWindow({
 
 // ---------- the multi-window host ----------
 
-export default function GlobalSearch() {
+export default function GlobalSearch({ pulse }: { pulse: PulseState }) {
   const [sessions, setSessions] = useState<Session[]>([])
   const zCounter = useRef(400)
 
@@ -539,6 +554,7 @@ export default function GlobalSearch() {
         <SearchWindow
           key={s.id}
           session={s}
+          pulse={pulse}
           onFocus={() => focusSession(s.id)}
           onClose={() => closeSession(s.id)}
           onSearched={(q) => markSearched(s.id, q)}

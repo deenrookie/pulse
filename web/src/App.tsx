@@ -485,7 +485,7 @@ export default function App() {
 
       {decoderOpen && <Decoder onClose={() => setDecoderOpen(false)} seed={decoderSeed} />}
       {comparerOpen && <Comparer onClose={() => setComparerOpen(false)} />}
-      <GlobalSearch />
+      <GlobalSearch pulse={pulse} />
 
       {pulse.toast && (
         <div className={`toast ${pulse.toast.kind === 'err' ? 'err' : ''} ${pulse.toastLeaving ? 'leaving' : ''}`}>

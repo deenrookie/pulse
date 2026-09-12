@@ -1339,8 +1339,8 @@ table.flows tbody tr.hl.selected td { background: var(--accent-bg); box-shadow: 
 .gs-preview-head { flex: none; display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-bottom: 1px solid var(--border); background: var(--bg-panel); }
 .gs-preview-head .mini { border: 1px solid var(--border); background: var(--bg-input); color: var(--text); padding: 2px 8px; border-radius: var(--radius-xs); cursor: pointer; font-size: 11px; }
 .gs-preview-head .mini.faint { color: var(--text-faint); }
-.gs-preview-body { flex: 1; min-height: 0; overflow: auto; margin: 0; padding: 10px 12px; font-size: 11.5px; line-height: 1.55; white-space: pre-wrap; word-break: break-all; color: var(--text); }
-.gs-preview-body mark { background: rgb(var(--warn-rgb) / 0.4); color: var(--text); border-radius: 2px; padding: 0 1px; }
+/* the shared Request/Response inspector fills the rest of the pane */
+.gs-preview-wrap { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 
 /* Burp-style search options in the floating window's bar */
 .gsearch-opts { display: inline-flex; align-items: center; gap: 6px; flex: none; }
