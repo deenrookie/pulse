@@ -1339,8 +1339,21 @@ table.flows tbody tr.hl.selected td { background: var(--accent-bg); box-shadow: 
 .gs-preview-body { flex: 1; min-height: 0; overflow: auto; margin: 0; padding: 10px 12px; font-size: 11.5px; line-height: 1.55; white-space: pre-wrap; word-break: break-all; color: var(--text); }
 .gs-preview-body mark { background: rgb(var(--warn-rgb) / 0.4); color: var(--text); border-radius: 2px; padding: 0 1px; }
 
-/* footer search-history tabs (right of Tools) */
-.foot-search-tab {
+/* Burp-style search options in the floating window's bar */
+.gsearch-opts { display: inline-flex; align-items: center; gap: 6px; flex: none; }
+.gsearch-opts .seg { display: inline-flex; }
+.gsearch-opts .seg .mini.opt { border-radius: 0; margin-left: -1px; }
+.gsearch-opts .seg .mini.opt:first-child { border-radius: var(--radius-xs) 0 0 var(--radius-xs); margin-left: 0; }
+.gsearch-opts .seg .mini.opt:last-child { border-radius: 0 var(--radius-xs) var(--radius-xs) 0; }
+.gsearch-opts .mini.opt {
+  background: var(--bg-input); color: var(--text-muted);
+  border: 1px solid var(--border); border-radius: var(--radius-xs);
+  padding: 3px 7px; cursor: pointer; font-size: 11px; font-family: var(--mono); line-height: 1;
+}
+.gsearch-opts .mini.opt:hover { color: var(--text); }
+.gsearch-opts .mini.opt.on { background: var(--accent-bg); color: var(--accent); border-color: var(--accent); }
+
+/* footer search-history tabs (right of Tools) */.foot-search-tab {
   display: inline-flex; align-items: stretch; flex: none; max-width: 200px;
   border: 1px solid var(--border-strong); border-radius: 6px; overflow: hidden; background: var(--bg-input);
 }

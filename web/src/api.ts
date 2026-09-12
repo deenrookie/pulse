@@ -67,8 +67,22 @@ import type {
 } from './types'
 
 /** deep keyword search across traffic + repeater records */
-export const deepSearch = (q: string) =>
-  api<{ q: string; hits: SearchHit[]; total: number }>(`/api/search?q=${encodeURIComponent(q)}`)
+export interface SearchOptions {
+  /** restrict matching to one side of the message (Burp search) */
+  side?: 'request' | 'response'
+  /** case-sensitive matching */
+  cs?: boolean
+  /** treat q as a regular expression */
+  re?: boolean
+}
+
+export const deepSearch = (q: string, opts: SearchOptions = {}) => {
+  const p = new URLSearchParams({ q })
+  if (opts.side) p.set('side', opts.side)
+  if (opts.cs) p.set('cs', '1')
+  if (opts.re) p.set('re', '1')
+  return api<{ q: string; hits: SearchHit[]; total: number }>(`/api/search?${p}`)
+}
 
 export const annotateFlow = (id: string, patch: { star?: boolean; note?: string }) =>
   api<{ star: boolean; note: string }>(`/api/flows/${encodeURIComponent(id)}/annotate`, { method: 'PUT', body: JSON.stringify(patch) })

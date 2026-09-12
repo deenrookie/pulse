@@ -8,7 +8,9 @@ import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import Icon from './Icon'
 import { deepSearch, getFlow, listRepeater, rawOfMessage, bodyToText } from '../api'
+import type { SearchOptions } from '../api'
 import { pushSearchHistory } from './searchHistory'
+import { getSelected, setSelected } from './searchSel'
 import type { SearchHit, Flow, RepeaterTab } from '../types'
 
 const WIN_KEY = 'pulse.gsearch.win'
@@ -35,6 +37,31 @@ function loadWin(): WinState {
 function persistWin(w: WinState) {
   try {
     localStorage.setItem(WIN_KEY, JSON.stringify(w))
+  } catch {
+    /* storage unavailable */
+  }
+}
+
+// last-used Burp-style options, shared by every search window
+const OPTS_KEY = 'pulse.gsearch.opts'
+
+function loadOpts(): SearchOptions {
+  try {
+    const raw = JSON.parse(localStorage.getItem(OPTS_KEY) ?? 'null')
+    if (raw && typeof raw === 'object') {
+      const o = raw as SearchOptions
+      if (o.side === 'request' || o.side === 'response') return { side: o.side, cs: !!o.cs, re: !!o.re }
+      return { cs: !!o.cs, re: !!o.re }
+    }
+  } catch {
+    /* corrupted */
+  }
+  return {}
+}
+
+function persistOpts(o: SearchOptions) {
+  try {
+    localStorage.setItem(OPTS_KEY, JSON.stringify(o))
   } catch {
     /* storage unavailable */
   }
@@ -72,20 +99,37 @@ async function loadDetail(hit: SearchHit): Promise<HitDetail> {
 }
 
 /** clamp huge bodies to a window around the first match, highlight hits */
-function Highlighted({ text, needle }: { text: string; needle: string }) {
+function Highlighted({ text, needle, opts }: { text: string; needle: string; opts: SearchOptions }) {
+  // build one splitter regex honouring the case/regex options; invalid
+  // patterns (user still typing) fall back to a plain escaped substring
+  const src = opts.re ? `(${needle})` : `(${needle.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`
+  let splitter: RegExp
+  try {
+    splitter = new RegExp(src, opts.cs ? '' : 'i')
+  } catch {
+    splitter = new RegExp(`(${needle.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, opts.cs ? '' : 'i')
+  }
   let t = text
   if (t.length > 24000) {
-    const idx = t.toLowerCase().indexOf(needle.toLowerCase())
-    const start = Math.max(0, (idx < 0 ? 0 : idx) - 5000)
+    const m = splitter.exec(t)
+    const start = Math.max(0, (m ? m.index : 0) - 5000)
     t = (start > 0 ? '…\n' : '') + t.slice(start, start + 18000) + (start + 18000 < text.length ? '\n…' : '')
   }
-  const esc = needle.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-  const parts = t.split(new RegExp(`(${esc})`, 'gi'))
+  const parts = t.split(splitter)
+  if (opts.re) {
+    // regex mode: re-test each split part instead of comparing literals
+    const exact = new RegExp(`^(?:${needle})$`, opts.cs ? '' : 'i')
+    return (
+      <>
+        {parts.map((p, i) => (p && exact.test(p) ? <mark key={i}>{p}</mark> : <span key={i}>{p}</span>))}
+      </>
+    )
+  }
   const lower = needle.toLowerCase()
   return (
     <>
       {parts.map((p, i) =>
-        p.toLowerCase() === lower ? <mark key={i}>{p}</mark> : <span key={i}>{p}</span>,
+        needle && p.toLowerCase() === lower ? <mark key={i}>{p}</mark> : <span key={i}>{p}</span>,
       )}
     </>
   )
@@ -121,6 +165,10 @@ function SearchWindow({
   const [q, setQ] = useState(session.initialQ)
   const [hits, setHits] = useState<SearchHit[] | null>(null)
   const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState<string | null>(null)
+  const [opts, setOpts] = useState<SearchOptions>(loadOpts)
+  const needleRef = useRef(session.initialQ)
+  const resultsRef = useRef<HTMLDivElement | null>(null)
   const [win, setWin] = useState<WinState>(() => {
     const w = loadWin()
     const off = (session.cascade % 6) * 28
@@ -129,6 +177,13 @@ function SearchWindow({
   const [detail, setDetail] = useState<HitDetail | null>(null)
   const [detailBusy, setDetailBusy] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
+
+  const setOpt = (patch: SearchOptions) =>
+    setOpts((prev) => {
+      const next = { ...prev, ...patch }
+      persistOpts(next)
+      return next
+    })
 
   useEffect(() => {
     if (session.autoRun && session.initialQ) void run(session.initialQ)
@@ -143,21 +198,39 @@ function SearchWindow({
   async function run(needleArg?: string) {
     const needle = (needleArg ?? q).trim()
     if (!needle) return
+    needleRef.current = needle
     setBusy(true)
     setDetail(null)
+    setErr(null)
     try {
-      const r = await deepSearch(needle)
+      const r = await deepSearch(needle, opts)
       setHits(r.hits)
       onSearched(needle)
       if (session.tracksHistory) pushSearchHistory(needle)
-    } catch {
+      // reopened from a footer history tab → jump back to the record the
+      // user last selected for this keyword
+      if (session.autoRun) {
+        const sel = getSelected(needle)
+        const hit = sel ? r.hits.find((h) => `${h.source}:${h.id}` === sel) : undefined
+        if (hit) {
+          preview(hit)
+          requestAnimationFrame(() => {
+            resultsRef.current
+              ?.querySelector(`[data-key="${hit.source}:${hit.id}"]`)
+              ?.scrollIntoView({ block: 'nearest' })
+          })
+        }
+      }
+    } catch (e) {
       setHits([])
+      setErr(e instanceof Error ? e.message : String(e))
     } finally {
       setBusy(false)
     }
   }
 
   const preview = (h: SearchHit) => {
+    setSelected(needleRef.current, `${h.source}:${h.id}`)
     setDetail(null)
     setDetailBusy(true)
     loadDetail(h)
@@ -272,6 +345,34 @@ function SearchWindow({
           {busy ? <span className="spinner" /> : <Icon name="search" size={12} />}
           Search
         </button>
+        <div className="gsearch-opts" title="Burp-style search options">
+          <div className="seg">
+            {(['all', 'request', 'response'] as const).map((s) => (
+              <button
+                key={s}
+                className={`mini opt ${(opts.side ?? 'all') === s ? 'on' : ''}`}
+                title={s === 'all' ? 'Search request and response' : `Search the ${s} side only`}
+                onClick={() => setOpt({ side: s === 'all' ? undefined : s })}
+              >
+                {s === 'all' ? 'All' : s === 'request' ? 'Req' : 'Resp'}
+              </button>
+            ))}
+          </div>
+          <button
+            className={`mini opt ${opts.cs ? 'on' : ''}`}
+            title="Case sensitive"
+            onClick={() => setOpt({ cs: !opts.cs })}
+          >
+            Aa
+          </button>
+          <button
+            className={`mini opt ${opts.re ? 'on' : ''}`}
+            title="Regular expression"
+            onClick={() => setOpt({ re: !opts.re })}
+          >
+            .*
+          </button>
+        </div>
         {hits !== null && (
           <span className="faint" style={{ fontSize: 11, flex: 'none' }}>
             {hits.length} hit{hits.length === 1 ? '' : 's'}
@@ -280,12 +381,14 @@ function SearchWindow({
       </div>
 
       <div className="gsearch-main">
-        <div className="gsearch-results">
-          {hits === null && <div className="gsearch-empty">Enter a keyword — bodies, headers, URLs and Repeater history are all scanned.</div>}
-          {hits !== null && hits.length === 0 && <div className="gsearch-empty">No match. Try a shorter keyword.</div>}
+        <div className="gsearch-results" ref={resultsRef}>
+          {hits === null && !err && <div className="gsearch-empty">Enter a keyword — bodies, headers, URLs and Repeater history are all scanned.</div>}
+          {err && <div className="gsearch-empty">Search failed — {err}</div>}
+          {!err && hits !== null && hits.length === 0 && <div className="gsearch-empty">No match. Try a shorter keyword.</div>}
           {hits?.map((h) => (
             <button
               key={`${h.source}:${h.id}:${h.side}`}
+              data-key={`${h.source}:${h.id}`}
               className={`gsearch-hit ${detail?.hit === h ? 'selected' : ''}`}
               onClick={() => preview(h)}
               title="Preview on the right"
@@ -328,7 +431,7 @@ function SearchWindow({
               </div>
               {shownText !== null ? (
                 <pre className="gs-preview-body mono">
-                  <Highlighted text={shownText} needle={q.trim() || detail.hit.title.split(/\s+/)[0]} />
+                  <Highlighted text={shownText} needle={q.trim() || detail.hit.title.split(/\s+/)[0]} opts={opts} />
                 </pre>
               ) : (
                 <div className="gsearch-empty">No response for this hit.</div>
