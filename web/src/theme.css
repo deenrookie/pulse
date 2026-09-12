@@ -1353,14 +1353,13 @@ table.flows tbody tr.hl.selected td { background: var(--accent-bg); box-shadow: 
 .foot-search-tab .kw { font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 .foot-search-tab .tab-x {
   display: inline-flex; align-items: center; justify-content: center; border: none;
-  background: rgb(var(--danger-rgb) / 0.16);
-  padding: 0 6px; margin: 2px; border-radius: 4px; cursor: pointer; color: var(--danger);
+  background: var(--danger); color: var(--bg);
+  padding: 0 5px; margin: 2px; border-radius: 4px; cursor: pointer;
+  opacity: 1; /* not the hover-revealed .side-item .tab-x — always visible here */
 }
-.foot-search-tab .tab-x:hover { background: rgb(var(--danger-rgb) / 0.3); }
-/* the 1.7/24 stroke renders sub-pixel at 13px — thicken so it reads as a button */
+.foot-search-tab .tab-x:hover { filter: brightness(0.85); }
+/* the 1.7/24 stroke renders sub-pixel at 14px — thicken so it reads as a button */
 .foot-search-tab .tab-x svg { stroke-width: 2.6; }
-/* linear's salmon danger is ~2.3:1 on its light tint block — deepen the glyph */
-:root[data-theme='linear'] .foot-search-tab .tab-x { color: #c73e40; }
 .src-tag, .side-tag {
   font-size: 10px; padding: 1px 6px; border-radius: 4px; text-transform: uppercase; letter-spacing: .4px;
   font-family: var(--mono);

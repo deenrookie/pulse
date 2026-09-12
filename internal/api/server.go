@@ -242,6 +242,13 @@ func (s *Server) handleStatic(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
+	// hashed assets never change content, everything else (the SPA shell)
+	// must revalidate so UI updates are picked up on refresh
+	if strings.HasPrefix(r.URL.Path, "/assets/") {
+		w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+	} else {
+		w.Header().Set("Cache-Control", "no-cache")
+	}
 	sub := web.Dist()
 	serveFrom := func(name string) bool {
 		f, err := sub.Open(name)

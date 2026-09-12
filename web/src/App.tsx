@@ -440,7 +440,7 @@ export default function App() {
               <span className="kw mono">{k}</span>
             </button>
             <button className="tab-x" title="Remove from history" onClick={() => removeSearchHistory(k)}>
-              <Icon name="x" size={13} />
+              <Icon name="x" size={14} />
             </button>
           </span>
         ))}
