@@ -61,6 +61,57 @@ func LoadOrCreate(dir string) (*Authority, error) {
 	return a, nil
 }
 
+// MachineDir is the per-machine CA slot: every Pulse instance on this
+// machine — whatever its --data-dir — signs with the SAME root, so the
+// browser/OS only ever trusts one Pulse CA. Override with PULSE_CA_DIR.
+func MachineDir() string {
+	if v := os.Getenv("PULSE_CA_DIR"); v != "" {
+		return v
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return ".pulse"
+	}
+	return filepath.Join(home, ".pulse")
+}
+
+// LoadOrCreateShared returns the machine-wide CA (MachineDir). A data-dir-
+// local CA is migrated up when the machine slot is still empty, so existing
+// trust chains keep working; afterwards every instance shares one CA and
+// updates/dev instances never require a new browser install.
+func LoadOrCreateShared(dataDir string) (*Authority, error) {
+	m := MachineDir()
+	hasCA := func(dir string) bool {
+		_, errC := os.Stat(filepath.Join(dir, "ca.pem"))
+		_, errK := os.Stat(filepath.Join(dir, "ca-key.pem"))
+		return errC == nil && errK == nil
+	}
+	if hasCA(m) {
+		return LoadOrCreate(m)
+	}
+	if hasCA(dataDir) {
+		if err := os.MkdirAll(m, 0o700); err == nil {
+			copied := true
+			for _, name := range []string{"ca.pem", "ca-key.pem"} {
+				b, err := os.ReadFile(filepath.Join(dataDir, name))
+				if err != nil {
+					copied = false
+					break
+				}
+				if err := os.WriteFile(filepath.Join(m, name), b, 0o600); err != nil {
+					copied = false
+					break
+				}
+			}
+			if copied {
+				return LoadOrCreate(m)
+			}
+		}
+		// copy failed — generate a fresh machine CA below
+	}
+	return LoadOrCreate(m)
+}
+
 func loadFrom(certPath, keyPath string) (*Authority, error) {
 	certPEM, err := os.ReadFile(certPath)
 	if err != nil {

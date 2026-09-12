@@ -66,7 +66,7 @@ func run(proxyAddr, uiAddr, dataDir string) error {
 	if err := os.MkdirAll(dataDir, 0o700); err != nil {
 		return fmt.Errorf("create data dir: %w", err)
 	}
-	auth, err := certs.LoadOrCreate(dataDir)
+	auth, err := certs.LoadOrCreateShared(dataDir)
 	if err != nil {
 		return fmt.Errorf("load CA: %w", err)
 	}
@@ -122,7 +122,7 @@ func run(proxyAddr, uiAddr, dataDir string) error {
 	log.Printf("  ui    : http://%s", uiAddr)
 	log.Printf("  key   : %s   (access key for non-loopback API requests; set PULSE_KEY to pin)", apiSrv.AccessKey)
 	log.Printf("  data  : %s", dataDir)
-	log.Printf("  ca    : %s", auth.Fingerprint())
+	log.Printf("  ca    : %s  (%s — one CA shared by every instance on this machine)", auth.Fingerprint(), certs.MachineDir())
 	warnNonLoopback(proxyAddr, "proxy")
 	warnNonLoopback(uiAddr, "ui")
 

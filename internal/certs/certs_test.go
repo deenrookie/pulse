@@ -3,6 +3,7 @@ package certs
 import (
 	"crypto/x509"
 	"encoding/pem"
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -79,5 +80,43 @@ func TestPEM(t *testing.T) {
 	}
 	if _, err := x509.ParseCertificate(block.Bytes); err != nil {
 		t.Fatalf("PEM bytes not a certificate: %v", err)
+	}
+}
+
+func TestLoadOrCreateSharedMigratesAndReuses(t *testing.T) {
+	// data dir A already has its own CA
+	dirA := t.TempDir()
+	a1, err := LoadOrCreate(dirA)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// machine slot: a fresh temp dir
+	machine := t.TempDir()
+	t.Setenv("PULSE_CA_DIR", machine)
+
+	// shared load from A migrates A's CA into the machine slot
+	a2, err := LoadOrCreateShared(dirA)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if a1.Fingerprint() != a2.Fingerprint() {
+		t.Fatal("migration should keep the existing CA identity")
+	}
+	if _, err := os.Stat(filepath.Join(machine, "ca.pem")); err != nil {
+		t.Fatal("machine slot should now hold the CA")
+	}
+
+	// a different data dir with NO local CA reuses the machine CA as-is
+	dirB := t.TempDir()
+	a3, err := LoadOrCreateShared(dirB)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if a3.Fingerprint() != a1.Fingerprint() {
+		t.Fatal("every data dir must share the one machine CA")
+	}
+	// and nothing leaks into dirB
+	if _, err := os.Stat(filepath.Join(dirB, "ca.pem")); err == nil {
+		t.Fatal("shared mode must not write a CA into the data dir")
 	}
 }
