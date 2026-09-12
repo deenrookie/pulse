@@ -13,6 +13,7 @@ import GlobalSearch from './ui/GlobalSearch'
 import { applyFontSize, loadFontSize } from './ui/fontSize'
 import { usePulse } from './state'
 import { apiBase, getRemoteConfig } from './api'
+import { getSearchHistory, removeSearchHistory, SEARCH_HISTORY_EVT } from './ui/searchHistory'
 
 
 type Tab = 'proxy' | 'intercept' | 'repeater' | 'intruder' | 'sitemap' | 'extensions' | 'settings'
@@ -156,6 +157,15 @@ export default function App() {
       return location.host
     }
   })()
+
+  // footer search-history tabs: one per recent keyword, click reopens the
+  // search window pre-filled, × drops it from history
+  const [searchHistory, setSearchHistory] = useState<string[]>(getSearchHistory)
+  useEffect(() => {
+    const upd = () => setSearchHistory(getSearchHistory())
+    window.addEventListener(SEARCH_HISTORY_EVT, upd)
+    return () => window.removeEventListener(SEARCH_HISTORY_EVT, upd)
+  }, [])
 
   // "Send to Intruder": hand the raw request to the Intruder view as a seed
   // prop (dispatched before that view mounts, so an event listener would miss it)
@@ -419,6 +429,21 @@ export default function App() {
           <Icon name="puzzle" size={13} />
           Tools
         </span>
+        {searchHistory.length > 0 && <span className="foot-sep" />}
+        {searchHistory.map((k) => (
+          <span key={k} className="foot-search-tab" title={`Search again — ${k}`}>
+            <button
+              className="tab-open"
+              onClick={() => window.dispatchEvent(new CustomEvent('pulse:open-search', { detail: { q: k } }))}
+            >
+              <Icon name="search" size={11} />
+              <span className="kw mono">{k}</span>
+            </button>
+            <button className="tab-x" title="Remove from history" onClick={() => removeSearchHistory(k)}>
+              <Icon name="x" size={10} />
+            </button>
+          </span>
+        ))}
         <span className="spacer" />
         <span className={`foot-stat ${pulse.connected ? '' : 'off'}`} title="Proxy listener & event stream">
           <span className="dot" />

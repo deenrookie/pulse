@@ -1302,22 +1302,60 @@ table.flows tbody tr.hl.selected td { background: var(--accent-bg); box-shadow: 
 .highlights-modal .sub { margin-bottom: 8px; }
 .highlights-modal .rule-list { overflow: auto; min-height: 0; flex: 1; }
 
-/* global deep search (Ctrl+Shift+F) */
-.gsearch-modal { width: 640px; max-width: calc(100vw - 40px); height: min(560px, calc(100vh - 80px)); display: flex; flex-direction: column; }
-.gsearch-modal h4 { margin: 0 0 10px; display: flex; align-items: center; gap: 8px; }
-.gsearch-modal .faint { margin-left: auto; }
-.gsearch-bar { display: flex; gap: 8px; margin-bottom: 10px; }
-.gsearch-bar .input { flex: 1; }
-.gsearch-results { flex: 1; min-height: 0; overflow: auto; display: flex; flex-direction: column; gap: 2px; }
-.gsearch-empty { color: var(--text-faint); font-size: 12px; padding: 18px 4px; text-align: center; }
+/* global deep search (Ctrl+Shift+F) — Decoder-style floating window */
+.gsearch-win {
+  position: fixed; z-index: 400;
+  background: var(--bg-raised);
+  border: 1px solid var(--border-strong);
+  border-radius: 10px;
+  box-shadow: var(--shadow);
+  display: flex; flex-direction: column;
+  overflow: hidden;
+  opacity: 1;
+  transition: opacity 160ms var(--ease-out);
+}
+.gsearch-win.ghost { opacity: 0.38; z-index: 5; }
+.gsearch-win.ghost:hover { opacity: 1; z-index: 400; }
+.gsearch-win .decoder-head { cursor: grab; }
+.gsearch-bar { display: flex; gap: 8px; align-items: center; padding: 10px 12px 6px; flex: none; }
+.gsearch-bar .input { flex: 1; min-width: 0; }
+.gsearch-main { flex: 1; min-height: 0; display: flex; }
+.gsearch-results { flex: 1.1; min-width: 0; overflow: auto; display: flex; flex-direction: column; gap: 2px; padding: 6px 8px; border-right: 1px solid var(--border); }
+.gsearch-empty { color: var(--text-faint); font-size: 12px; padding: 18px 10px; text-align: center; }
 .gsearch-hit {
   display: grid; grid-template-columns: auto auto auto auto 1fr; gap: 8px; align-items: baseline;
   text-align: left; padding: 7px 9px; border-radius: var(--radius-sm); cursor: pointer;
   background: none; border: none; color: var(--text); font: inherit;
 }
 .gsearch-hit:hover { background: var(--bg-hover); }
+.gsearch-hit.selected { background: var(--accent-bg); box-shadow: inset 2px 0 0 var(--accent); }
 .gsearch-hit .title { font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .gsearch-hit .snippet { grid-column: 1 / -1; font-size: 11px; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.gsearch-preview { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.gs-preview-head { flex: none; display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-bottom: 1px solid var(--border); background: var(--bg-panel); }
+.gs-preview-head .mini { border: 1px solid var(--border); background: var(--bg-input); color: var(--text); padding: 2px 8px; border-radius: var(--radius-xs); cursor: pointer; font-size: 11px; }
+.gs-preview-head .mini.faint { color: var(--text-faint); }
+.gs-preview-body { flex: 1; min-height: 0; overflow: auto; margin: 0; padding: 10px 12px; font-size: 11.5px; line-height: 1.55; white-space: pre-wrap; word-break: break-all; color: var(--text); }
+.gs-preview-body mark { background: rgb(var(--warn-rgb) / 0.4); color: var(--text); border-radius: 2px; padding: 0 1px; }
+
+/* footer search-history tabs (right of Tools) */
+.foot-search-tab {
+  display: inline-flex; align-items: stretch; flex: none; max-width: 200px;
+  border: 1px solid var(--border); border-radius: 6px; overflow: hidden; background: var(--bg-input);
+}
+.foot-search-tab .tab-open {
+  display: inline-flex; align-items: center; gap: 6px; border: none; background: transparent;
+  padding: 3px 4px 3px 9px; cursor: pointer; color: var(--text-muted); font: inherit; min-width: 0;
+}
+.foot-search-tab .tab-open:hover { color: var(--text); }
+.foot-search-tab .tab-open .icon { flex: none; opacity: 0.7; }
+.foot-search-tab .kw { font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.foot-search-tab .tab-x {
+  display: inline-flex; align-items: center; border: none; background: transparent;
+  padding: 3px 8px 3px 4px; cursor: pointer; color: var(--text-faint);
+}
+.foot-search-tab .tab-x:hover { color: var(--danger); background: var(--bg-hover); }
 .src-tag, .side-tag {
   font-size: 10px; padding: 1px 6px; border-radius: 4px; text-transform: uppercase; letter-spacing: .4px;
   font-family: var(--mono);
