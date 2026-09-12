@@ -1,5 +1,6 @@
 import Icon from '../ui/Icon'
-import { getSettings, putSettings, apiBase, getRemoteConfig, saveRemoteConfig } from '../api'
+import { getSettings, putSettings, apiBase, getRemoteConfig, saveRemoteConfig, checkUpdate, applyUpdate, restartUpdate } from '../api'
+import type { UpdateInfo } from '../api'
 import type { PulseState } from '../state'
 import { useEffect, useState } from 'react'
 import { applyFontSize, loadFontSize, FONT_DEFAULT, FONT_MIN, FONT_MAX } from '../ui/fontSize'
@@ -13,6 +14,70 @@ export default function SettingsView({ pulse }: { pulse: PulseState }) {
   const [savedAt, setSavedAt] = useState(0)
   const [saveErr, setSaveErr] = useState<string | null>(null)
   const [fontSize, setFontSize] = useState(loadFontSize)
+
+  // self-update: check → confirm → download+swap → restart → reconnect
+  const [upd, setUpd] = useState<UpdateInfo | null>(null)
+  const [applied, setApplied] = useState<string | null>(null)
+  const [updBusy, setUpdBusy] = useState<'check' | 'apply' | 'restart' | null>(null)
+  const [updErr, setUpdErr] = useState<string | null>(null)
+
+  const doCheck = async () => {
+    setUpdErr(null)
+    setUpdBusy('check')
+    try {
+      setUpd(await checkUpdate())
+    } catch (e) {
+      setUpdErr((e as Error).message)
+    } finally {
+      setUpdBusy(null)
+    }
+  }
+
+  const doApply = async () => {
+    setUpdErr(null)
+    setUpdBusy('apply')
+    try {
+      const r = await applyUpdate()
+      setUpd(r)
+      setApplied(r.latest)
+      pulse.notify(`Upgraded to v${r.latest} — restart to finish`)
+    } catch (e) {
+      setUpdErr((e as Error).message)
+    } finally {
+      setUpdBusy(null)
+    }
+  }
+
+  const doRestart = async () => {
+    setUpdErr(null)
+    setUpdBusy('restart')
+    try {
+      await restartUpdate()
+    } catch {
+      /* the process may exit before the response lands — treat as started */
+    }
+    // poll until the new binary answers, then hard-reload the app
+    const deadline = Date.now() + 30_000
+    const poll = async () => {
+      if (Date.now() > deadline) {
+        setUpdBusy(null)
+        setUpdErr('Restart timed out — start Pulse manually and refresh.')
+        return
+      }
+      try {
+        const r = await fetch('/api/status', { cache: 'no-store' })
+        if (r.ok) {
+          await r.json()
+          location.reload()
+          return
+        }
+      } catch {
+        /* still down */
+      }
+      setTimeout(poll, 600)
+    }
+    setTimeout(poll, 1500)
+  }
 
   // hosted-panel remote access: server address + access key, localStorage only
   const [remoteServer, setRemoteServer] = useState(() => getRemoteConfig()?.server ?? '')
@@ -216,7 +281,63 @@ export default function SettingsView({ pulse }: { pulse: PulseState }) {
 
         <div className="card">
           <h3>
-            <Icon name="bolt" size={15} />
+            <Icon name="download" size={15} />
+            Updates
+          </h3>
+          <div className="sub">
+            Current backend version and GitHub release check — the upgrade downloads the release
+            archive for this platform, swaps the binary in place and restarts Pulse.
+          </div>
+          <div className="update-row">
+            <span className="mono">
+              {st ? `v${st.version}` : '…'}
+            </span>
+            {!upd && (
+              <button className="btn sm" disabled={!!updBusy} onClick={() => void doCheck()}>
+                {updBusy === 'check' ? <span className="spinner" /> : <Icon name="refresh" size={12} />}
+                Check for updates
+              </button>
+            )}
+            {upd?.htmlUrl && (
+              <a className="btn ghost sm" href={upd.htmlUrl} target="_blank" rel="noreferrer">
+                Release notes
+              </a>
+            )}
+          </div>
+          {updErr && <div className="update-err">{updErr}</div>}
+          {upd && !updErr && (
+            <div className={`update-banner ${upd.newer ? 'newer' : ''}`}>
+              {upd.newer ? (
+                <>
+                  <b>v{upd.latest}</b> is available ({upd.assetName ?? 'no asset for this platform'}
+                  {upd.size ? ` · ${(upd.size / 1048576).toFixed(1)} MB` : ''}).
+                  {!upd.assetUrl && ' This platform has no release archive — update manually.'}
+                  {upd.assetUrl && (
+                    <button className="btn sm primary" disabled={!!updBusy} onClick={() => void doApply()}>
+                      {updBusy === 'apply' ? <span className="spinner" /> : <Icon name="download" size={12} />}
+                      {updBusy === 'apply' ? `Downloading v${upd.latest}…` : `Upgrade to v${upd.latest}`}
+                    </button>
+                  )}
+                </>
+              ) : (
+                <>Up to date — v{upd.latest} is the latest release.</>
+              )}
+            </div>
+          )}
+          {applied && (
+            <div className="update-banner newer">
+              <b>v{applied}</b> downloaded and swapped — restart to finish.
+              <button className="btn sm primary" disabled={!!updBusy} onClick={() => void doRestart()}>
+                {updBusy === 'restart' ? <span className="spinner" /> : <Icon name="refresh" size={12} />}
+                {updBusy === 'restart' ? 'Restarting…' : 'Restart now'}
+              </button>
+            </div>
+          )}
+        </div>
+
+        <div className="card">
+          <h3>
+            <Icon name="gear" size={15} />
             Runtime
           </h3>
           <div className="sub">Current process configuration and counters.</div>

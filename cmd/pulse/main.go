@@ -21,9 +21,10 @@ import (
 	"pulse/internal/repeater"
 	"pulse/internal/rewrite"
 	"pulse/internal/store"
+	"pulse/internal/update"
 )
 
-var version = "0.3.2"
+var version = "0.3.3"
 
 func main() {
 	var (
@@ -39,6 +40,15 @@ func main() {
 	}
 
 	log.SetFlags(log.Ltime)
+	// leftover from a self-update: the previous binary moved aside
+	update.CleanupOld()
+	// set by the restart endpoint's child process — wait for the parent's
+	// listeners to be released before binding
+	if g := os.Getenv("PULSE_RESTART_GRACE"); g != "" {
+		if d, err := time.ParseDuration(g); err == nil && d > 0 {
+			time.Sleep(d)
+		}
+	}
 	if err := run(*proxyAddr, *uiAddr, *dataDir); err != nil {
 		log.Fatalf("pulse: %v", err)
 	}

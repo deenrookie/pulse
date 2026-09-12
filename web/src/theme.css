@@ -1356,6 +1356,22 @@ table.flows tbody tr.hl.selected td { background: var(--accent-bg); box-shadow: 
 .gsearch-opts .mini.opt:hover { color: var(--text); }
 .gsearch-opts .mini.opt.on { background: var(--accent-bg); color: var(--accent); border-color: var(--accent); }
 
+/* settings: self-update card */
+.update-row { display: flex; align-items: center; gap: 10px; margin: 10px 0 2px; }
+.update-row .mono { font-size: 13px; color: var(--text); }
+.update-banner {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  margin-top: 10px; padding: 9px 12px; border-radius: var(--radius-sm);
+  border: 1px solid var(--border); background: var(--bg-input);
+  color: var(--text-muted); font-size: 12.5px;
+}
+.update-banner.newer {
+  border-color: rgb(var(--ok-rgb, var(--accent-rgb)) / 0.5);
+  background: rgb(var(--ok-rgb, var(--accent-rgb)) / 0.08);
+  color: var(--text);
+}
+.update-err { margin-top: 8px; color: var(--danger); font-size: 12px; word-break: break-all; }
+
 /* footer search-history tabs (right of Tools) */.foot-search-tab {
   display: inline-flex; align-items: stretch; flex: none; max-width: 200px;
   border: 1px solid var(--border-strong); border-radius: 6px; overflow: hidden; background: var(--bg-input);

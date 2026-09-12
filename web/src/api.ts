@@ -87,6 +87,25 @@ export const deepSearch = (q: string, opts: SearchOptions = {}) => {
 export const annotateFlow = (id: string, patch: { star?: boolean; note?: string }) =>
   api<{ star: boolean; note: string }>(`/api/flows/${encodeURIComponent(id)}/annotate`, { method: 'PUT', body: JSON.stringify(patch) })
 
+// ---------- self-update ----------
+
+export interface UpdateInfo {
+  current: string
+  latest: string
+  newer: boolean
+  assetName?: string
+  assetUrl?: string
+  size?: number
+  notes?: string
+  htmlUrl?: string
+}
+
+export const checkUpdate = () => api<UpdateInfo>('/api/update/check')
+
+export const applyUpdate = () => api<UpdateInfo>('/api/update/apply', { method: 'POST' })
+
+export const restartUpdate = () => api<{ restarting: boolean }>('/api/update/restart', { method: 'POST' })
+
 // ---------- intruder ----------
 
 export const listAttacks = () => api<{ attacks: Attack[] }>('/api/intruder')
