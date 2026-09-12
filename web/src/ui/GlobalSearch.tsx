@@ -9,7 +9,7 @@ import { createPortal } from 'react-dom'
 import Icon from './Icon'
 import { deepSearch, getFlow, listRepeater, rawOfMessage, bodyToText } from '../api'
 import type { SearchOptions } from '../api'
-import { pushSearchHistory } from './searchHistory'
+import { pushSearchHistory, renameSearchHistory } from './searchHistory'
 import { getSelected, setSelected } from './searchSel'
 import type { SearchHit, Flow, RepeaterTab } from '../types'
 
@@ -139,6 +139,9 @@ interface Session {
   id: string
   /** keyword identity for "this window is already open" checks ('' = fresh) */
   keyword: string
+  /** the footer history tab this window owns ('' = none yet). Windows
+   * re-searching a new keyword rename their tab instead of adding one. */
+  tabKw: string
   initialQ: string
   autoRun: boolean
   /** only windows opened from the top entry create footer history tabs */
@@ -168,6 +171,7 @@ function SearchWindow({
   const [err, setErr] = useState<string | null>(null)
   const [opts, setOpts] = useState<SearchOptions>(loadOpts)
   const needleRef = useRef(session.initialQ)
+  const tabKwRef = useRef(session.tabKw)
   const resultsRef = useRef<HTMLDivElement | null>(null)
   const [win, setWin] = useState<WinState>(() => {
     const w = loadWin()
@@ -206,7 +210,16 @@ function SearchWindow({
       const r = await deepSearch(needle, opts)
       setHits(r.hits)
       onSearched(needle)
-      if (session.tracksHistory) pushSearchHistory(needle)
+      // footer-tab ownership: first search of a top-entry window creates
+      // its one tab; every later search renames it (no tab per keyword)
+      const owned = tabKwRef.current
+      if (!owned && session.tracksHistory) {
+        pushSearchHistory(needle)
+        tabKwRef.current = needle
+      } else if (owned && owned !== needle) {
+        renameSearchHistory(owned, needle)
+        tabKwRef.current = needle
+      }
       // reopened from a footer history tab → jump back to the record the
       // user last selected for this keyword
       if (session.autoRun) {
@@ -476,6 +489,7 @@ export default function GlobalSearch() {
           {
             id: crypto.randomUUID(),
             keyword: prefill ?? '',
+            tabKw: prefill ?? '', // footer-opened windows own the tab they came from
             initialQ: prefill ?? '',
             autoRun: !!prefill,
             tracksHistory: !prefill,
@@ -485,9 +499,25 @@ export default function GlobalSearch() {
         ]
       })
     }
+    // a footer history tab was removed → its window goes with it
+    const onClose = (e: Event) => {
+      const q = (e as CustomEvent<{ q?: string }>).detail?.q?.trim()
+      if (!q) return
+      setSessions((prev) => prev.filter((s) => s.keyword !== q))
+    }
     window.addEventListener('pulse:open-search', onOpen)
-    return () => window.removeEventListener('pulse:open-search', onOpen)
+    window.addEventListener('pulse:close-search', onClose)
+    return () => {
+      window.removeEventListener('pulse:open-search', onOpen)
+      window.removeEventListener('pulse:close-search', onClose)
+    }
   }, [])
+
+  // tell the footer which tab belongs to the focused (topmost) window
+  useEffect(() => {
+    const top = sessions.length ? sessions.reduce((a, b) => (b.z > a.z ? b : a)) : null
+    window.dispatchEvent(new CustomEvent('pulse:search-focus', { detail: { q: top?.keyword ?? '' } }))
+  }, [sessions])
 
   const closeSession = (id: string) => setSessions((prev) => prev.filter((s) => s.id !== id))
   const focusSession = (id: string) =>

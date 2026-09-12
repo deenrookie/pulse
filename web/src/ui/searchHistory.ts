@@ -36,3 +36,24 @@ export function removeSearchHistory(q: string) {
   }
   window.dispatchEvent(new CustomEvent(SEARCH_HISTORY_EVT))
 }
+
+/** a search window re-searched a new keyword: its footer tab follows along
+ * (renamed in place) instead of piling up one tab per search */
+export function renameSearchHistory(prev: string, next: string) {
+  const needle = next.trim()
+  if (!needle || prev === needle) return
+  const cur = getSearchHistory()
+  const idx = cur.indexOf(prev)
+  if (idx < 0) {
+    pushSearchHistory(needle)
+    return
+  }
+  const rest = cur.filter((x, i) => i !== idx && x !== needle)
+  const out = [...rest.slice(0, idx), needle, ...rest.slice(idx)].slice(0, LIMIT)
+  try {
+    localStorage.setItem(KEY, JSON.stringify(out))
+  } catch {
+    /* storage unavailable */
+  }
+  window.dispatchEvent(new CustomEvent(SEARCH_HISTORY_EVT))
+}
