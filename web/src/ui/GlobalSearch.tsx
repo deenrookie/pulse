@@ -11,6 +11,7 @@ import { deepSearch, getFlow, listRepeater } from '../api'
 import type { SearchOptions } from '../api'
 import { RequestInspector, ResponseInspector } from '../components/MessageViewer'
 import ContextMenu, { type MenuItem } from '../components/ContextMenu'
+import Split from './Split'
 import { pushSearchHistory, renameSearchHistory } from './searchHistory'
 import { getSelected, setSelected } from './searchSel'
 import type { PulseState } from '../state'
@@ -258,6 +259,12 @@ function SearchWindow({
         ]
       : [{ icon: 'chevronRight', label: 'Open in Repeater', onClick: () => jump(h) }]
 
+  /** the preview inspector's raw-view menu gets the same Repeater action */
+  const previewMenu = (h: SearchHit | undefined): MenuItem[] =>
+    h && h.source === 'traffic'
+      ? [{ icon: 'send', label: 'Send to Repeater', hint: 'R', separatorAfter: true, onClick: () => sendToRepeater(h) }]
+      : []
+
   // ---- window dragging (Decoder pattern) ----
   const dragRef = useRef<{ dx: number; dy: number } | null>(null)
   const [dragging, setDragging] = useState(false)
@@ -391,7 +398,7 @@ function SearchWindow({
         )}
       </div>
 
-      <div className="gsearch-main">
+      <Split dir="h" storageKey="pulse.gsearch.split" initial={0.48} className="gsearch-main" a={(
         <div className="gsearch-results" ref={resultsRef}>
           {hits === null && !err && <div className="gsearch-empty">Enter a keyword — bodies, headers, URLs and Repeater history are all scanned.</div>}
           {err && <div className="gsearch-empty">Search failed — {err}</div>}
@@ -420,7 +427,8 @@ function SearchWindow({
             </button>
           ))}
         </div>
-
+      )}
+      b={(
         <div className="gsearch-preview">
           {!detail && !detailBusy && (
             <div className="gsearch-empty">
@@ -452,12 +460,12 @@ function SearchWindow({
               <div className="gs-preview-wrap">
                 {pvSide === 'request' ? (
                   detail.req ? (
-                    <RequestInspector req={detail.req} />
+                    <RequestInspector req={detail.req} extraMenu={previewMenu(detail.hit)} />
                   ) : (
                     <div className="gsearch-empty">No request for this hit.</div>
                   )
                 ) : detail.resp ? (
-                  <ResponseInspector resp={detail.resp} ws={detail.ws} />
+                  <ResponseInspector resp={detail.resp} ws={detail.ws} extraMenu={previewMenu(detail.hit)} />
                 ) : (
                   <div className="gsearch-empty">No response for this hit.</div>
                 )}
@@ -465,7 +473,7 @@ function SearchWindow({
             </>
           )}
         </div>
-      </div>
+      )} />
 
       {menu && <ContextMenu x={menu.x} y={menu.y} items={menuItems(menu.hit)} onClose={() => setMenu(null)} />}
 

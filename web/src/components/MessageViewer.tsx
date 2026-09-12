@@ -52,6 +52,7 @@ export function RequestInspector({
   onRawChange,
   headerExtra,
   onParamEdit,
+  extraMenu,
 }: {
   req: RequestLike
   flowId?: string
@@ -62,6 +63,8 @@ export function RequestInspector({
   headerExtra?: React.ReactNode
   /** edit a query/form param and write it back into the raw buffer */
   onParamEdit?: (where: 'query' | 'body', name: string, value: string) => void
+  /** caller-specific entries prepended to the raw view's context menu */
+  extraMenu?: MenuItem[]
 }) {
   const [tab, setTab] = useState<Tab>('raw')
   const params = useMemo(() => collectParams(req.url, req.headers, req.body), [req.url, req.headers, req.body])
@@ -106,7 +109,7 @@ export function RequestInspector({
         {tab === 'raw' && editableRaw ? (
           <RawEditor value={raw} onChange={onRawChange} />
         ) : (
-          <TabBody tab={tab} headers={req.headers} params={params} text={text} b64={req.body} kind="request" req={req} curlFlowId={flowId} curlRequest={editableRaw ? req : undefined} onParamEdit={editableRaw ? onParamEdit : undefined} />
+          <TabBody tab={tab} headers={req.headers} params={params} text={text} b64={req.body} kind="request" req={req} curlFlowId={flowId} curlRequest={editableRaw ? req : undefined} onParamEdit={editableRaw ? onParamEdit : undefined} extraMenu={extraMenu} />
         )}
       </div>
     </div>
@@ -142,6 +145,7 @@ export function ResponseInspector({
   flowId,
   ws,
   busy,
+  extraMenu,
 }: {
   resp?: ResponseLike
   error?: string
@@ -150,6 +154,8 @@ export function ResponseInspector({
   /** a send is in flight: keep the last response on screen and show a small
    *  inline indicator instead of swapping the whole pane to a spinner */
   busy?: boolean
+  /** caller-specific entries prepended to the raw view's context menu */
+  extraMenu?: MenuItem[]
 }) {
   const [tab, setTab] = useState<Tab>('raw')
   // transparently decompress gzip/deflate/br response bodies for display
@@ -285,6 +291,7 @@ export function ResponseInspector({
             curlFlowId={flowId}
             decompressed={wasDecompressed}
             statusLine={`${resp.httpVersion || 'HTTP/1.1'} ${resp.statusCode} ${resp.reason}`}
+            extraMenu={extraMenu}
           />
         )}
       </div>
@@ -422,6 +429,7 @@ function TabBody({
   decompressed,
   statusLine,
   onParamEdit,
+  extraMenu,
 }: {
   tab: Tab
   headers: Header[]
@@ -440,6 +448,8 @@ function TabBody({
   statusLine?: string
   /** edit a query/form param and write it back (Repeater editable context) */
   onParamEdit?: (where: 'query' | 'body', name: string, value: string) => void
+  /** caller-specific entries prepended to the raw view's context menu */
+  extraMenu?: MenuItem[]
 }) {
   switch (tab) {
     case 'headers':
@@ -493,7 +503,7 @@ function TabBody({
         kind === 'request' && req
           ? `${req.method} ${pathOf(req.url)} ${req.httpVersion || 'HTTP/1.1'}`
           : statusLine
-      return <RawView headLine={headLine} headers={headers} text={text} flowIdForCurl={curlFlowId} curlRequest={curlRequest} urlForCopy={kind === 'request' ? req?.url : undefined} />
+      return <RawView headLine={headLine} headers={headers} text={text} flowIdForCurl={curlFlowId} curlRequest={curlRequest} urlForCopy={kind === 'request' ? req?.url : undefined} extraMenu={extraMenu} />
     }
   }
 }
@@ -582,6 +592,7 @@ function RawView({
   flowIdForCurl,
   curlRequest,
   urlForCopy,
+  extraMenu,
 }: {
   headLine?: string
   headers: Header[]
@@ -590,6 +601,8 @@ function RawView({
   curlRequest?: RequestLike
   /** request side only — adds the Burp-style "Copy URL" menu entry */
   urlForCopy?: string
+  /** caller-specific entries shown first in the context menu */
+  extraMenu?: MenuItem[]
 }) {
   const [q, setQ] = useState('')
   const [hit, setHit] = useState(0)
@@ -710,6 +723,7 @@ function RawView({
   }, [lines])
 
   const menuItems = (): MenuItem[] => [
+    ...(extraMenu ?? []),
     ...(selText
       ? [
           {

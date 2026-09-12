@@ -1323,7 +1323,7 @@ table.flows tbody tr.hl.selected td { background: var(--accent-bg); box-shadow: 
 .gsearch-bar { display: flex; gap: 8px; align-items: center; padding: 10px 12px 6px; flex: none; }
 .gsearch-bar .input { flex: 1; min-width: 0; }
 .gsearch-main { flex: 1; min-height: 0; display: flex; }
-.gsearch-results { flex: 1.1; min-width: 0; overflow: auto; display: flex; flex-direction: column; gap: 2px; padding: 6px 8px; border-right: 1px solid var(--border); }
+.gsearch-results { flex: 1; min-width: 0; overflow: auto; display: flex; flex-direction: column; gap: 2px; padding: 6px 8px; }
 .gsearch-empty { color: var(--text-faint); font-size: 12px; padding: 18px 10px; text-align: center; }
 .gsearch-hit {
   display: grid; grid-template-columns: auto auto auto auto 1fr; gap: 8px; align-items: baseline;
