@@ -261,7 +261,9 @@ func writeRequestHead(w io.Writer, req *store.Request) error {
 	fmt.Fprintf(&b, "%s %s %s\r\n", req.Method, requestTarget(req.URL), version)
 	hasHost := hasHeader(req.Headers, "Host")
 	if !hasHost {
-		fmt.Fprintf(&b, "Host: %s\r\n", hostOf(req.URL))
+		// browsers never send a scheme-default port in Host; some risk-control
+		// frontends reject requests that do
+		fmt.Fprintf(&b, "Host: %s\r\n", hostOf(stripDefaultPort(req.URL)))
 	}
 	keepUpgrade := func(name string) bool {
 		return isUpgrade && (strings.EqualFold(name, "Upgrade") || strings.EqualFold(name, "Connection"))

@@ -1,7 +1,6 @@
 package proxy
 
 import (
-	"sort"
 	"bufio"
 	"bytes"
 	"context"
@@ -10,6 +9,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -114,10 +114,37 @@ func (c *Client) h2Transport() *http2.Transport {
 	return c.h2tr
 }
 
+// stripDefaultPort removes an explicit scheme-default port from a URL
+// ("https://host:443/x" → "https://host/x"). Browsers never send :443/:80 in
+// the authority or Host header, and risk-control frontends (seen in the wild:
+// bilibili's 412) reject requests that do. Captured URLs keep the port (it is
+// how CONNECT targets arrive); only the outbound request is normalized.
+func stripDefaultPort(rawURL string) string {
+	i := strings.Index(rawURL, "://")
+	if i < 0 {
+		return rawURL
+	}
+	scheme := strings.ToLower(rawURL[:i])
+	rest := rawURL[i+3:]
+	slash := strings.IndexAny(rest, "/?#")
+	hostPart, pathPart := rest, ""
+	if slash >= 0 {
+		hostPart, pathPart = rest[:slash], rest[slash:]
+	}
+	colon := strings.LastIndex(hostPart, ":")
+	if colon >= 0 {
+		port := hostPart[colon+1:]
+		if (scheme == "https" && port == "443") || (scheme == "http" && port == "80") {
+			hostPart = hostPart[:colon]
+		}
+	}
+	return scheme + "://" + hostPart + pathPart
+}
+
 // doH2 sends req over HTTP/2. ok=false means "not handled — use HTTP/1.1"
 // (the origin declined h2 or the transport failed before a usable stream).
 func (c *Client) doH2(req *store.Request) (*Result, bool, error) {
-	out, err := http.NewRequest(req.Method, req.URL, nil)
+	out, err := http.NewRequest(req.Method, stripDefaultPort(req.URL), nil)
 	if err != nil {
 		return nil, false, nil
 	}
