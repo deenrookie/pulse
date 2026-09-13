@@ -551,17 +551,7 @@ export default function InterceptView({ pulse }: { pulse: PulseState }) {
       headers: heldFull.headers,
       body: heldFull.body ?? '',
     }
-    try {
-      const tab = await api.createRepeaterTab({ request })
-      try {
-        localStorage.setItem('pulse.repeater.jumpNewest', '1')
-      } catch {
-        /* ignore */
-      }
-      pulse.notify(`Sent to Repeater (${tab.id})`)
-    } catch (e) {
-      pulse.notify(`Send failed: ${(e as Error).message}`, 'err')
-    }
+    await pulse.sendRequestToRepeater(request)
   }
 
   // Ctrl+R (global) and the raw context menu both land here — same path,

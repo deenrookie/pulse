@@ -250,6 +250,29 @@ export function usePulse() {
     [notify],
   )
 
+  // Intercept's held requests are not flows — same outcome from a parsed
+  // request object (tab created, Repeater badge refreshed, jump-newest armed)
+  const sendRequestToRepeater = useCallback(
+    async (request: EditableRequest) => {
+      try {
+        const tab = await api.createRepeaterTab({ request })
+        const r = await api.listRepeater()
+        setRepeaterTabs(r.tabs)
+        notify(`Sent to Repeater (${tab.id})`)
+        try {
+          localStorage.setItem('pulse.repeater.jumpNewest', '1')
+        } catch {
+          /* ignore */
+        }
+        return true
+      } catch (e) {
+        notify(`Send to Repeater failed: ${(e as Error).message}`, 'err')
+        return false
+      }
+    },
+    [notify],
+  )
+
   // blank tab with a sensible default request (API needs flowId or request)
   const newRepeaterTab = useCallback(async () => {
     try {
@@ -318,6 +341,7 @@ export function usePulse() {
     dropPending,
     repeaterTabs,
     sendToRepeater,
+    sendRequestToRepeater,
     newRepeaterTab,
     repeaterSend,
     repeaterSave,
