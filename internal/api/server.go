@@ -3,6 +3,9 @@
 package api
 
 import (
+	"bytes"
+	"compress/gzip"
+	"compress/zlib"
 	"crypto/rand"
 	"crypto/subtle"
 	"encoding/hex"
@@ -337,7 +340,10 @@ func parseEditableRequest(w http.ResponseWriter, r *store.Request) bool {
 }
 
 // parseEditableResponse validates a client-submitted response object
-// (held-response forwarding with modifications).
+// (held-response forwarding with modifications). The editor shows the body
+// DECODED, so the submitted body is plain — it is re-compressed here to
+// whatever Content-Encoding the (edited) headers declare, mirroring how the
+// request side recomputes Content-Length on send.
 func parseEditableResponse(w http.ResponseWriter, r *store.Response) bool {
 	if r.StatusCode < 100 || r.StatusCode > 599 {
 		writeErr(w, http.StatusBadRequest, "response status code must be 100..599")
@@ -355,8 +361,33 @@ func parseEditableResponse(w http.ResponseWriter, r *store.Response) bool {
 	if r.Headers == nil {
 		r.Headers = []store.Header{}
 	}
-	// keep Content-Length honest with the (possibly edited) body — a stale
-	// length stalls the client waiting for bytes that never come
+
+	// re-encode the plain body to the declared Content-Encoding. gzip and
+	// deflate are compressed natively; anything else (br, zstd, layered
+	// encodings) drops the header — identity is always acceptable to the
+	// browser, a mismatched label never is.
+	ce := ""
+	for _, h := range r.Headers {
+		if strings.EqualFold(h.Name, "Content-Encoding") {
+			ce = strings.TrimSpace(strings.ToLower(h.Value))
+			break
+		}
+	}
+	encoded, ceOK := reencodeBody(r.Body, ce)
+	if ce != "" && !ceOK {
+		filtered := make([]store.Header, 0, len(r.Headers))
+		for _, h := range r.Headers {
+			if !strings.EqualFold(h.Name, "Content-Encoding") {
+				filtered = append(filtered, h)
+			}
+		}
+		r.Headers = filtered
+	} else if ceOK {
+		r.Body = encoded
+	}
+
+	// keep Content-Length honest with the (possibly re-encoded) body — a
+	// stale length stalls the client waiting for bytes that never come
 	headers := make([]store.Header, 0, len(r.Headers)+1)
 	for _, h := range r.Headers {
 		if !strings.EqualFold(h.Name, "Content-Length") {
@@ -366,4 +397,33 @@ func parseEditableResponse(w http.ResponseWriter, r *store.Response) bool {
 	r.Headers = append(headers, store.Header{Name: "Content-Length", Value: strconv.Itoa(len(r.Body))})
 	r.Truncated = false
 	return true
+}
+
+// reencodeBody compresses plain to the named HTTP content-coding. The bool
+// reports whether the coding was applied (unknown codings return false).
+func reencodeBody(plain []byte, ce string) ([]byte, bool) {
+	switch strings.TrimSpace(ce) {
+	case "gzip", "x-gzip":
+		var b bytes.Buffer
+		zw := gzip.NewWriter(&b)
+		if _, err := zw.Write(plain); err != nil {
+			return plain, false
+		}
+		if err := zw.Close(); err != nil {
+			return plain, false
+		}
+		return b.Bytes(), true
+	case "deflate":
+		var b bytes.Buffer
+		zw := zlib.NewWriter(&b)
+		if _, err := zw.Write(plain); err != nil {
+			return plain, false
+		}
+		if err := zw.Close(); err != nil {
+			return plain, false
+		}
+		return b.Bytes(), true
+	default:
+		return plain, false
+	}
 }

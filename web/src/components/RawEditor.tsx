@@ -36,11 +36,12 @@ export function requestToRaw(req: HttpRequest): string {
   return `${req.method} ${path} ${req.httpVersion || 'HTTP/1.1'}\n${headers}\n\n${body}`
 }
 
-/** serialize a held response into the editable raw form */
-export function responseToRaw(resp: HttpResponse): string {
+/** serialize a held response into the editable raw form. The body text is
+ *  passed in (decoded from Content-Encoding) — the editor always shows and
+ *  edits PLAIN text; the backend re-encodes on forward. */
+export function responseToRaw(resp: HttpResponse, bodyText: string): string {
   const headers = (resp.headers ?? []).map((h) => `${h.name}: ${h.value}`).join('\n')
-  const body = bodyToText(resp.body)
-  return `${resp.httpVersion || 'HTTP/1.1'} ${resp.statusCode} ${resp.reason || ''}\n${headers}\n\n${body}`
+  return `${resp.httpVersion || 'HTTP/1.1'} ${resp.statusCode} ${resp.reason || ''}\n${headers}\n\n${bodyText}`
 }
 
 /** the response fields the intercept forward endpoint accepts, merged over

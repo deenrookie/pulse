@@ -300,6 +300,8 @@ export default function InterceptView({ pulse }: { pulse: PulseState }) {
   const [raw, setRaw] = useState<string | null>(null)
   /** edited raw of the held response (null = untouched) */
   const [respRaw, setRespRaw] = useState<string | null>(null)
+  /** decoded, ready-to-edit raw of the stored response */
+  const [respBaseRaw, setRespBaseRaw] = useState<string | null>(null)
   const [selectedResp, setSelectedResp] = useState<string | null>(null)
   const [respDetail, setRespDetail] = useState<api.HeldResponseDetail | null>(null)
 
@@ -313,13 +315,16 @@ export default function InterceptView({ pulse }: { pulse: PulseState }) {
     return { ...heldFull, method: parsed.method, url: parsed.url, httpVersion: parsed.httpVersion, headers: parsed.headers, body: parsed.body }
   }, [heldFull, raw])
 
-  // the held response as currently shown (edited fields win over the stored ones)
+  // the held response as currently shown (edited fields win over the stored
+  // ones; Content-Encoding is display-stripped once edited — the body is
+  // plain until the backend re-encodes on forward)
   const respView = useMemo(() => {
     if (!respDetail) return null
     if (respRaw === null) return respDetail.response
     const parsed = rawToResponse(respRaw)
     if ('error' in parsed) return respDetail.response
-    return { ...respDetail.response, statusCode: parsed.statusCode, reason: parsed.reason, httpVersion: parsed.httpVersion, headers: parsed.headers, body: parsed.body }
+    const headers = parsed.headers.filter((h) => h.name.toLowerCase() !== 'content-encoding')
+    return { ...respDetail.response, statusCode: parsed.statusCode, reason: parsed.reason, httpVersion: parsed.httpVersion, headers, body: parsed.body }
   }, [respDetail, respRaw])
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
@@ -391,9 +396,17 @@ export default function InterceptView({ pulse }: { pulse: PulseState }) {
     }
     let alive = true
     setRespRaw(null)
+    setRespBaseRaw(null)
     api
       .getHeldResponse(selectedResp)
-      .then((d) => alive && setRespDetail(d))
+      .then(async (d) => {
+        if (!alive) return
+        setRespDetail(d)
+        // the editor edits PLAIN text: decode the stored body first
+        const ce = (d.response.headers ?? []).find((h) => h.name.toLowerCase() === 'content-encoding')?.value ?? ''
+        const dec = await api.bodyToTextDecoded(d.response.body, ce)
+        if (alive) setRespBaseRaw(responseToRaw(d.response, dec.text))
+      })
       .catch(() => alive && setRespDetail(null))
     return () => {
       alive = false
@@ -957,11 +970,11 @@ export default function InterceptView({ pulse }: { pulse: PulseState }) {
         </div>
         <div className="panel-body" style={{ display: 'flex', flexDirection: 'column' }}>
           {selectedResp ? (
-            respDetail && respView ? (
+            respDetail && respView && respBaseRaw !== null ? (
               <div style={{ display: 'flex', flex: 1, minHeight: 0 }}>
                 <ResponseInspector
                   resp={respView}
-                  raw={respRaw ?? responseToRaw(respDetail.response)}
+                  raw={respRaw ?? respBaseRaw}
                   onRawChange={setRespRaw}
                 />
               </div>
