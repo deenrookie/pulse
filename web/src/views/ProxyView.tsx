@@ -82,11 +82,24 @@ export default function ProxyView({ pulse }: { pulse: PulseState }) {
       .catch(() => {})
   }, [])
 
-  const toggleLean = (v: boolean) => {
+  const toggleLean = async (v: boolean) => {
+    if (v) {
+      const ok = await confirm({
+        title: 'Enable Lean capture?',
+        message:
+          'Response bodies of binary, static and JavaScript content (images, css, js, fonts, media, archives) will be replaced by a short stub instead of being stored — requests, status codes and headers are all kept, and dynamic content (HTML, JSON, forms) is never touched. This saves memory during long capture sessions. Already-stored flows are not modified.',
+        confirmLabel: 'Enable Lean',
+        cancelLabel: 'Cancel',
+      })
+      if (!ok) return
+    }
     setLean(v)
-    putSettings({ stubStatic: v })
-      .then((s) => setLean(s.stubStatic))
-      .catch(() => setLean(!v))
+    try {
+      const s = await putSettings({ stubStatic: v })
+      setLean(s.stubStatic)
+    } catch {
+      setLean(!v)
+    }
   }
   const [rules, setRules] = useState<HighlightRule[]>(loadRules)
   const [rulesPos, setRulesPos] = useState<{ x: number; y: number } | null>(null)
