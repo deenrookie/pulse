@@ -22,7 +22,7 @@ function renderPositionMarks(line: string): React.ReactNode {
     ),
   )
 }
-import type { EditableRequest, HttpRequest } from '../types'
+import type { EditableRequest, EditableResponse, HttpRequest, HttpResponse } from '../types'
 
 /** serialize a captured request into a raw editable buffer */
 export function requestToRaw(req: HttpRequest): string {
@@ -34,6 +34,43 @@ export function requestToRaw(req: HttpRequest): string {
   const headers = (req.headers ?? []).map((h) => `${h.name}: ${h.value}`).join('\n')
   const body = bodyToText(req.body)
   return `${req.method} ${path} ${req.httpVersion || 'HTTP/1.1'}\n${headers}\n\n${body}`
+}
+
+/** serialize a held response into the editable raw form */
+export function responseToRaw(resp: HttpResponse): string {
+  const headers = (resp.headers ?? []).map((h) => `${h.name}: ${h.value}`).join('\n')
+  const body = bodyToText(resp.body)
+  return `${resp.httpVersion || 'HTTP/1.1'} ${resp.statusCode} ${resp.reason || ''}\n${headers}\n\n${body}`
+}
+
+/** the response fields the intercept forward endpoint accepts, merged over
+ *  the original (timestamp/duration reporting stay untouched) */
+
+/** parse an edited raw response back into shape. Unlike requests there is
+ *  one strict bit: the status line must carry a 3-digit code. */
+export function rawToResponse(raw: string): EditableResponse | { error: string } {
+  const lines = raw.replace(/\r\n/g, '\n').split('\n')
+  let empty = lines.findIndex((l, i) => i > 0 && l.trim() === '')
+  if (empty < 0) empty = lines.length
+
+  const m = (lines[0] ?? '').match(/^(HTTP\/[\d.]+)?\s*(\d{3})\s*(.*)$/)
+  if (!m) {
+    return { error: 'first line must be a status line, e.g. "HTTP/1.1 200 OK"' }
+  }
+  const headers: { name: string; value: string }[] = []
+  for (const line of lines.slice(1, empty)) {
+    const idx = line.indexOf(':')
+    if (idx > 0) headers.push({ name: line.slice(0, idx).trim(), value: line.slice(idx + 1).trim() })
+    else if (line.trim()) headers.push({ name: line.trim(), value: '' })
+  }
+  const body = lines.slice(empty + 1).join('\n')
+  return {
+    statusCode: Number(m[2]),
+    reason: m[3].trim(),
+    httpVersion: m[1] || 'HTTP/1.1',
+    headers,
+    body: encodeBody(new TextEncoder().encode(body)),
+  }
 }
 
 /** parse the raw buffer back into a request — LENIENT by design: never

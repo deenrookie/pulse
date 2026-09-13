@@ -130,6 +130,15 @@ export interface EditableRequest {
   body: string // base64
 }
 
+/** the response fields the intercept forward endpoint accepts */
+export interface EditableResponse {
+  statusCode: number
+  reason: string
+  httpVersion: string
+  headers: Header[]
+  body: string // base64
+}
+
 export type RewriteZone =
   | 'request_line'
   | 'request_header'

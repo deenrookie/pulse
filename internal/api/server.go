@@ -13,6 +13,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -332,5 +333,37 @@ func parseEditableRequest(w http.ResponseWriter, r *store.Request) bool {
 		writeErr(w, http.StatusBadRequest, "request URL has no host")
 		return false
 	}
+	return true
+}
+
+// parseEditableResponse validates a client-submitted response object
+// (held-response forwarding with modifications).
+func parseEditableResponse(w http.ResponseWriter, r *store.Response) bool {
+	if r.StatusCode < 100 || r.StatusCode > 599 {
+		writeErr(w, http.StatusBadRequest, "response status code must be 100..599")
+		return false
+	}
+	if r.HTTPVersion == "" {
+		r.HTTPVersion = "HTTP/1.1"
+	}
+	if r.Reason == "" {
+		r.Reason = http.StatusText(r.StatusCode)
+	}
+	if r.Body == nil {
+		r.Body = []byte{}
+	}
+	if r.Headers == nil {
+		r.Headers = []store.Header{}
+	}
+	// keep Content-Length honest with the (possibly edited) body — a stale
+	// length stalls the client waiting for bytes that never come
+	headers := make([]store.Header, 0, len(r.Headers)+1)
+	for _, h := range r.Headers {
+		if !strings.EqualFold(h.Name, "Content-Length") {
+			headers = append(headers, h)
+		}
+	}
+	r.Headers = append(headers, store.Header{Name: "Content-Length", Value: strconv.Itoa(len(r.Body))})
+	r.Truncated = false
 	return true
 }

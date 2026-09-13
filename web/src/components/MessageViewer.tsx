@@ -147,6 +147,8 @@ export function ResponseInspector({
   ws,
   busy,
   extraMenu,
+  raw,
+  onRawChange,
 }: {
   resp?: ResponseLike
   error?: string
@@ -157,6 +159,9 @@ export function ResponseInspector({
   busy?: boolean
   /** caller-specific entries prepended to the raw view's context menu */
   extraMenu?: MenuItem[]
+  /** Intercept mode: the Raw tab becomes an editor wired to the parent state */
+  raw?: string
+  onRawChange?: (v: string) => void
 }) {
   const [tab, setTab] = useState<Tab>('raw')
   // transparently decompress gzip/deflate/br response bodies for display
@@ -276,8 +281,10 @@ export function ResponseInspector({
           </span>
         )}
       </div>
-      <div className="panel-body">
-        {tab === 'ws' ? (
+      <div className={`panel-body ${tab === 'raw' && raw !== undefined && onRawChange !== undefined ? 'io-flex' : ''}`}>
+        {tab === 'raw' && raw !== undefined && onRawChange !== undefined ? (
+          <RawEditor value={raw} onChange={onRawChange} />
+        ) : tab === 'ws' ? (
           <WSPanel ws={ws ?? []} />
         ) : dropped && (tab === 'pretty' || tab === 'hex') ? (
           <DroppedNotice size={resp.droppedSize} />

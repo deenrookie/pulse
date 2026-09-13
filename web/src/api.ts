@@ -50,6 +50,7 @@ export function authHeaders(): Record<string, string> {
 import type {
   Attack,
   EditableRequest,
+  EditableResponse,
   Flow,
   FlowMeta,
   HttpRequest,
@@ -166,10 +167,10 @@ export interface HeldResponseDetail {
 
 export const getHeldResponse = (id: string) => api<HeldResponseDetail>(`/api/intercept/${id}`)
 
-export const forwardHeld = (id: string, request?: EditableRequest) =>
+export const forwardHeld = (id: string, request?: EditableRequest, response?: EditableResponse) =>
   api<{ ok: boolean }>(`/api/intercept/${id}/forward`, {
     method: 'POST',
-    body: JSON.stringify(request ? { request } : {}),
+    body: JSON.stringify(request ? { request } : response ? { response } : {}),
   })
 
 export const dropHeld = (id: string) =>

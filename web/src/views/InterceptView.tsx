@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { requestToRaw, rawToRequest } from '../components/RawEditor'
+import { requestToRaw, rawToRequest, rawToResponse, responseToRaw } from '../components/RawEditor'
 import { RequestInspector, ResponseInspector } from '../components/MessageViewer'
 import * as api from '../api'
 import Icon from '../ui/Icon'
@@ -8,7 +8,7 @@ import ContextMenu, { type MenuItem } from '../components/ContextMenu'
 import { copyToClipboard } from '../api'
 import { confirm } from '../ui/Confirm'
 import type { PulseState } from '../state'
-import type { HttpRequest, PendingItem } from '../types'
+import type { EditableResponse, HttpRequest, PendingItem } from '../types'
 
 const RULES_KEY = 'pulse.holdrules'
 const COLS_KEY = 'pulse.intercept.cols'
@@ -298,6 +298,8 @@ export default function InterceptView({ pulse }: { pulse: PulseState }) {
   const [selectedPending, setSelectedPending] = useState<string | null>(null)
   const [heldFull, setHeldFull] = useState<HttpRequest | null>(null)
   const [raw, setRaw] = useState<string | null>(null)
+  /** edited raw of the held response (null = untouched) */
+  const [respRaw, setRespRaw] = useState<string | null>(null)
   const [selectedResp, setSelectedResp] = useState<string | null>(null)
   const [respDetail, setRespDetail] = useState<api.HeldResponseDetail | null>(null)
 
@@ -310,6 +312,15 @@ export default function InterceptView({ pulse }: { pulse: PulseState }) {
     if ('error' in parsed) return heldFull
     return { ...heldFull, method: parsed.method, url: parsed.url, httpVersion: parsed.httpVersion, headers: parsed.headers, body: parsed.body }
   }, [heldFull, raw])
+
+  // the held response as currently shown (edited fields win over the stored ones)
+  const respView = useMemo(() => {
+    if (!respDetail) return null
+    if (respRaw === null) return respDetail.response
+    const parsed = rawToResponse(respRaw)
+    if ('error' in parsed) return respDetail.response
+    return { ...respDetail.response, statusCode: parsed.statusCode, reason: parsed.reason, httpVersion: parsed.httpVersion, headers: parsed.headers, body: parsed.body }
+  }, [respDetail, respRaw])
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
   const [rules, setRules] = useState<HoldRule[]>(loadRules)
@@ -379,6 +390,7 @@ export default function InterceptView({ pulse }: { pulse: PulseState }) {
       return
     }
     let alive = true
+    setRespRaw(null)
     api
       .getHeldResponse(selectedResp)
       .then((d) => alive && setRespDetail(d))
@@ -402,9 +414,20 @@ export default function InterceptView({ pulse }: { pulse: PulseState }) {
 
   const onForwardResp = () => {
     if (!selectedResp) return
+    // edited buffer: parse and forward the modified response
+    let edited: EditableResponse | undefined
+    if (respRaw !== null && respDetail) {
+      const parsed = rawToResponse(respRaw)
+      if ('error' in parsed) {
+        setErr(parsed.error)
+        return
+      }
+      edited = parsed
+    }
     setBusy(true)
+    setErr(null)
     api
-      .forwardHeld(selectedResp)
+      .forwardHeld(selectedResp, undefined, edited)
       .then(() => setSelectedResp(null))
       .catch((e) => setErr(String(e)))
       .finally(() => setBusy(false))
@@ -934,9 +957,13 @@ export default function InterceptView({ pulse }: { pulse: PulseState }) {
         </div>
         <div className="panel-body" style={{ display: 'flex', flexDirection: 'column' }}>
           {selectedResp ? (
-            respDetail ? (
+            respDetail && respView ? (
               <div style={{ display: 'flex', flex: 1, minHeight: 0 }}>
-                <ResponseInspector resp={respDetail.response} />
+                <ResponseInspector
+                  resp={respView}
+                  raw={respRaw ?? responseToRaw(respDetail.response)}
+                  onRawChange={setRespRaw}
+                />
               </div>
             ) : (
               <Empty icon="waves" title="Loading held response…" />

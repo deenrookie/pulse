@@ -102,12 +102,24 @@ func (s *Server) handleInterceptID(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusNotFound, "no such held item: "+id)
 	case r.Method == http.MethodPost && action == "forward":
 		var body struct {
-			Request *store.Request `json:"request"`
+			Request  *store.Request  `json:"request"`
+			Response *store.Response `json:"response"`
 		}
 		if !readJSON(w, r, &body, 32<<20) {
 			return
 		}
 		if body.Request != nil && !parseEditableRequest(w, body.Request) {
+			return
+		}
+		if body.Response != nil {
+			if !parseEditableResponse(w, body.Response) {
+				return
+			}
+			if !s.eng.Inter.ForwardResp(id, body.Response) {
+				writeErr(w, http.StatusNotFound, "no such held item: "+id)
+				return
+			}
+			writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 			return
 		}
 		if !s.eng.Inter.Forward(id, body.Request) {
