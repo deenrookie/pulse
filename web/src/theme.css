@@ -1778,11 +1778,15 @@ table.flows tbody tr.hl.selected td { background: var(--accent-bg); box-shadow: 
 .mark-chip { color: var(--text); }
 
 /* header lines in raw view: names colored (Burp-style) */
-.raw-hdr { display: flex; align-items: baseline; }
+/* plain inline flow (NOT flex): flex turned the value into its own shrunken
+   box, so wrapped value lines indented under the header NAME instead of
+   returning to the line start — the editor mirror never had this because
+   it renders the same spans without flex */
+.raw-hdr { display: block; }
 /* header names use --info: distinct from values in BOTH themes
    (warm's --accent is cream, identical to --text there) */
-.raw-hname { color: var(--info); flex: none; }
-.raw-colon { color: var(--text-faint); flex: none; }
+.raw-hname { color: var(--info); }
+.raw-colon { color: var(--text-faint); }
 .raw-hvalue { color: var(--text); }
 
 /* hover-revealed copy button on names/values (raw + headers table) */
