@@ -33,6 +33,9 @@ func (s *Server) handleFlows(w http.ResponseWriter, r *http.Request) {
 			"items": annotated,
 		})
 	case http.MethodDelete:
+		// drain queued SSE events FIRST — they reference the flows being
+		// cleared, and Store.Clear's FreeOSMemory must see them as garbage
+		s.bus.Drain()
 		if err := s.st.Clear(); err != nil {
 			writeErr(w, http.StatusInternalServerError, err.Error())
 			return

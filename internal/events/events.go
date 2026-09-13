@@ -55,3 +55,22 @@ func (b *Bus) Count() int {
 	defer b.mu.Unlock()
 	return len(b.subs)
 }
+
+// Drain discards every queued event from all subscribers. Used when the
+// history is cleared: parked/slow subscribers (background tabs) would
+// otherwise keep up to 64 stale events — each holding a full flow JSON —
+// resident forever, defeating the memory release of Store.Clear.
+func (b *Bus) Drain() {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	for ch := range b.subs {
+	drain:
+		for {
+			select {
+			case <-ch:
+			default:
+				break drain
+			}
+		}
+	}
+}
