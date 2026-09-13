@@ -1985,3 +1985,9 @@ body.col-resizing .col-split { background: var(--accent); }
 }
 .plugin-import-row:hover { background: var(--bg-hover); }
 .plugin-import-row .mono { font-size: 11.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* R3 plugin panel iframe */
+.plugin-panel-frame {
+  flex: 1; min-height: 0; width: 100%;
+  border: none; background: var(--bg-input);
+}

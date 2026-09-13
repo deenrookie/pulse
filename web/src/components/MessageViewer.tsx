@@ -20,6 +20,7 @@ import RawEditor from './RawEditor'
 import { renderBodyKeys, renderCookieValue, renderRequestLine } from './rawHighlight'
 import { toGoRequest, toPythonRequest, toJsRequest, type CodeRequest } from './codegen'
 import { toCurlRequest } from '../api'
+import PluginPanel from './PluginPanel'
 
 interface RequestLike {
   method: string
@@ -44,7 +45,7 @@ interface ResponseLike {
   droppedSize?: number
 }
 
-type Tab = 'headers' | 'params' | 'pretty' | 'hex' | 'raw' | 'ws'
+type Tab = 'headers' | 'params' | 'pretty' | 'hex' | 'raw' | 'ws' | 'plugin'
 
 export function RequestInspector({
   req,
@@ -54,6 +55,7 @@ export function RequestInspector({
   headerExtra,
   onParamEdit,
   extraMenu,
+  panel,
 }: {
   req: RequestLike
   flowId?: string
@@ -62,6 +64,8 @@ export function RequestInspector({
   onRawChange?: (v: string) => void
   /** slot right after the URL meta in the header (e.g. Repeater settings) */
   headerExtra?: React.ReactNode
+  /** R3: a plugin-declared custom panel rendered as an extra tab */
+  panel?: { file: string; title: string; html: string; onNotify?: (text: string, kind?: 'ok' | 'err') => void }
   /** edit a query/form param and write it back into the raw buffer */
   onParamEdit?: (where: 'query' | 'body', name: string, value: string) => void
   /** caller-specific entries prepended to the raw view's context menu */
@@ -90,7 +94,7 @@ export function RequestInspector({
         />
         {/* Raw (request line + headers + body) is always available — GET and
             other body-less requests still have a raw form */}
-        <SubTabs tab={tab} setTab={setTab} hasBody={hasBody} alwaysRaw hasParams={params.length > 0} />
+        <SubTabs tab={tab} setTab={setTab} hasBody={hasBody} alwaysRaw hasParams={params.length > 0} pluginLabel={panel ? panel.title || 'Plugin' : undefined} />
       </div>
       <div className="summary-strip">
         <span>
@@ -107,7 +111,14 @@ export function RequestInspector({
         {req.truncated && <span className="warn-inline">⚠ truncated</span>}
       </div>
       <div className={`panel-body ${tab === 'raw' && editableRaw ? 'io-flex' : ''}`}>
-        {tab === 'raw' && editableRaw ? (
+        {tab === 'plugin' && panel ? (
+          <PluginPanel
+            pluginFile={panel.file}
+            html={panel.html}
+            flowSummary={{ method: req.method, url: req.url, status: 0 }}
+            onNotify={(text: string, kind?: 'ok' | 'err') => (panel.onNotify ? panel.onNotify(text, kind) : undefined)}
+          />
+        ) : tab === 'raw' && editableRaw ? (
           <RawEditor value={raw} onChange={onRawChange} />
         ) : (
           <TabBody tab={tab} headers={req.headers} params={params} text={text} b64={req.body} kind="request" req={req} curlFlowId={flowId} curlRequest={editableRaw ? req : undefined} onParamEdit={editableRaw ? onParamEdit : undefined} extraMenu={extraMenu} />
@@ -149,6 +160,7 @@ export function ResponseInspector({
   extraMenu,
   raw,
   onRawChange,
+  panel,
 }: {
   resp?: ResponseLike
   error?: string
@@ -162,6 +174,8 @@ export function ResponseInspector({
   /** Intercept mode: the Raw tab becomes an editor wired to the parent state */
   raw?: string
   onRawChange?: (v: string) => void
+  /** R3: a plugin-declared custom panel rendered as an extra tab */
+  panel?: { file: string; title: string; html: string; onNotify?: (text: string, kind?: 'ok' | 'err') => void }
 }) {
   const [tab, setTab] = useState<Tab>('raw')
   // transparently decompress gzip/deflate/br response bodies for display
@@ -253,7 +267,7 @@ export function ResponseInspector({
             <Icon name="external" size={13} />
           </button>
         )}
-        <SubTabs tab={tab} setTab={setTab} hasBody={hasBody} alwaysRaw wsCount={ws?.length ?? 0} />
+        <SubTabs tab={tab} setTab={setTab} hasBody={hasBody} alwaysRaw wsCount={ws?.length ?? 0} pluginLabel={panel ? panel.title || 'Plugin' : undefined} />
       </div>
       <div className="summary-strip">
         <span>
@@ -282,7 +296,14 @@ export function ResponseInspector({
         )}
       </div>
       <div className={`panel-body ${tab === 'raw' && raw !== undefined && onRawChange !== undefined ? 'io-flex' : ''}`}>
-        {tab === 'raw' && raw !== undefined && onRawChange !== undefined ? (
+        {tab === 'plugin' && panel ? (
+          <PluginPanel
+            pluginFile={panel.file}
+            html={panel.html}
+            flowSummary={{ method: '', url: '', status: resp.statusCode }}
+            onNotify={(text: string, kind?: 'ok' | 'err') => (panel.onNotify ? panel.onNotify(text, kind) : undefined)}
+          />
+        ) : tab === 'raw' && raw !== undefined && onRawChange !== undefined ? (
           <RawEditor value={raw} onChange={onRawChange} />
         ) : tab === 'ws' ? (
           <WSPanel ws={ws ?? []} />
@@ -397,6 +418,7 @@ function SubTabs({
   alwaysRaw,
   wsCount,
   hasParams,
+  pluginLabel,
 }: {
   tab: Tab
   setTab: (t: Tab) => void
@@ -406,12 +428,14 @@ function SubTabs({
   wsCount?: number
   /** request has query/cookie/form params — show the Params tab */
   hasParams?: boolean
+  pluginLabel?: string
 }) {
   const tabs: [Tab, string][] = [
     ...(alwaysRaw || hasBody ? ([['raw', 'Raw']] as [Tab, string][]) : [['headers', 'Headers']] as [Tab, string][]),
     ...(hasParams ? ([['params', 'Params']] as [Tab, string][]) : []),
     ...(hasBody ? ([['pretty', 'Pretty'], ['hex', 'Hex']] as [Tab, string][]) : []),
     ...(wsCount ? ([['ws', `WebSocket (${wsCount})`]] as [Tab, string][]) : []),
+    ...(pluginLabel ? ([['plugin', pluginLabel]] as [Tab, string][]) : []),
   ]
   return (
     <div className="subtabs">

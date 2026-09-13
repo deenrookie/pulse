@@ -144,6 +144,47 @@ var actions = { extract: (ctx) => ctx.request.method + " " + ctx.request.url };
 
 Repeater 请求面板头部的 **Apply plugin** 按钮对当前缓冲区副本运行选中插件的 onRequest，先预览结果，再手动应用回编辑器——不发包。Repeater 默认仍不自动经过插件。
 
+## R3：工程化与高级扩展
+
+### 目录项目（pulse.plugin.json）
+
+单文件插件无需任何工程；需要拆分/打包/类型提示时升级为目录形式：
+
+	pulse 目录/
+	  pulse.plugin.json    # id、name、version、entry（默认 dist/plugin.js）
+	  dist/plugin.js       # 入口产物（可用任意打包器生成）
+	  src/…、tests/…、pulse.d.ts、README.md
+
+- **manifest 是身份权威**：id 用于身份识别；name/version 覆盖代码内 `plugin` 元数据的同名声明。
+- **身份冲突**：两个插件声明相同 id 时，后加载者报告 "duplicate plugin id" 并停止运行（源码仍可编辑修复），不静默遮蔽。
+- 打包：在开发机用 esbuild 等工具将纯 JS 依赖打包为单文件产物放入 entry；Pulse 运行时不访问 npm、不执行安装脚本。产物在加载时经 goja 编译校验（兼容性以锁定版本的引擎为准）。
+
+### SDK 类型与命令行
+
+- **TypeScript 声明**：`GET /api/plugins/sdk` 返回完整的 `pulse.d.ts`（ctx/pulse/actions 全 API）。放置到插件旁：`/// <reference path="pulse.d.ts" />`。
+- **CLI 检查/试跑**（与浏览器同一宿主契约）：
+  	go run ./cmd/pulse plugins check internal/plugins/samples/demo-read-rewrite.js
+  	go run ./cmd/pulse plugins test my-plugin.js fixture.json
+  	# 或直接： pulse plugins check <path>
+
+### 自定义 UI 面板（隔离 iframe + 版本化消息桥）
+
+	plugin = { ..., uiPanel: { id: "notes", title: "Plugin notes", html: "<button onclick=…>…</button>" } };
+
+- 面板渲染在 `sandbox="allow-scripts"` 的 iframe 里——**没有 Pulse 页面的 DOM 访问**。
+- 页面挂在报文检查器（请求/响应）的附加页签上（首个声明 uiPanel 的启用插件）。
+- **桥协议 v1**（postMessage）：`{ v: 1, plugin: "<file>", type, payload }`：
+  - `pulse.notify(text, kind)` — 宿主 toast
+  - `pulse.copy(text)` — 写剪贴板
+  - `pulse.flow()` → `Promise<{method,url,status}|null>` — 只读当前检查的报文摘要
+  - RPC 回复 `{type:'rpc', seq, result}`；未知方法返回 `{error:'unknown method'}`。
+
+### 授权目录文件读写（pulse.files）
+
+- 每插件一个授权目录（`PUT /api/plugins/files/{file}` 授权/传空撤销），持久化在数据目录。
+- `pulse.files.read/write/list(rel)`：路径经规范化（`..` 折叠到根内）+ 符号链接解析校验，任何逃逸授权目录的路径（含 symlink 出口）都会抛错。
+- 未授权时返回明确错误而非静默失败。
+
 ## 插件目录
 
 默认是 `<数据目录>/plugins`。在 **Extensions → Plugins → Installed** 标签顶部的 *Plugin directory* 输入框里可以改成任意路径（回车或 Apply 生效，目录不存在会自动创建；Reset 恢复默认）。配置持久化在 `settings.json`（`pluginsDir` 字段），重启后仍然生效。

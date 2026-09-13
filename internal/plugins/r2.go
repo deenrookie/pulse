@@ -100,6 +100,7 @@ func (r *Runtime) runHookAsync(p *Plugin, hook string, req *store.Request, resp 
 	})
 	sdk(vm, pulseObj)
 	buildStoresAPI(vm, pulseObj, r.memoryStore(p.File), r.localStore(p.File))
+	buildFilesAPI(vm, pulseObj, p.File, r.files)
 	// events is drained on this goroutine only — the VM stays single-owner
 	events := make(chan func(), 64)
 	var pendingSends atomicI64
@@ -335,7 +336,7 @@ func (r *Runtime) TestRunWithSender(src, hook string, req *store.Request, resp *
 		out.Error = "plugin does not define " + hook + "(ctx)"
 		return out
 	}
-	rt := &Runtime{timeout: timeout, memories: map[string]*pluginStore{}, locals: map[string]*persistentStore{}, configs: &configManager{data: map[string]map[string]any{}}, tx: newTxStates()}
+	rt := &Runtime{timeout: timeout, memories: map[string]*pluginStore{}, locals: map[string]*persistentStore{}, configs: &configManager{data: map[string]map[string]any{}}, tx: newTxStates(), files: &FilesGrant{data: map[string]string{}}}
 	res := rt.runHookAsync(p, hook, req, resp, timeout, "", sender)
 	if res.Logs != nil {
 		out.Logs = res.Logs

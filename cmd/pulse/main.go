@@ -34,6 +34,10 @@ func main() {
 		showVer   = flag.Bool("version", false, "print version and exit")
 	)
 	flag.Parse()
+	args := flag.Args()
+	if len(args) > 0 && args[0] == "plugins" {
+		os.Exit(runPluginsCLI(args[1:]))
+	}
 	if *showVer {
 		fmt.Println("pulse", version)
 		return

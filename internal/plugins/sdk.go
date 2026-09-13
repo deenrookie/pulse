@@ -7,6 +7,7 @@ package plugins
 import (
 	"crypto/hmac"
 	"crypto/sha256"
+	_ "embed"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
@@ -161,7 +162,7 @@ func buildURLQueryAPI(vm *goja.Runtime, pulseObj *goja.Object) {
 		raw := argString(call, 0)
 		parsed, err := url.Parse(raw)
 		if err != nil {
-			return makeErr(vm, fmt.Sprintf("pulse.url.parse: %v", err))
+			panic(makeErr(vm, fmt.Sprintf("pulse.url.parse: %v", err)))
 		}
 		q := vm.NewObject()
 		_ = q.Set("scheme", parsed.Scheme)
@@ -232,7 +233,7 @@ func mutateQuery(vm *goja.Runtime, call goja.FunctionCall, fn func([]string, []s
 	}
 	parsed, err := url.Parse(raw)
 	if err != nil {
-		return makeErr(vm, fmt.Sprintf("pulse.query: %v", err))
+		panic(makeErr(vm, fmt.Sprintf("pulse.query: %v", err)))
 	}
 	q := parsed.Query()
 	q[name] = fn(q[name], add, len(add) == 0 && call.Argument(1) != goja.Undefined())
@@ -343,7 +344,7 @@ func buildBodyAPI(vm *goja.Runtime, pulseObj *goja.Object) {
 		body, _ := objString(msg, "body")
 		var parsed any
 		if err := json.Unmarshal([]byte(body), &parsed); err != nil {
-			return makeErr(vm, "pulse.body.json: not valid JSON: "+err.Error())
+			panic(makeErr(vm, "pulse.body.json: not valid JSON: "+err.Error()))
 		}
 		return vm.ToValue(parsed)
 	})
@@ -354,7 +355,7 @@ func buildBodyAPI(vm *goja.Runtime, pulseObj *goja.Object) {
 		}
 		out, err := json.Marshal(call.Argument(1).Export())
 		if err != nil {
-			return makeErr(vm, "pulse.body.setJSON: "+err.Error())
+			panic(makeErr(vm, "pulse.body.setJSON: "+err.Error()))
 		}
 		msg.Set("body", string(out))
 		return goja.Undefined()
@@ -415,3 +416,9 @@ func objString(o *goja.Object, key string) (string, bool) {
 func makeErr(vm *goja.Runtime, msg string) goja.Value {
 	return vm.NewGoError(fmt.Errorf("%s", msg))
 }
+
+//go:embed sdk/pulse.d.ts
+var sdkDTS string
+
+// SDKDTS returns the plugin SDK type declarations.
+func SDKDTS() string { return sdkDTS }

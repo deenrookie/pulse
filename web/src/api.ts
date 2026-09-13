@@ -226,6 +226,15 @@ export const reloadPlugins = () => api<{ plugins: PluginInfo[]; dir: string }>('
 export const setPluginEnabled = (file: string, enabled: boolean) =>
   api<{ ok: boolean }>(`/api/plugins/${encodeURIComponent(file)}`, { method: 'PUT', body: JSON.stringify({ enabled }) })
 
+export const getPluginFilesGrant = (file: string) =>
+  api<{ file: string; dir: string }>(`/api/plugins/files/${encodeURIComponent(file)}`)
+
+export const setPluginFilesGrant = (file: string, dir: string) =>
+  api<{ file: string; dir: string }>(`/api/plugins/files/${encodeURIComponent(file)}`, {
+    method: 'PUT',
+    body: JSON.stringify({ dir }),
+  })
+
 export const getPluginConfig = (file: string) =>
   api<{ file: string; fields: PluginConfigView[] }>(`/api/plugins/config/${encodeURIComponent(file)}`)
 

@@ -122,6 +122,7 @@ func (r *Runtime) RunAction(file, actionID string, fl *store.Flow, sender HTTPSe
 	})
 	sdk(vm, pulseObj)
 	buildStoresAPI(vm, pulseObj, r.memoryStore(p.File), r.localStore(p.File))
+	buildFilesAPI(vm, pulseObj, p.File, r.files)
 	events := make(chan func(), 64)
 	buildHTTPAPI(vm, pulseObj, sender, events, actionTimeout)
 	vm.Set("pulse", pulseObj)

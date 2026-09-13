@@ -54,6 +54,12 @@ type Plugin struct {
 	Config map[string]ConfigField `json:"configSchema,omitempty"`
 	// Actions: declared manual actions (R2), runnable from flow menus.
 	Actions []ActionDef `json:"actions,omitempty"`
+	// Identity: stable plugin id (manifest id for projects; '' for single files)
+	Identity string `json:"identity,omitempty"`
+	// Dir: loaded from a directory project (pulse.plugin.json)
+	Dir bool `json:"dir,omitempty"`
+	// UIPanel: declared custom inspector panel (R3)
+	UIPanel *UIPanelDef `json:"uiPanel,omitempty"`
 	Log     []string `json:"log,omitempty"`
 
 	src  string
@@ -74,6 +80,7 @@ type Runtime struct {
 	locals   map[string]*persistentStore      // file -> persistent store
 	configs  *configManager
 	tx       *txStates
+	files    *FilesGrant
 }
 
 func Open(dir, statePath string) (*Runtime, error) {
@@ -91,6 +98,7 @@ func Open(dir, statePath string) (*Runtime, error) {
 		locals:   map[string]*persistentStore{},
 		configs:  openConfigs(configPathFor(statePath)),
 		tx:       newTxStates(),
+		files:    openFilesGrant(filepath.Join(filepath.Dir(statePath), "plugin-files.json")),
 	}
 	if err := os.MkdirAll(rt.goodDir, 0o755); err != nil {
 		return nil, fmt.Errorf("create plugin revisions dir: %w", err)
@@ -134,8 +142,40 @@ func (r *Runtime) load() error {
 		return fmt.Errorf("read plugins dir: %w", err)
 	}
 	var list []*Plugin
+	var seenIdentity = map[string]string{} // identity -> file (duplicate detection)
 	for _, e := range entries {
-		if e.IsDir() || !strings.HasSuffix(e.Name(), ".js") {
+		if e.IsDir() {
+			// R3: a directory with pulse.plugin.json is a plugin project
+			dir := filepath.Join(r.dir, e.Name())
+			if _, err := os.Stat(filepath.Join(dir, "pulse.plugin.json")); err != nil {
+				continue
+			}
+			src, m, err := loadDirProject(dir)
+			if err != nil {
+				list = append(list, &Plugin{File: e.Name() + "/", Error: err.Error()})
+				continue
+			}
+			entryFile := e.Name() + "/" + m.Entry
+			p := &Plugin{File: entryFile, Enabled: true, src: src}
+			if v, ok := enabled[entryFile]; ok {
+				p.Enabled = v
+			}
+			compile(p, r.timeout)
+			if p.prog != nil {
+				p.applyManifestIdentity(m)
+				if m.ID != "" {
+					if prev, dup := seenIdentity[m.ID]; dup {
+						p.Error = fmt.Sprintf("duplicate plugin id %q — already loaded by %s; rename this one or update the existing plugin", m.ID, prev)
+						p.prog = nil // loaded but not run; source stays editable
+					} else {
+						seenIdentity[m.ID] = entryFile
+					}
+				}
+			}
+			list = append(list, p)
+			continue
+		}
+		if !strings.HasSuffix(e.Name(), ".js") {
 			continue
 		}
 		src, err := os.ReadFile(filepath.Join(r.dir, e.Name()))
@@ -147,6 +187,14 @@ func (r *Runtime) load() error {
 			p.Enabled = v
 		}
 		compile(p, r.timeout)
+		if p.prog != nil && p.Identity != "" {
+			if prev, dup := seenIdentity[p.Identity]; dup {
+				p.Error = fmt.Sprintf("duplicate plugin id %q — already loaded by %s", p.Identity, prev)
+				p.prog = nil
+			} else {
+				seenIdentity[p.Identity] = e.Name()
+			}
+		}
 		if p.prog == nil {
 			// The source on disk is broken. Keep the proxy working by
 			// running the last revision that loaded, if there is one.
@@ -263,6 +311,7 @@ func compile(p *Plugin, timeout time.Duration) {
 		p.Hooks = append(p.Hooks, "complete")
 	}
 	p.Actions = extractActions(vm)
+	p.UIPanel = extractUIPanel(vm)
 	p.prog = prog
 }
 
@@ -604,6 +653,7 @@ func (r *Runtime) runHookTx(p *Plugin, hook string, req *store.Request, resp *st
 	// R1 SDK surface: message helpers, stores, config
 	sdk(vm, pulseObj)
 	buildStoresAPI(vm, pulseObj, r.memoryStore(p.File), r.localStore(p.File))
+	buildFilesAPI(vm, pulseObj, p.File, r.files)
 	vm.Set("pulse", pulseObj)
 
 	// transaction state: request and response hooks of one flow share a map

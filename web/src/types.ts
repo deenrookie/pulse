@@ -177,6 +177,8 @@ export interface PluginInfo {
   configSchema?: Record<string, PluginConfigField>
   /** declared manual actions (R2) */
   actions?: PluginAction[]
+  /** declared custom inspector panel (R3) */
+  uiPanel?: { id: string; title: string; html: string }
   log?: string[]
 }
 

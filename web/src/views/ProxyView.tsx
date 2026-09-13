@@ -7,6 +7,7 @@ import Icon from '../ui/Icon'
 import { confirm } from '../ui/Confirm'
 import { rawToRequest, requestToRaw } from '../components/RawEditor'
 import { createRepeaterTab, apiBase, getSettings, putSettings, listPlugins } from '../api'
+import type { PluginInfo } from '../types'
 import HighlightRules, { ruleMatches, type HighlightRule } from '../ui/HighlightRules'
 import FilterDialog, { EMPTY_FILTER, filterActive, passesFilter, type FilterModel } from '../ui/FilterDialog'
 import type { PulseState } from '../state'
@@ -269,32 +270,44 @@ export default function ProxyView({ pulse }: { pulse: PulseState }) {
 
   // R2: declared plugin actions surface in the traffic context menu
   const [pluginActions, setPluginActions] = useState<{ id: string; label: string; hint?: string; __file: string }[]>([])
+  const [pluginsWithPanels, setPluginsWithPanels] = useState<PluginInfo[]>([])
   useEffect(() => {
     listPlugins()
       .then((r) => {
         const out: { id: string; label: string; hint?: string; __file: string }[] = []
+        const panels: PluginInfo[] = []
         for (const p of r.plugins) {
           if (!p.enabled) continue
           for (const a of p.actions ?? []) out.push({ ...a, __file: p.file })
+          if (p.uiPanel) panels.push(p)
         }
         setPluginActions(out)
+        setPluginsWithPanels(panels)
       })
       .catch(() => {})
     const t = window.setInterval(() => {
       listPlugins()
         .then((r) => {
           const out: { id: string; label: string; hint?: string; __file: string }[] = []
+          const panels: PluginInfo[] = []
           for (const p of r.plugins) {
             if (!p.enabled) continue
             for (const a of p.actions ?? []) out.push({ ...a, __file: p.file })
+            if (p.uiPanel) panels.push(p)
           }
           setPluginActions(out)
+          setPluginsWithPanels(panels)
         })
         .catch(() => {})
     }, 10000)
     return () => window.clearInterval(t)
   }, [])
 
+  // R3: the first plugin with a declared uiPanel gets an inspector tab
+  const uiPanelPlugin = pluginsWithPanels.length > 0 ? pluginsWithPanels[0] : null
+  const uiPanelProps = uiPanelPlugin && uiPanelPlugin.uiPanel
+    ? { file: uiPanelPlugin.file, title: uiPanelPlugin.uiPanel.title, html: uiPanelPlugin.uiPanel.html, onNotify: pulse.notify }
+    : undefined
   const filtersActive = q.trim() !== '' || method !== 'ANY' || statuses.size > 0 || hideStatic || wsOnly || filterActive(filter)
   // blank rules don't count anywhere — not in the badge, not for styling
   const activeRules = rules.filter((r) => r.match.trim() !== '').length
@@ -507,8 +520,8 @@ export default function ProxyView({ pulse }: { pulse: PulseState }) {
                 dir="h"
                 storageKey="pulse.split.inspector"
                 initial={0.5}
-                a={<RequestInspector req={fl.request} flowId={fl.id} raw={editedRaw ?? requestToRaw(fl.request)} onRawChange={(text) => fl && setRawEdit({ id: fl.id, text })} />}
-                b={<ResponseInspector resp={fl.response} error={fl.error} flowId={fl.id} ws={fl.ws} />}
+                a={<RequestInspector req={fl.request} flowId={fl.id} raw={editedRaw ?? requestToRaw(fl.request)} onRawChange={(text) => fl && setRawEdit({ id: fl.id, text })} panel={uiPanelProps} />}
+                b={<ResponseInspector resp={fl.response} error={fl.error} flowId={fl.id} ws={fl.ws} panel={uiPanelProps} />}
               />
             ) : (
               <Empty icon="eye" title="Nothing selected">

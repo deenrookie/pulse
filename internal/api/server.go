@@ -137,6 +137,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/api/plugins/config/", s.handlePluginConfig)
 	mux.HandleFunc("/api/plugins/action/", s.handlePluginAction)
 	mux.HandleFunc("/api/plugins/apply", s.handlePluginsApply)
+	mux.HandleFunc("/api/plugins/sdk", s.handlePluginsSDK)
+	mux.HandleFunc("/api/plugins/files/", s.handlePluginFilesGrant)
 	mux.HandleFunc("/api/plugins/test-mock", s.handlePluginsTestMock)
 	mux.HandleFunc("/api/plugins/", s.handlePluginFile)
 	mux.HandleFunc("/", s.handleStatic)

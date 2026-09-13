@@ -404,3 +404,42 @@ func (s *Server) handlePluginsApply(w http.ResponseWriter, r *http.Request) {
 		"request": requestToTestMessage(*out.Request),
 	})
 }
+
+// handlePluginsSDK: GET the TypeScript declarations for editor tooling.
+func (s *Server) handlePluginsSDK(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.Write([]byte(plugins.SDKDTS()))
+}
+
+// handlePluginFilesGrant: GET/PUT the authorized directory for a plugin's
+// pulse.files access. Path: /api/plugins/files/{file}.
+func (s *Server) handlePluginFilesGrant(w http.ResponseWriter, r *http.Request) {
+	file := strings.TrimPrefix(r.URL.Path, "/api/plugins/files/")
+	if file == "" || strings.ContainsAny(file, `/\`) {
+		http.NotFound(w, r)
+		return
+	}
+	switch r.Method {
+	case http.MethodGet:
+		writeJSON(w, http.StatusOK, map[string]any{"file": file, "dir": s.plug.FilesGrantDir(file)})
+	case http.MethodPut:
+		var body struct {
+			Dir *string `json:"dir"`
+		}
+		if !readJSON(w, r, &body, 1<<16) || body.Dir == nil {
+			writeErr(w, http.StatusBadRequest, "missing \"dir\"")
+			return
+		}
+		if err := s.plug.SetFilesGrantDir(file, *body.Dir); err != nil {
+			writeErr(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"file": file, "dir": s.plug.FilesGrantDir(file)})
+	default:
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+	}
+}
