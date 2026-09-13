@@ -17,7 +17,8 @@ import type { Header, WSMessage } from '../types'
 import Icon from '../ui/Icon'
 import ContextMenu, { type MenuItem } from './ContextMenu'
 import RawEditor from './RawEditor'
-import { renderBodyKeys, renderCookieValue } from './rawHighlight'
+import { renderBodyKeys, renderCookieValue, renderRequestLine } from './rawHighlight'
+import { toGoRequest, toPythonRequest, toJsRequest, type CodeRequest } from './codegen'
 import { toCurlRequest } from '../api'
 
 interface RequestLike {
@@ -722,6 +723,18 @@ function RawView({
     return i < 0 ? lines.length : i
   }, [lines])
 
+  // the request behind this raw view, for the copy-as-code menu entries
+  const codeRequest = async (): Promise<CodeRequest | null> => {
+    if (curlRequest) {
+      return { method: curlRequest.method, url: curlRequest.url, headers: curlRequest.headers ?? [], bodyText: bodyToText(curlRequest.body) }
+    }
+    if (flowIdForCurl) {
+      const fl = await getFlow(flowIdForCurl)
+      return { method: fl.request.method, url: fl.request.url, headers: fl.request.headers ?? [], bodyText: bodyToText(fl.request.body) }
+    }
+    return null
+  }
+
   const menuItems = (): MenuItem[] => [
     ...(extraMenu ?? []),
     ...(selText
@@ -749,11 +762,37 @@ function RawView({
           {
             icon: 'terminal' as const,
             label: 'Copy as cURL',
+            separatorAfter: true,
             onClick: async () => {
               const cmd = flowIdForCurl
                 ? toCurl(await getFlow(flowIdForCurl))
                 : toCurlRequest(curlRequest!.method, curlRequest!.url, curlRequest!.headers, bodyToText(curlRequest!.body))
               await copyToClipboard(cmd, { label: 'cURL' })
+            },
+          },
+          {
+            icon: 'terminal' as const,
+            label: 'Copy as Go',
+            onClick: async () => {
+              const r = await codeRequest()
+              if (r) await copyToClipboard(toGoRequest(r), { label: 'Go code' })
+            },
+          },
+          {
+            icon: 'terminal' as const,
+            label: 'Copy as Python',
+            onClick: async () => {
+              const r = await codeRequest()
+              if (r) await copyToClipboard(toPythonRequest(r), { label: 'Python code' })
+            },
+          },
+          {
+            icon: 'terminal' as const,
+            label: 'Copy as JavaScript',
+            separatorAfter: true,
+            onClick: async () => {
+              const r = await codeRequest()
+              if (r) await copyToClipboard(toJsRequest(r), { label: 'JavaScript code' })
             },
           },
         ]
@@ -876,8 +915,10 @@ function RawLine({ line, n, inHead }: { line: string; n: number; inHead: boolean
   const idx = line.indexOf(':')
   const isHeader = inHead && idx > 0 && !line.startsWith(' ')
   if (!isHeader) {
-    // body lines (never the request/status line) get JSON / form key tinting
-    const content = n > 0 && line ? renderBodyKeys(line) : line || ' '
+    // line 0: request line (query keys tinted) or a status line (plain);
+    // body lines get JSON / form key tinting
+    const content =
+      n > 0 && line ? renderBodyKeys(line) : n === 0 ? renderRequestLine(line) : line || ' '
     return (
       <div>
         <span className="ln">{n + 1}</span>

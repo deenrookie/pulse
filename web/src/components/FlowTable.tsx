@@ -3,10 +3,11 @@
 // scrollbar honest — 5000 captured flows scroll at 60fps. Column widths
 // are user-adjustable via header grips and persisted per browser.
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
-import { copyToClipboard, bodyToText, formatSize, formatTime, getFlow, toCurl } from '../api'
+import { copyToClipboard, bodyToText, formatSize, formatTime, getFlow, toCurl, toCurlRequest } from '../api'
 import type { FlowMeta } from '../types'
 import ContextMenu, { type MenuItem } from './ContextMenu'
 import Icon from '../ui/Icon'
+import { toGoRequest, toPythonRequest, toJsRequest, type CodeRequest } from './codegen'
 import { requestToRaw } from './RawEditor'
 import { addHostToScope, bareHost, hostInScope, removeHostFromScope } from '../scope'
 import { annotateFlow } from '../api'
@@ -218,6 +219,17 @@ export default function FlowTable({
 
   const flowLink = (id: string) => `${location.origin}/#/proxy?flow=${id}`
 
+  // copy-as-code from a flow row: fetch, then run the template
+  const copyAs = async (id: string, gen: (r: CodeRequest) => string, label: string) => {
+    try {
+      const fl = await getFlow(id)
+      const r = { method: fl.request.method, url: fl.request.url, headers: fl.request.headers ?? [], bodyText: bodyToText(fl.request.body) }
+      await copyToClipboard(gen(r), { label })
+    } catch {
+      notify('Could not load the flow', 'err')
+    }
+  }
+
   const menuItems = (m: FlowMeta): MenuItem[] => [
     {
       icon: 'send',
@@ -235,6 +247,27 @@ export default function FlowTable({
           notify('Could not load the flow', 'err')
         }
       },
+    },
+    {
+      icon: 'terminal',
+      label: 'Copy as cURL',
+      onClick: () => void copyAs(m.id, (r) => toCurlRequest(r.method, r.url, r.headers, r.bodyText), 'cURL'),
+    },
+    {
+      icon: 'terminal',
+      label: 'Copy as Go',
+      onClick: () => void copyAs(m.id, toGoRequest, 'Go code'),
+    },
+    {
+      icon: 'terminal',
+      label: 'Copy as Python',
+      onClick: () => void copyAs(m.id, toPythonRequest, 'Python code'),
+    },
+    {
+      icon: 'terminal',
+      label: 'Copy as JavaScript',
+      separatorAfter: true,
+      onClick: () => void copyAs(m.id, toJsRequest, 'JavaScript code'),
     },
     {
       icon: 'shield',

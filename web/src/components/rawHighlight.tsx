@@ -78,3 +78,27 @@ export function renderFormKeys(line: string, keyClass = 'form-key'): ReactNode {
 export function renderBodyKeys(line: string): ReactNode {
   return isFormLine(line) ? renderFormKeys(line) : renderJSONKeys(line)
 }
+
+const REQUEST_LINE_RE = /^([A-Z]+) (\S+)( HTTP\/[\d.]+)?$/
+
+/** the request line "GET /ping?a=bc&d=e HTTP/1.1" — tint every query key.
+ * Non-matching lines (status lines, anything else) come back untouched. */
+export function renderRequestLine(line: string, keyClass = 'query-key'): ReactNode {
+  const m = line.match(REQUEST_LINE_RE)
+  if (!m) return line
+  const q = m[2].indexOf('?')
+  if (q < 0) return line
+  const out: ReactNode[] = [`${m[1]} ${m[2].slice(0, q)}?`]
+  m[2].slice(q + 1).split('&').forEach((pair, i) => {
+    if (i > 0) out.push('&')
+    const eq = pair.indexOf('=')
+    if (eq > 0) {
+      out.push(<span key={`qk${i}`} className={keyClass}>{pair.slice(0, eq)}</span>)
+      out.push(pair.slice(eq))
+    } else if (pair) {
+      out.push(<span key={`qk${i}`} className={keyClass}>{pair}</span>)
+    }
+  })
+  if (m[3]) out.push(m[3])
+  return out
+}

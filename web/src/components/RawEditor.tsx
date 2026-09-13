@@ -4,7 +4,8 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { bodyToText, copyToClipboard, encodeBody, toCurlRequest } from '../api'
 import ContextMenu, { type MenuItem } from './ContextMenu'
 import Icon from '../ui/Icon'
-import { renderBodyKeys, renderCookieValue } from './rawHighlight'
+import { renderBodyKeys, renderCookieValue, renderRequestLine } from './rawHighlight'
+import { toGoRequest, toPythonRequest, toJsRequest } from './codegen'
 
 /** §…§ position marks tinted like Burp's — only balanced pairs are marked.
  *  The plain segments between marks still get JSON/form key tinting. */
@@ -303,7 +304,29 @@ export default function RawEditor({
                 await copyToClipboard(toCurlRequest(parsed.method, parsed.url, headers, bodyText), { label: 'cURL' })
               },
             },
-          ]
+            {
+              icon: 'terminal',
+              label: 'Copy as Go',
+              onClick: async () => {
+                await copyToClipboard(toGoRequest({ method: parsed.method, url: parsed.url, headers, bodyText }), { label: 'Go code' })
+              },
+            },
+            {
+              icon: 'terminal',
+              label: 'Copy as Python',
+              onClick: async () => {
+                await copyToClipboard(toPythonRequest({ method: parsed.method, url: parsed.url, headers, bodyText }), { label: 'Python code' })
+              },
+            },
+            {
+              icon: 'terminal',
+              label: 'Copy as JavaScript',
+              separatorAfter: true,
+              onClick: async () => {
+                await copyToClipboard(toJsRequest({ method: parsed.method, url: parsed.url, headers, bodyText }), { label: 'JavaScript code' })
+              },
+            },
+          ] as MenuItem[]
         : []),
       { icon: 'copy', label: 'Copy raw request', separatorAfter: true, onClick: async () => void (await copyToClipboard(value, { label: 'raw request' })) },
       { icon: 'copy', label: 'Copy headers', onClick: async () => void (await copyToClipboard(headers.map((h) => h.name + ': ' + h.value).join(String.fromCharCode(10)), { label: 'headers' })) },
@@ -365,11 +388,12 @@ export default function RawEditor({
       if (markPositions && line.includes('§')) {
         return <div key={i}>{ln}{renderPositionMarks(line)}</div>
       }
-      // body lines get JSON property-key / form-key tinting (never the request line)
+      // body lines get JSON property-key / form-key tinting; the request
+      // line gets query-key tinting
       return (
         <div key={i}>
           {ln}
-          {i > 0 && i > headEnd ? renderBodyKeys(line || '\u00a0') : line || '\u00a0'}
+          {i === 0 ? renderRequestLine(line || '\u00a0') : i > headEnd ? renderBodyKeys(line || '\u00a0') : line || '\u00a0'}
         </div>
       )
     })

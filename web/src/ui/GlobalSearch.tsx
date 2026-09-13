@@ -460,12 +460,12 @@ function SearchWindow({
               <div className="gs-preview-wrap">
                 {pvSide === 'request' ? (
                   detail.req ? (
-                    <RequestInspector req={detail.req} extraMenu={previewMenu(detail.hit)} />
+                    <RequestInspector req={detail.req} flowId={detail.hit.source === 'traffic' ? detail.hit.id : undefined} extraMenu={previewMenu(detail.hit)} />
                   ) : (
                     <div className="gsearch-empty">No request for this hit.</div>
                   )
                 ) : detail.resp ? (
-                  <ResponseInspector resp={detail.resp} ws={detail.ws} extraMenu={previewMenu(detail.hit)} />
+                  <ResponseInspector resp={detail.resp} ws={detail.ws} flowId={detail.hit.source === 'traffic' ? detail.hit.id : undefined} extraMenu={previewMenu(detail.hit)} />
                 ) : (
                   <div className="gsearch-empty">No response for this hit.</div>
                 )}
