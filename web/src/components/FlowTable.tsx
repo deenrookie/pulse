@@ -4,7 +4,11 @@
 // are user-adjustable via header grips and persisted per browser.
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { copyToClipboard, bodyToText, formatSize, formatTime, getFlow, toCurl, toCurlRequest } from '../api'
-import type { FlowMeta } from '../types'
+import type { FlowMeta, PluginAction } from '../types'
+
+/** plugin file attached by the parent when passing actions down */
+export type ActionWithFile = PluginAction & { __file?: string }
+import { runPluginAction } from '../api'
 import ContextMenu, { type MenuItem } from './ContextMenu'
 import Icon from '../ui/Icon'
 import { toGoRequest, toPythonRequest, toJsRequest, type CodeRequest } from './codegen'
@@ -44,6 +48,8 @@ interface Props {
   filtered?: boolean
   /** returns a marker color (hex) when a highlight rule matches, else null */
   highlightOf?: (m: FlowMeta) => string | null
+  /** declared plugin actions (R2), surfaced in the row context menu */
+  pluginActions?: ActionWithFile[]
 }
 
 // fixed-pixel columns; `path` flexes to fill the remainder
@@ -110,6 +116,7 @@ export default function FlowTable({
   proxyAddr,
   filtered,
   highlightOf,
+  pluginActions,
 }: Props) {
   const wrapRef = useRef<HTMLDivElement>(null)
   const [scrollTop, setScrollTop] = useState(0)
@@ -219,6 +226,20 @@ export default function FlowTable({
 
   const flowLink = (id: string) => `${location.origin}/#/proxy?flow=${id}`
 
+  const runAction = async (m: FlowMeta, a: ActionWithFile) => {
+    const file = a.__file ?? ''
+    try {
+      const out = await runPluginAction(file, a.id, m.id)
+      if (out.error) {
+        notify(`${a.label}: ${out.error}`, 'err')
+        return
+      }
+      notify(out.result ? `${a.label}: ${out.result}` : `${a.label} ran`, out.result ? undefined : undefined)
+    } catch (e) {
+      notify((e as Error).message, 'err')
+    }
+  }
+
   // copy-as-code from a flow row: fetch, then run the template
   const copyAs = async (id: string, gen: (r: CodeRequest) => string, label: string) => {
     try {
@@ -231,6 +252,12 @@ export default function FlowTable({
   }
 
   const menuItems = (m: FlowMeta): MenuItem[] => [
+    ...(pluginActions ?? []).map((a) => ({
+      icon: 'bolt' as const,
+      label: `Run: ${a.label}`,
+      hint: a.hint,
+      onClick: () => void runAction(m, a),
+    })),
     {
       icon: 'send',
       label: 'Send to Repeater',

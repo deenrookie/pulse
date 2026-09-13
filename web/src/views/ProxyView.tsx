@@ -6,7 +6,7 @@ import Empty from '../ui/Empty'
 import Icon from '../ui/Icon'
 import { confirm } from '../ui/Confirm'
 import { rawToRequest, requestToRaw } from '../components/RawEditor'
-import { createRepeaterTab, apiBase, getSettings, putSettings } from '../api'
+import { createRepeaterTab, apiBase, getSettings, putSettings, listPlugins } from '../api'
 import HighlightRules, { ruleMatches, type HighlightRule } from '../ui/HighlightRules'
 import FilterDialog, { EMPTY_FILTER, filterActive, passesFilter, type FilterModel } from '../ui/FilterDialog'
 import type { PulseState } from '../state'
@@ -267,6 +267,34 @@ export default function ProxyView({ pulse }: { pulse: PulseState }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fl, editedRaw])
 
+  // R2: declared plugin actions surface in the traffic context menu
+  const [pluginActions, setPluginActions] = useState<{ id: string; label: string; hint?: string; __file: string }[]>([])
+  useEffect(() => {
+    listPlugins()
+      .then((r) => {
+        const out: { id: string; label: string; hint?: string; __file: string }[] = []
+        for (const p of r.plugins) {
+          if (!p.enabled) continue
+          for (const a of p.actions ?? []) out.push({ ...a, __file: p.file })
+        }
+        setPluginActions(out)
+      })
+      .catch(() => {})
+    const t = window.setInterval(() => {
+      listPlugins()
+        .then((r) => {
+          const out: { id: string; label: string; hint?: string; __file: string }[] = []
+          for (const p of r.plugins) {
+            if (!p.enabled) continue
+            for (const a of p.actions ?? []) out.push({ ...a, __file: p.file })
+          }
+          setPluginActions(out)
+        })
+        .catch(() => {})
+    }, 10000)
+    return () => window.clearInterval(t)
+  }, [])
+
   const filtersActive = q.trim() !== '' || method !== 'ANY' || statuses.size > 0 || hideStatic || wsOnly || filterActive(filter)
   // blank rules don't count anywhere — not in the badge, not for styling
   const activeRules = rules.filter((r) => r.match.trim() !== '').length
@@ -421,6 +449,7 @@ export default function ProxyView({ pulse }: { pulse: PulseState }) {
               proxyAddr={pulse.status?.proxyAddr}
               filtered={filtersActive}
               highlightOf={highlightOf}
+              pluginActions={pluginActions}
             />
           </div>
         }

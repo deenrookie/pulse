@@ -175,7 +175,32 @@ export interface PluginInfo {
   runningLastGood?: boolean
   /** declared configuration schema (R1) */
   configSchema?: Record<string, PluginConfigField>
+  /** declared manual actions (R2) */
+  actions?: PluginAction[]
   log?: string[]
+}
+
+/** one declared manual action */
+export interface PluginAction {
+  id: string
+  label: string
+  hint?: string
+  applies?: string
+}
+
+/** action run result from POST /api/plugins/action/{file}/{id} */
+export interface PluginActionResult {
+  logs: string[]
+  error?: string
+  result?: string
+}
+
+/** apply-plugin preview result from POST /api/plugins/apply */
+export interface PluginApplyResult {
+  logs: string[]
+  error?: string
+  changed: boolean
+  request: TestMessage
 }
 
 /** one declared config field (plugin.config) */

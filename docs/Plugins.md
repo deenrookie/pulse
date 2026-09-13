@@ -96,6 +96,54 @@ function onResponse(ctx) {
 - **From Flow**：从已捕获流量挑选导入 request+response 作为夹具。
 - **From Raw**：粘贴原始 HTTP 报文（请求或响应）自动构造夹具。
 
+## R2：主动能力
+
+### `pulse.http.send(options)` — 插件发起 HTTP 请求（异步）
+
+```js
+async function onRequest(ctx) {
+  const r = await pulse.http.send({
+    method: "POST", url: "https://auth.test/token",
+    headers: [{ name: "Content-Type", value: "application/json" }],
+    body: JSON.stringify({ grant: "refresh" }),
+    timeoutMs: 5000, redirects: "manual",
+  });
+  if (r.status !== 200) return;
+  pulse.store.memory.set("token", pulse.body.json(r).access_token);
+}
+```
+
+- 返回 Promise，受钩子总预算与 `timeoutMs` 双重限制；超时/取消传播为 rejection。
+- 请求**绕过插件链、Match & Replace 与拦截**（防自触发递归），以 `source: plugin` 记录，可在 Live Traffic 查看。
+- `redirects: "manual"` 逐跳返回 3xx；凭证不自动继承。
+
+### `ctx.respond()` / `ctx.drop()` — 终结动作（onRequest）
+
+- `ctx.respond({ status, headers, body })`：本地响应，不发上游；Content-Length 自动重算；之后仍进入响应阶段插件。
+- `ctx.drop({ reason })`：插件阻断事务（客户端收到 502，Flow 标记 blocked by plugin）。
+- 同一事务重复终结动作会抛错。
+
+### `onComplete(ctx)` — 完成后分析
+
+事务结束后只读运行（可读写插件 store、发起 HTTP），不阻塞响应返回。
+
+### Mock 网络测试模式
+
+`POST /api/plugins/test-mock`（编辑器 Test run 的 Mock 模式）：未配置 mock 的 URL 一律报 `unmocked network request`——测试永远不会悄悄打到真实网络。
+
+### Action — 手动动作
+
+```js
+plugin = { name: "Tools", actions: [ { id: "extract", label: "Extract endpoint" } ] };
+var actions = { extract: (ctx) => ctx.request.method + " " + ctx.request.url };
+```
+
+声明的动作出现在**流量右键菜单**（Run: …），对选中 Flow 的副本运行；结果以 toast 展示。
+
+### Repeater：Apply plugin
+
+Repeater 请求面板头部的 **Apply plugin** 按钮对当前缓冲区副本运行选中插件的 onRequest，先预览结果，再手动应用回编辑器——不发包。Repeater 默认仍不自动经过插件。
+
 ## 插件目录
 
 默认是 `<数据目录>/plugins`。在 **Extensions → Plugins → Installed** 标签顶部的 *Plugin directory* 输入框里可以改成任意路径（回车或 Apply 生效，目录不存在会自动创建；Reset 恢复默认）。配置持久化在 `settings.json`（`pluginsDir` 字段），重启后仍然生效。

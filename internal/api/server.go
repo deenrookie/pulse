@@ -92,12 +92,16 @@ func New(st *store.Store, eng *proxy.Engine, rep *repeater.Manager, auth *certs.
 	if err != nil {
 		return nil, fmt.Errorf("generate access key: %w", err)
 	}
-	return &Server{
+	srv := &Server{
 		Version: version, ProxyAddr: proxyAddr, UIAddr: uiAddr, DataDir: dataDir, AccessKey: key,
 		st: st, eng: eng, rep: rep, auth: auth, bus: bus, rw: rw, plug: plug, set: set,
 		intr: newIntruderStore(dataDir),
 		anno: newAnnoStore(dataDir),
-	}, nil
+	}
+	// R2: plugin HTTP requests round-trip through the api layer so they are
+	// recorded as source:plugin flows (chain-bypassed, recursion-safe)
+	eng.SetPluginTransportSender(srv.pluginFlowTransport)
+	return srv, nil
 }
 
 // Handler builds the routed handler with host-header validation.
@@ -131,6 +135,9 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/api/plugins/test", s.handlePluginsTest)
 	mux.HandleFunc("/api/plugins/source/", s.handlePluginsSource)
 	mux.HandleFunc("/api/plugins/config/", s.handlePluginConfig)
+	mux.HandleFunc("/api/plugins/action/", s.handlePluginAction)
+	mux.HandleFunc("/api/plugins/apply", s.handlePluginsApply)
+	mux.HandleFunc("/api/plugins/test-mock", s.handlePluginsTestMock)
 	mux.HandleFunc("/api/plugins/", s.handlePluginFile)
 	mux.HandleFunc("/", s.handleStatic)
 	return withCORS(s.gate(mux))

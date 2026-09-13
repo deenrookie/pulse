@@ -52,6 +52,8 @@ type Plugin struct {
 	RunningLastGood bool `json:"runningLastGood,omitempty"`
 	// Config: the plugin's declared configuration schema (no values).
 	Config map[string]ConfigField `json:"configSchema,omitempty"`
+	// Actions: declared manual actions (R2), runnable from flow menus.
+	Actions []ActionDef `json:"actions,omitempty"`
 	Log     []string `json:"log,omitempty"`
 
 	src  string
@@ -257,6 +259,10 @@ func compile(p *Plugin, timeout time.Duration) {
 	if fn, ok := goja.AssertFunction(vm.Get(responseHook)); ok && fn != nil {
 		p.Hooks = append(p.Hooks, "response")
 	}
+	if fn, ok := goja.AssertFunction(vm.Get("onComplete")); ok && fn != nil {
+		p.Hooks = append(p.Hooks, "complete")
+	}
+	p.Actions = extractActions(vm)
 	p.prog = prog
 }
 
@@ -401,6 +407,8 @@ type TestOutcome struct {
 	Changed bool            `json:"changed"`
 	Request *store.Request  `json:"request"`
 	Resp    *store.Response `json:"response,omitempty"`
+	/** ctx.respond was used: Resp carries the local response */
+	Mocked  bool            `json:"mocked,omitempty"`
 }
 
 // TestRun compiles src and runs the named hook against copies of req/resp in
@@ -481,33 +489,19 @@ func (r *Runtime) recordSuccess(p *Plugin, logs []string, modified bool) {
 // ApplyRequest runs every enabled plugin's onRequest hook against req.
 // Errors are recorded on the plugin and never propagated to the proxy.
 func (r *Runtime) ApplyRequest(req *store.Request) bool {
-	r.mu.RLock()
-	timeout := r.timeout
-	plugins := make([]*Plugin, 0, len(r.plugins))
-	for _, p := range r.plugins {
-		if p.Enabled && p.prog != nil && hasHook(p, "request") {
-			plugins = append(plugins, p)
-		}
-	}
-	r.mu.RUnlock()
-
-	changed := false
-	for _, p := range plugins {
-		ok, logs, err := r.runHookTx(p, requestHook, req, nil, timeout, req.ID)
-		if err != nil {
-			r.recordError(p, err, requestHook)
-			continue
-		}
-		r.recordSuccess(p, logs, ok)
-		if ok {
-			changed = true
-		}
-	}
+	changed, _ := r.ApplyRequestSender(req, nil)
 	return changed
 }
 
-// ApplyResponse runs every enabled plugin's onResponse hook.
+// ApplyResponse runs every enabled plugin's onResponse hook (R2: async
+// scheduler with pulse.http support).
 func (r *Runtime) ApplyResponse(req *store.Request, resp *store.Response) bool {
+	return r.ApplyResponseSender(req, resp, nil)
+}
+
+// ApplyResponseSender is ApplyResponse with an explicit HTTP sender (tests
+// inject a mock; nil means no network in this runtime yet).
+func (r *Runtime) ApplyResponseSender(req *store.Request, resp *store.Response, sender HTTPSender) bool {
 	r.mu.RLock()
 	timeout := r.timeout
 	plugins := make([]*Plugin, 0, len(r.plugins))
@@ -520,17 +514,49 @@ func (r *Runtime) ApplyResponse(req *store.Request, resp *store.Response) bool {
 
 	changed := false
 	for _, p := range plugins {
-		ok, logs, err := r.runHookTx(p, responseHook, req, resp, timeout, req.ID)
-		if err != nil {
-			r.recordError(p, err, responseHook)
+		res := r.runHookAsync(p, responseHook, req, resp, timeout, req.ID, sender)
+		if res.Err != nil {
+			r.recordError(p, res.Err, responseHook)
 			continue
 		}
-		r.recordSuccess(p, logs, ok)
-		if ok {
+		r.recordSuccess(p, res.Logs, res.Changed)
+		if res.Changed {
 			changed = true
 		}
 	}
 	return changed
+}
+
+// ApplyRequestSender is ApplyRequest with an explicit HTTP sender.
+func (r *Runtime) ApplyRequestSender(req *store.Request, sender HTTPSender) (bool, *TerminalAction) {
+	r.mu.RLock()
+	timeout := r.timeout
+	plugins := make([]*Plugin, 0, len(r.plugins))
+	for _, p := range r.plugins {
+		if p.Enabled && p.prog != nil && hasHook(p, "request") {
+			plugins = append(plugins, p)
+		}
+	}
+	r.mu.RUnlock()
+
+	changed := false
+	for _, p := range plugins {
+		res := r.runHookAsync(p, requestHook, req, nil, timeout, req.ID, sender)
+		if res.Err != nil {
+			r.recordError(p, res.Err, requestHook)
+		} else {
+			r.recordSuccess(p, res.Logs, res.Changed)
+		}
+		if res.Changed {
+			changed = true
+		}
+		// a terminal action already taken stands even if the hook later
+		// errored (e.g. a second respond/drop attempt)
+		if res.Ctrl != nil && (res.Ctrl.respond != nil || res.Ctrl.drop) {
+			return changed, res.Ctrl.Respawn()
+		}
+	}
+	return changed, nil
 }
 
 func hasHook(p *Plugin, name string) bool {

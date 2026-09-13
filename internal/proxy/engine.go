@@ -26,6 +26,8 @@ import (
 
 // Engine owns the proxy listener and the request pipeline.
 type Engine struct {
+	ptMu           sync.Mutex
+	pluginTransport plugins.HTTPSender
 	auth    *certs.Authority
 	store   *store.Store
 	bus     *events.Bus
@@ -267,6 +269,37 @@ func (e *Engine) handleConnect(conn net.Conn, br *bufio.Reader, target string) {
 type respondFunc func(resp *store.Response, gwErr error) error
 
 var errDroppedByInterceptor = errors.New("request dropped by interceptor")
+var errBlockedByPlugin = errors.New("blocked by plugin")
+
+// runOnComplete executes enabled plugins' read-only onComplete hooks after a
+// transaction finishes; failures are logged, never propagated.
+func (e *Engine) runOnComplete(fl *store.Flow) {
+	if e.Plugins == nil {
+		return
+	}
+	go e.Plugins.RunComplete(fl, e.PluginTransport())
+}
+
+// SetPluginTransportSender overrides the plugin HTTP transport (the api
+// layer installs its flow-recording one).
+func (e *Engine) SetPluginTransportSender(fn func(*plugins.PluginHTTPRequest) (*plugins.PluginHTTPResponse, error)) {
+	e.ptMu.Lock()
+	defer e.ptMu.Unlock()
+	e.pluginTransport = plugins.HTTPSenderFunc(fn)
+}
+
+// pluginTransport is the chain-bypassing HTTP sender handed to plugins
+// (source-tagged round trips). Lazily built; overrides welcome in tests.
+func (e *Engine) PluginTransport() plugins.HTTPSender {
+	e.ptMu.Lock()
+	defer e.ptMu.Unlock()
+	if e.pluginTransport == nil {
+		e.pluginTransport = plugins.HTTPSenderFunc(func(r *plugins.PluginHTTPRequest) (*plugins.PluginHTTPResponse, error) {
+			return plugins.SendDirect(r)
+		})
+	}
+	return e.pluginTransport
+}
 
 // executeRequest runs the capture pipeline shared by every transport:
 // record → plugins → match&replace → intercept → upstream → response hooks.
@@ -281,10 +314,37 @@ func (e *Engine) executeRequest(req *store.Request, respond respondFunc) (*Resul
 	}
 	e.publishFlow("flow", fl)
 
-	if e.Plugins != nil && e.Plugins.ApplyRequest(req) {
-		fl.Req = *req
-		_ = e.store.Update(fl)
-		e.publishFlow("flow_update", fl)
+	if e.Plugins != nil {
+		changed, act := e.Plugins.ApplyRequestR2(req, e.PluginTransport())
+		if changed {
+			fl.Req = *req
+			_ = e.store.Update(fl)
+			e.publishFlow("flow_update", fl)
+		}
+		// R2 terminal actions: ctx.respond serves a local response (no
+		// upstream send); ctx.drop cuts the transaction as plugin-blocked.
+		if act != nil {
+			if act.Drop {
+				fl.State = store.StateDropped
+				fl.Error = "blocked by plugin"
+				if act.DropReason != "" {
+					fl.Error = "blocked by plugin: " + act.DropReason
+				}
+				_ = e.store.Update(fl)
+				e.publishFlow("flow_update", fl)
+				_ = respond(nil, errBlockedByPlugin)
+				return nil, fl, false
+			}
+			if act.Resp != nil {
+				fl.Resp = act.Resp
+				fl.State = store.StateComplete
+				_ = e.store.Update(fl)
+				e.publishFlow("flow_update", fl)
+				_ = respond(act.Resp, nil)
+				e.runOnComplete(fl)
+				return &Result{Resp: act.Resp}, fl, true
+			}
+		}
 	}
 	if e.Rewrite != nil && e.Rewrite.ApplyRequest(req) {
 		fl.Req = *req
@@ -409,6 +469,13 @@ func (e *Engine) process(conn net.Conn, br *bufio.Reader, req *store.Request) bo
 // RoundTrip executes a request outside the proxy path (Repeater): records the
 // flow, sends it and returns the resulting flow. Upgrade responses are
 // reported as errors since there is no client connection to tunnel into.
+// RoundTripPlugin executes a plugin-initiated request: recorded like any
+// other flow (source "plugin") but never routed through plugins, rewrites
+// or interception — a token refresh must not re-trigger itself.
+func (e *Engine) RoundTripPlugin(req *store.Request) *store.Flow {
+	return e.RoundTrip(req)
+}
+
 func (e *Engine) RoundTrip(req *store.Request) *store.Flow {
 	req.ID = e.store.NewID()
 	if req.Source == "" {

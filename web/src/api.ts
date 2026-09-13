@@ -57,6 +57,8 @@ import type {
   HttpResponse,
   InterceptSummary,
   PluginInfo,
+  PluginActionResult,
+  PluginApplyResult,
   PluginConfigView,
   PluginInspection,
   PluginSample,
@@ -232,6 +234,21 @@ export const setPluginConfig = (file: string, values: Record<string, unknown>) =
     method: 'PUT',
     body: JSON.stringify({ values }),
   })
+
+export const runPluginAction = (file: string, actionId: string, flowId: string) =>
+  api<PluginActionResult>(`/api/plugins/action/${encodeURIComponent(file)}/${encodeURIComponent(actionId)}`, {
+    method: 'POST',
+    body: JSON.stringify({ flowId }),
+  })
+
+export const applyPluginToRequest = (file: string, request: TestMessage) =>
+  api<PluginApplyResult>('/api/plugins/apply', {
+    method: 'POST',
+    body: JSON.stringify({ file, request }),
+  })
+
+export const testPluginMock = (payload: { src: string; hook: 'request' | 'response'; request: TestMessage; response?: TestMessage; mocks?: Record<string, { status: number; body: string; headers?: [string, string][]; delayMs?: number }> }) =>
+  api<PluginTestResult>('/api/plugins/test-mock', { method: 'POST', body: JSON.stringify(payload) })
 
 export const getPluginSource = (file: string) =>
   api<{ file: string; src: string }>(`/api/plugins/source/${encodeURIComponent(file)}`)

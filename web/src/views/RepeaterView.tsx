@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { rawToRequest, requestToRaw } from '../components/RawEditor'
+import { applyPluginToRequest, listPlugins } from '../api'
+import type { PluginApplyResult } from '../types'
 import { RequestInspector } from '../components/MessageViewer'
 import { ResponseInspector } from '../components/MessageViewer'
 import Split from '../ui/Split'
@@ -41,6 +43,131 @@ function loadAutoCL(): boolean {
   } catch {
     return true
   }
+}
+
+function ApplyPluginButton({ raw, onApplied }: { raw: string; onApplied: (next: string) => void }) {
+  const [open, setOpen] = useState(false)
+  const [plugins, setPlugins] = useState<{ file: string; name: string }[]>([])
+  const [result, setResult] = useState<PluginApplyResult | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [showResult, setShowResult] = useState(false)
+
+  const openPicker = async () => {
+    setOpen(true)
+    setResult(null)
+    setShowResult(false)
+    try {
+      const r = await listPlugins()
+      setPlugins(r.plugins.filter((p) => (p.hooks ?? []).includes('request')).map((p) => ({ file: p.file, name: p.name })))
+    } catch {
+      setPlugins([])
+    }
+  }
+
+  const apply = async (file: string) => {
+    setBusy(true)
+    try {
+      const parsed = rawToRequest(raw, 'https://example.com/')
+      if ('error' in parsed) {
+        setOpen(false)
+        return
+      }
+      const r = await applyPluginToRequest(file, {
+        method: parsed.method,
+        url: parsed.url,
+        httpVersion: parsed.httpVersion,
+        headers: parsed.headers,
+        body: parsed.body,
+      })
+      setResult(r)
+      setShowResult(true)
+      setOpen(false)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <>
+      <button
+        className="btn ghost sm"
+        title="Run a plugin's onRequest against this buffer — preview the result, then apply it manually"
+        onClick={() => void openPicker()}
+      >
+        <Icon name="puzzle" size={13} />
+        Apply plugin
+      </button>
+      {open && (
+        <div className="modal-overlay" onMouseDown={(e) => e.target === e.currentTarget && setOpen(false)}>
+          <div className="modal" role="dialog" aria-label="Apply plugin" style={{ width: 380 }}>
+            <h4>
+              <Icon name="puzzle" size={15} />
+              Apply plugin
+            </h4>
+            <div className="sub">The request hook runs on a copy; nothing is sent.</div>
+            <div className="rule-list" style={{ maxHeight: 240 }}>
+              {plugins.length === 0 && <div className="faint" style={{ padding: 8 }}>No enabled plugins with an onRequest hook.</div>}
+              {plugins.map((p) => (
+                <button key={p.file} className="btn ghost sm" style={{ width: '100%', justifyContent: 'flex-start' }} disabled={busy} onClick={() => void apply(p.file)}>
+                  {p.name} <span className="faint mono" style={{ fontSize: 10.5 }}>{p.file}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+      {showResult && result && (
+        <div className="modal-overlay" onMouseDown={(e) => e.target === e.currentTarget && setShowResult(false)}>
+          <div className="modal" role="dialog" aria-label="Plugin preview" style={{ width: 520 }}>
+            <h4>
+              <Icon name="puzzle" size={15} />
+              Plugin preview
+            </h4>
+            <div className="sub">
+              {result.error ? <span className="plugin-status err">error: {result.error}</span> : result.changed ? 'The plugin modified the request:' : 'No changes — the request is untouched.'}
+            </div>
+            {!result.error && (
+              <pre className="plugin-log" style={{ maxHeight: 260, overflow: 'auto' }}>
+                {`${result.request.method} ${result.request.url}`}
+                {(result.request.headers ?? []).map((h) => `
+${h.name}: ${h.value}`).join('')}
+                {result.request.body ? `
+
+${result.request.body}` : ''}
+              </pre>
+            )}
+            {(result.logs ?? []).length > 0 && <pre className="plugin-log">{(result.logs ?? []).join('\n')}</pre>}
+            <div className="row">
+              <button className="btn ghost sm" onClick={() => setShowResult(false)}>Close</button>
+              <div className="spacer" />
+              {!result.error && result.changed && (
+                <button
+                  className="btn primary sm"
+                  onClick={() => {
+                    const next = requestToRaw({
+                      id: '',
+                      method: result.request.method ?? 'GET',
+                      url: result.request.url ?? '',
+                      httpVersion: result.request.httpVersion ?? 'HTTP/1.1',
+                      headers: result.request.headers ?? [],
+                      body: result.request.body ?? '',
+                      truncated: false,
+                      timestamp: '',
+                      source: '',
+                    } as never)
+                    onApplied(next)
+                    setShowResult(false)
+                  }}
+                >
+                  Apply to editor
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  )
 }
 
 function RequestOptions({ autoCL, setAutoCL }: { autoCL: boolean; setAutoCL: (v: boolean) => void }) {
@@ -743,7 +870,12 @@ export default function RepeaterView({ pulse, goProxy }: { pulse: PulseState; go
                         raw={raw.text}
                         onRawChange={(text) => setRaw({ text, __id: currentId })}
                         onParamEdit={editParam}
-                        headerExtra={<RequestOptions autoCL={autoCL} setAutoCL={setAutoCL} />}
+                        headerExtra={(
+                          <>
+                            <ApplyPluginButton raw={raw.text} onApplied={(next) => setRaw({ text: next, __id: currentId })} />
+                            <RequestOptions autoCL={autoCL} setAutoCL={setAutoCL} />
+                          </>
+                        )}
                       />
                     ) : null
                   }
