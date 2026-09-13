@@ -72,6 +72,7 @@ export default function ProxyView({ pulse }: { pulse: PulseState }) {
   const [statuses, setStatuses] = useState<Set<string>>(new Set())
   const [method, setMethod] = useState('ANY')
   const [hideStatic, setHideStatic] = useState(false)
+  const [wsOnly, setWsOnly] = useState(false)
   const [sort, setSort] = useState<SortSpec>({ key: null, dir: 1 })
   const [follow, setFollow] = useState(true)
   const [lean, setLean] = useState(false)
@@ -185,6 +186,7 @@ export default function ProxyView({ pulse }: { pulse: PulseState }) {
       })
     }
     if (hideStatic) out = out.filter((m) => !isStatic(m))
+    if (wsOnly) out = out.filter((m) => m.wsCount > 0 || m.statusCode === 101)
     if (scope.scopeOnly && scope.rules.length > 0) out = out.filter((m) => hostInScope(m.host))
     if (starOnly) out = out.filter((m) => m.star)
     if (filterActive(filter)) {
@@ -214,7 +216,7 @@ export default function ProxyView({ pulse }: { pulse: PulseState }) {
     }
     return out
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pulse.flows, q, method, statuses, hideStatic, sort, filter, scope.scopeOnly, scope.rules, starOnly])
+  }, [pulse.flows, q, method, statuses, hideStatic, wsOnly, sort, filter, scope.scopeOnly, scope.rules, starOnly])
 
   const toggleStatus = (s: string) => {
     setStatuses((prev) => {
@@ -265,7 +267,7 @@ export default function ProxyView({ pulse }: { pulse: PulseState }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fl, editedRaw])
 
-  const filtersActive = q.trim() !== '' || method !== 'ANY' || statuses.size > 0 || hideStatic || filterActive(filter)
+  const filtersActive = q.trim() !== '' || method !== 'ANY' || statuses.size > 0 || hideStatic || wsOnly || filterActive(filter)
   // blank rules don't count anywhere — not in the badge, not for styling
   const activeRules = rules.filter((r) => r.match.trim() !== '').length
 
@@ -320,6 +322,13 @@ export default function ProxyView({ pulse }: { pulse: PulseState }) {
                 Hide static
               </button>
               <button
+                className={`tchip ${wsOnly ? 'on' : ''}`}
+                onClick={() => setWsOnly((v) => !v)}
+                title="Only WebSocket upgrades (101) and flows with captured WS messages"
+              >
+                WS
+              </button>
+              <button
                 className={`tchip ${scope.scopeOnly ? 'on' : ''}`}
                 disabled={scope.rules.length === 0}
                 title={
@@ -340,6 +349,7 @@ export default function ProxyView({ pulse }: { pulse: PulseState }) {
                     setMethod('ANY')
                     setStatuses(new Set())
                     setHideStatic(false)
+                    setWsOnly(false)
                     setScopeOnly(false)
                     setStarOnly(false)
                   }}

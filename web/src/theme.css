@@ -695,6 +695,18 @@ tr.vspacer td { border: none; padding: 0; }
 .form-key { color: var(--purple); }
 .query-key { color: var(--purple); }
 
+/* WebSocket marker in the traffic list's method column */
+.ws-badge {
+  display: inline-block;
+  margin-left: 5px; padding: 0 4px;
+  border-radius: 4px;
+  background: rgb(var(--purple-rgb) / 0.16);
+  color: var(--purple);
+  font-size: 9.5px; font-weight: 700; line-height: 14px;
+  letter-spacing: 0.3px;
+  vertical-align: 1px;
+}
+
 .summary-strip {
   display: flex; flex-wrap: wrap; gap: 5px 16px;
   padding: 6px 12px; border-bottom: 1px solid var(--border);

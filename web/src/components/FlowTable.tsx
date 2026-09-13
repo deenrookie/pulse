@@ -487,8 +487,9 @@ export default function FlowTable({
                     <td className="col-time" title={m.timestamp}>
                       {formatTime(m.timestamp)}
                     </td>
-                    <td className={`col-method method-${m.method}`} title={m.method}>
+                    <td className={`col-method method-${m.method}`} title={m.wsCount > 0 ? `${m.method} — WebSocket (${m.wsCount} messages)` : m.method}>
                       {m.method}
+                      {m.wsCount > 0 && <span className="ws-badge" title={`${m.wsCount} WebSocket messages`}>WS{m.wsCount > 1 ? ` ${m.wsCount}` : ''}</span>}
                     </td>
                     <td className="col-host" title={m.host}>
                       {hl && <span className="hl-dot" style={{ background: hl }} />}
