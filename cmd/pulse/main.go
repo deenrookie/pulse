@@ -24,7 +24,7 @@ import (
 	"pulse/internal/update"
 )
 
-var version = "0.3.6"
+var version = "0.3.7"
 
 func main() {
 	var (

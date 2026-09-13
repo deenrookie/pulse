@@ -40,7 +40,7 @@ MITM interception, tampering, replay, rewriting and plugin extensibility — the
 | **Intruder** | Burp-style batch fuzzing: mark `§positions§` in a raw template, load a payload list, fire — status/length/time per shot with baseline-deviation highlighting, **grep-match columns**, single-set & **pitchfork (per-position sets)** modes, response inspector (`Ctrl+7`, right-click any flow → Send to Intruder) |
 | **Site Map** | host→path→method endpoint tree (status coloring, counts, search), per-endpoint **status variants** (200·12 / 500·2 chips), click to inspect the latest exchange; **Comparer** tool in the footer diffs any two raws |
 | **Repeater** | raw-editor replay, persistent tabs, instant response inspection, **diff vs previous response** (word-aware); **editable Params tab** writes back into the raw |
-| **Extensions** | **Match & Replace** (5 zones, regex/literal, hit counters); **JS plugins** (onRequest/onResponse hooks, isolated VMs + 2s timeout, hot reload, log panel, a **CodeMirror online editor**: Check dry-run / sandbox Test run / one-click save, **configurable plugin directory**, built-in samples) |
+| **Extensions** | **Match & Replace** (5 zones, regex/literal, hit counters); **JS plugins** (onRequest/onResponse hooks, isolated VMs + 2s timeout, hot reload, log panel, a **CodeMirror online editor**: Check dry-run / sandbox Test run / one-click save, **configurable plugin directory**, built-in samples); **SDK** (`pulse.headers/url/query/cookies/body/encoding/crypto`, `ctx.state` + memory/local stores, config forms with secrets); **active plugins** (`pulse.http.send` async with timeout/no-recursion, `ctx.respond`/`ctx.drop`, `onComplete`, mock-network test mode, right-click Actions, Repeater *Apply plugin*); **projects** (`pulse.plugin.json` manifest, SDK `.d.ts` + CLI `plugins check/test`, sandboxed UI panels with a versioned bridge, authorized `pulse.files` access) |
 | **WebSocket** | RFC 6455 frame-level capture: text/binary/close/ping/pong logged both ways, dedicated inspector tab |
 | **Settings** | CA certificate download & per-platform install guides, **runtime proxy-address rebinding**, memory guard, runtime stats, shortcut cheatsheet |
 
@@ -52,15 +52,15 @@ Pipeline order: `plugins → rewrite rules → intercept → upstream`; stored f
 
 ```bash
 # macOS (Apple Silicon)
-curl -L https://github.com/deenrookie/pulse/releases/download/v0.3.6/pulse_0.3.6_darwin_arm64.tar.gz | tar xz && chmod +x pulse && ./pulse
+curl -L https://github.com/deenrookie/pulse/releases/download/v0.3.7/pulse_0.3.7_darwin_arm64.tar.gz | tar xz && chmod +x pulse && ./pulse
 
 # Linux (x64)
-curl -L https://github.com/deenrookie/pulse/releases/download/v0.3.6/pulse_0.3.6_linux_amd64.tar.gz | tar xz && chmod +x pulse && ./pulse
+curl -L https://github.com/deenrookie/pulse/releases/download/v0.3.7/pulse_0.3.7_linux_amd64.tar.gz | tar xz && chmod +x pulse && ./pulse
 ```
 
 ```powershell
 # Windows (x64) — PowerShell
-curl.exe -L -o pulse.zip https://github.com/deenrookie/pulse/releases/download/v0.3.6/pulse_0.3.6_windows_amd64.zip
+curl.exe -L -o pulse.zip https://github.com/deenrookie/pulse/releases/download/v0.3.7/pulse_0.3.7_windows_amd64.zip
 Expand-Archive pulse.zip -Force; .\pulse.exe
 ```
 
@@ -163,7 +163,9 @@ function onRequest(ctx) {
 }
 ```
 
-The console ships an online editor: **Check** dry-compiles (errors pinpoint line:column), **Test run** executes the hook against a fixture with zero traffic, one click saves to the plugin directory with hot reload; the plugin directory is configurable at runtime. See the [plugin guide](docs/Plugins.md) (Chinese).
+The console ships an online editor: **Check** dry-compiles (errors pinpoint line:column), **Test run** executes the hook against a fixture (imported from a captured Flow, pasted raw or hand-written) with zero traffic, drafts autosave, and a broken source keeps the last good revision running while you fix it.
+
+A fuller SDK is available: message helpers (`pulse.headers/url/query/cookies/body`), encoding & SHA-256/HMAC, per-transaction `ctx.state`, cross-request memory + persistent stores, `plugin.config` forms (secrets never echo), async `pulse.http.send` (recorded as `source: plugin`, chain-bypassed so a token refresh can't re-trigger itself), `ctx.respond`/`ctx.drop`, `onComplete` analysis, mock-network test mode, right-click Actions, and Repeater *Apply plugin*. Larger plugins become **directory projects** (`pulse.plugin.json` manifest, bundled entry artifact, TypeScript `.d.ts` + `pulse plugins check/test` CLI, sandboxed UI panels over a versioned message bridge, authorized `pulse.files` directory access). See the [plugin guide](docs/Plugins.md) (Chinese).
 
 ## 📚 Docs
 
