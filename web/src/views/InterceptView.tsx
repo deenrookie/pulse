@@ -696,20 +696,26 @@ export default function InterceptView({ pulse }: { pulse: PulseState }) {
               ● off
             </span>
           )}
+          <button
+            className="btn ghost sm"
+            disabled={busy || pending.length === 0}
+            onClick={() => void forwardAllHeld(pending.map((p) => p.id))}
+            title="Release every held request unchanged"
+          >
+            <Icon name="play" size={12} />
+            Forward all
+          </button>
+          <button
+            className="btn danger sm"
+            disabled={busy || pending.length === 0}
+            onClick={() => void dropAllHeld()}
+            title="Drop every held request — client connections are cut"
+          >
+            <Icon name="x" size={12} />
+            Drop all
+          </button>
         </div>
         <div className="panel-body">
-          {pending.length > 1 && (
-            <div className="bulk-row">
-              <button className="btn ghost sm" disabled={busy} onClick={() => void forwardAllHeld(pending.map((p) => p.id))} title="Release every held request unchanged">
-                <Icon name="play" size={12} />
-                Forward all ({pending.length})
-              </button>
-              <button className="btn ghost sm" disabled={busy} onClick={() => void dropAllHeld()} title="Drop every held request — client connections are cut">
-                <Icon name="x" size={12} />
-                Drop all
-              </button>
-            </div>
-          )}
           {pending.length === 0 ? (
             <Empty icon={pulse.intercept.enabled ? 'hand' : 'circle'} title={pulse.intercept.enabled ? 'Nothing held' : 'Intercept is off'}>
               {pulse.intercept.enabled ? (
@@ -751,6 +757,27 @@ export default function InterceptView({ pulse }: { pulse: PulseState }) {
                 <div className="l1">
                   <span className={`method-${p.method}`}>{p.method}</span>
                   <span className="id">{p.id.replace('req-', '')}</span>
+                  <span className="spacer" />
+                  <button
+                    className="btn sm icon-btn"
+                    title="Forward this request"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      void pulse.forwardPending(p.id)
+                    }}
+                  >
+                    <Icon name="check" size={12} />
+                  </button>
+                  <button
+                    className="btn danger sm icon-btn"
+                    title="Drop this request (client connection is cut)"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      void pulse.dropPending(p.id)
+                    }}
+                  >
+                    <Icon name="x" size={12} />
+                  </button>
                 </div>
                 <div className="l2" title={p.url}>
                   {p.url}
