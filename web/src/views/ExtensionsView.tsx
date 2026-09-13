@@ -414,6 +414,44 @@ const defaultFixture = JSON.stringify(
   2,
 )
 
+// ---------- editor drafts (localStorage, per file) ----------
+// Leaving Extensions unmounts the editor; switching files or loading a sample
+// replaces the buffer. Drafts survive all of that: debounced writes keyed by
+// file name, restored when the file is opened again, cleared on save.
+
+const DRAFT_KEY = 'pulse.plugin.drafts'
+
+function readDrafts(): Record<string, string> {
+  try {
+    const raw = JSON.parse(localStorage.getItem(DRAFT_KEY) ?? '{}')
+    if (raw && typeof raw === 'object') return raw as Record<string, string>
+  } catch {
+    /* corrupted */
+  }
+  return {}
+}
+
+function writeDraft(file: string, src: string | null) {
+  try {
+    const drafts = readDrafts()
+    if (src === null) delete drafts[file]
+    else drafts[file] = src
+    localStorage.setItem(DRAFT_KEY, JSON.stringify(drafts))
+  } catch {
+    /* storage unavailable */
+  }
+}
+
+/** parse a "(file.js:LINE:COL)" location out of a compile/load error */
+function errorLocation(text: string): { line: number; col: number } | null {
+  const m = /[^ (\s]\.js:(\d+):(\d+)/.exec(text)
+  if (!m) return null
+  const line = Number(m[1])
+  const col = Number(m[2])
+  if (!Number.isFinite(line) || line < 1) return null
+  return { line, col }
+}
+
 function PluginsPanel({
   notify,
   sub,
@@ -495,9 +533,18 @@ function PluginsPanel({
   const openInEditor = async (p: PluginInfo) => {
     try {
       const r = await api.getPluginSource(p.file)
+      const draft = readDrafts()[p.file]
       setFile(p.file)
-      setSrc(r.src)
-      setSavedSrc(r.src)
+      // a newer local draft wins — losing edits to a stale disk copy is the
+      // failure mode drafts exist to prevent
+      if (draft !== undefined && draft !== r.src) {
+        setSrc(draft)
+        setSavedSrc(r.src)
+        notify(`${p.file}: restored an unsaved draft (disk version differs)`)
+      } else {
+        setSrc(r.src)
+        setSavedSrc(r.src)
+      }
       setTab('editor')
     } catch (e) {
       notify((e as Error).message, 'err')
@@ -505,6 +552,7 @@ function PluginsPanel({
   }
 
   const loadSample = (s: { file: string; src: string }) => {
+    writeDraft(file, null) // loading a sample is an explicit replace
     setFile(s.file)
     setSrc(s.src)
     setSavedSrc(null)
@@ -643,15 +691,25 @@ function InstalledTab({
                     {h}()
                   </span>
                 ))}
+                {p.runningLastGood && (
+                  <span className="plugin-status warn" style={{ flex: 'none' }} title={p.error}>
+                    ● last good revision running
+                  </span>
+                )}
                 <div className="grow" />
-                <span className="faint mono" style={{ fontSize: 11 }}>
-                  {p.hits} calls
+                <span className="faint mono" style={{ fontSize: 11 }} title={`${p.hits} succeeded · ${p.modified} modified · ${p.errors} errors · ${p.timeouts} timeouts`}>
+                  {p.hits}/{p.attempts} ok{p.errors > 0 ? ` · ${p.errors} err` : ''}
                 </span>
                 <button className="btn ghost sm" onClick={() => onEdit(p)}>
                   Edit
                 </button>
               </div>
               {p.error && <div className="plugin-err">{p.error}</div>}
+              {p.lastError && (
+                <div className="plugin-err" style={{ opacity: 0.85 }} title={p.lastErrorAt ? new Date(p.lastErrorAt).toLocaleString() : undefined}>
+                  last error ({p.lastErrorAt ? new Date(p.lastErrorAt).toLocaleTimeString() : 'earlier'}): {p.lastError}
+                </div>
+              )}
               {p.log && p.log.length > 0 && <pre className="plugin-log">{p.log.join('\n')}</pre>}
             </div>
           ))
@@ -685,19 +743,40 @@ function EditorTab({
   setSavedSrc: (s: string | null) => void
 }) {
   const [busy, setBusy] = useState(false)
-  const [check, setCheck] = useState<{ ok: boolean; text: string } | null>(null)
+  const [check, setCheck] = useState<{ ok: boolean; text: string; line?: number; col?: number } | null>(null)
   const [hook, setHook] = useState<'request' | 'response'>('request')
   const [fixture, setFixture] = useState(defaultFixture)
   const [result, setResult] = useState<PluginTestResult | null>(null)
+  /** what the last test actually ran — to mark results stale after edits */
+  const [ranAgainst, setRanAgainst] = useState<{ src: string; fixture: string } | null>(null)
+  const [draftSaved, setDraftSaved] = useState(false)
   const exists = plugins.some((p) => p.file === file)
+  const live = plugins.find((p) => p.file === file)
 
   const fileNameOk = /^[A-Za-z0-9][A-Za-z0-9_.-]*\.js$/.test(file)
+
+  // debounced draft autosave — survives unmounts and file switches
+  useEffect(() => {
+    if (savedSrc !== null && src === savedSrc) {
+      setDraftSaved(false)
+      return // clean state, nothing to protect
+    }
+    setDraftSaved(false)
+    const t = window.setTimeout(() => {
+      writeDraft(file, src)
+      setDraftSaved(true)
+    }, 500)
+    return () => window.clearTimeout(t)
+  }, [src, file, savedSrc])
+
+  const stale = result !== null && ranAgainst !== null && (ranAgainst.src !== src || ranAgainst.fixture !== fixture)
 
   const doCheck = async () => {
     setBusy(true)
     try {
       const r = await api.validatePlugin(src)
-      setCheck(r.error ? { ok: false, text: r.error } : { ok: true, text: `compiles · hooks: ${r.hooks.length ? r.hooks.join(', ') : 'none'}${r.name ? ` · ${r.name}` : ''}` })
+      const loc = r.error ? errorLocation(r.error) : undefined
+      setCheck(r.error ? { ok: false, text: r.error, line: loc?.line, col: loc?.col } : { ok: true, text: `compiles · hooks: ${r.hooks.length ? r.hooks.join(', ') : 'none'}${r.name ? ` · ${r.name}` : ''}` })
     } catch (e) {
       setCheck({ ok: false, text: (e as Error).message })
     } finally {
@@ -714,13 +793,27 @@ function EditorTab({
     try {
       const r = await api.savePluginSource(file, src)
       setSavedSrc(src)
+      writeDraft(file, null) // the draft is now the file on disk
       onRefresh()
       if (r.error) {
-        setCheck({ ok: false, text: `saved, but it does not load: ${r.error}` })
-        notify(`${file} saved — compile error, plugin inactive`, 'err')
+        const after = r.plugins.find((p) => p.file === file)
+        if (after?.runningLastGood) {
+          setCheck({ ok: false, text: `saved · source does not load — the previous good revision keeps running` })
+          notify(`${file} saved — broken source, still running the last good revision`, 'err')
+        } else {
+          setCheck({ ok: false, text: `saved, but it does not load: ${r.error}` })
+          notify(`${file} saved — compile error, plugin inactive`, 'err')
+        }
       } else {
-        setCheck({ ok: true, text: `saved to ${r.dir} · active` })
-        notify(`${file} saved and active`)
+        // report the actual runtime state, not an assumed "active"
+        const after = r.plugins.find((p) => p.file === file)
+        if (after && !after.enabled) {
+          setCheck({ ok: true, text: `saved to ${r.dir} · plugin is disabled` })
+          notify(`${file} saved — plugin is disabled`)
+        } else {
+          setCheck({ ok: true, text: `saved to ${r.dir} · active` })
+          notify(`${file} saved and active`)
+        }
       }
     } catch (e) {
       setCheck({ ok: false, text: (e as Error).message })
@@ -736,6 +829,7 @@ function EditorTab({
     setBusy(true)
     try {
       await api.deletePluginSource(file)
+      writeDraft(file, null)
       setSavedSrc(null)
       onRefresh()
       notify(`${file} deleted`)
@@ -761,6 +855,7 @@ function EditorTab({
     try {
       const r = await api.testPlugin({ src, hook, request: fx.request, response: fx.response })
       setResult(r)
+      setRanAgainst({ src, fixture })
     } catch (e) {
       notify((e as Error).message, 'err')
     } finally {
@@ -786,11 +881,32 @@ function EditorTab({
         />
         {!fileNameOk && <span className="plugin-status err">name must be *.js</span>}
         {savedSrc !== null && src !== savedSrc && (
-          <span className="plugin-status warn" title="Edited since last save">
-            ● unsaved
+          <span className="plugin-status warn" title="Edited since last save — a local draft is kept">
+            ● unsaved{draftSaved ? ' · draft saved' : ' · saving draft…'}
           </span>
         )}
-        {check && <span className={`plugin-status ${check.ok ? 'ok' : 'err'}`}>{check.ok ? '✓ ' : '✗ '}{check.text}</span>}
+        {savedSrc !== null && src === savedSrc && draftSaved === false && live?.runningLastGood && (
+          <span className="plugin-status warn" title="The source on disk does not load; the last good revision is running">
+            ● running last good revision
+          </span>
+        )}
+        {check && (
+          <span className={`plugin-status ${check.ok ? 'ok' : 'err'}`} title={check.text}>
+            {check.ok ? '✓ ' : '✗ '}
+            {check.text}
+            {check.line !== undefined && (
+              <button
+                className="mini"
+                style={{ marginLeft: 6 }}
+                title="Copy the location"
+                onClick={() => void navigator.clipboard?.writeText(`${file}:${check.line}:${check.col ?? 1}`).catch(() => {})}
+              >
+                line {check.line}
+                {check.col !== undefined ? `, col ${check.col}` : ''}
+              </button>
+            )}
+          </span>
+        )}
         <div className="spacer" />
         <button className="btn ghost sm" disabled={busy} title="Dry-compile without saving" onClick={doCheck}>
           <Icon name="check" size={13} />
@@ -832,6 +948,11 @@ function EditorTab({
             <CodeEditor value={fixture} onChange={setFixture} language="json" />
             {result && (
               <div className="plugin-test-result">
+                {stale && (
+                  <div className="plugin-status warn" title="The source or fixture changed after this run">
+                    ● stale — edited since this run
+                  </div>
+                )}
                 {result.error ? (
                   <div className="plugin-err">{result.error}</div>
                 ) : (

@@ -163,8 +163,16 @@ export interface PluginInfo {
   file: string
   enabled: boolean
   hooks: string[]
+  attempts: number
   hits: number
+  modified: number
+  errors: number
+  timeouts: number
+  lastError?: string
+  lastErrorAt?: string
   error?: string
+  /** the source on disk fails to load; the last good revision is running */
+  runningLastGood?: boolean
   log?: string[]
 }
 

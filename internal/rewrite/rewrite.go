@@ -66,6 +66,7 @@ func Open(path string) (*Engine, error) {
 		if _, err := fmt.Sscanf(r.ID, "rule-%d", &n); err == nil && n >= e.next {
 			e.next = n + 1
 		}
+		e.cacheRegex(r)
 	}
 	return e, nil
 }

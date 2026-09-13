@@ -52,8 +52,15 @@ func (s *Server) handlePluginFile(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, "missing \"enabled\"")
 		return
 	}
-	if !s.plug.SetEnabled(file, *body.Enabled) {
+	found, err := s.plug.SetEnabled(file, *body.Enabled)
+	if !found {
 		writeErr(w, http.StatusNotFound, "no such plugin: "+file)
+		return
+	}
+	if err != nil {
+		// the in-memory toggle worked but the state file did not persist:
+		// a restart would revert it — surface that instead of claiming ok
+		writeErr(w, http.StatusInternalServerError, "toggled in memory, but persisting the state failed: "+err.Error())
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})

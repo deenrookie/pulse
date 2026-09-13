@@ -29,15 +29,27 @@ const (
 	responseHook = "onResponse"
 )
 
-// Plugin describes a loaded plugin file.
+// Plugin describes a loaded plugin file. Counters are separated so health is
+// answerable: Attempts counts every hook invocation, Hits successful ones,
+// Modified those that changed the message, Errors/Timeouts failures. LastError
+// is sticky — a later success does not erase it.
 type Plugin struct {
 	Name    string   `json:"name"`
 	Version string   `json:"version"`
 	File    string   `json:"file"`
 	Enabled bool     `json:"enabled"`
 	Hooks   []string `json:"hooks"`
+	Attempts int64   `json:"attempts"`
 	Hits    int64    `json:"hits"`
+	Modified int64   `json:"modified"`
+	Errors  int64    `json:"errors"`
+	Timeouts int64   `json:"timeouts"`
+	LastError string `json:"lastError,omitempty"`
+	LastErrorAt string `json:"lastErrorAt,omitempty"`
 	Error   string   `json:"error,omitempty"`
+	// RunningLastGood: the current source fails to load and the running
+	// program comes from the last good revision.
+	RunningLastGood bool `json:"runningLastGood,omitempty"`
 	Log     []string `json:"log,omitempty"`
 
 	src  string
@@ -50,6 +62,7 @@ type Runtime struct {
 	dir       string
 	plugins   []*Plugin
 	statePath string
+	goodDir   string
 	timeout   time.Duration
 }
 
@@ -57,7 +70,10 @@ func Open(dir, statePath string) (*Runtime, error) {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return nil, fmt.Errorf("create plugins dir: %w", err)
 	}
-	rt := &Runtime{dir: dir, statePath: statePath, timeout: hookTimeout}
+	rt := &Runtime{dir: dir, statePath: statePath, goodDir: statePath + "-good", timeout: hookTimeout}
+	if err := os.MkdirAll(rt.goodDir, 0o755); err != nil {
+		return nil, fmt.Errorf("create plugin revisions dir: %w", err)
+	}
 	if err := rt.load(); err != nil {
 		return nil, err
 	}
@@ -89,12 +105,58 @@ func (r *Runtime) load() error {
 		if v, ok := enabled[e.Name()]; ok {
 			p.Enabled = v
 		}
-		compile(p)
+		compile(p, r.timeout)
+		if p.prog == nil {
+			// The source on disk is broken. Keep the proxy working by
+			// running the last revision that loaded, if there is one.
+			if goodSrc, ok := r.readLastGood(e.Name()); ok {
+				gp := &Plugin{File: e.Name(), Enabled: p.Enabled, src: goodSrc}
+				compile(gp, r.timeout)
+				if gp.prog != nil {
+					broken := p.Error
+					*p = *gp
+					p.src = string(src) // the editor shows the current source
+					p.Error = broken + " — running last good revision"
+					p.RunningLastGood = true
+				}
+			}
+		} else {
+			r.writeLastGood(e.Name(), string(src))
+		}
 		list = append(list, p)
 	}
 	sort.Slice(list, func(i, j int) bool { return list[i].File < list[j].File })
 	r.plugins = list
 	return r.saveState()
+}
+
+// readLastGood returns the newest source revision that compiled, if any.
+func (r *Runtime) readLastGood(file string) (string, bool) {
+	if !fileRe.MatchString(file) {
+		return "", false
+	}
+	b, err := os.ReadFile(filepath.Join(r.goodDir, file))
+	if err != nil {
+		return "", false
+	}
+	return string(b), true
+}
+
+// writeLastGood persists a known-good revision (atomic, skipped when the
+// content already matches).
+func (r *Runtime) writeLastGood(file, src string) {
+	if !fileRe.MatchString(file) {
+		return
+	}
+	dst := filepath.Join(r.goodDir, file)
+	if cur, err := os.ReadFile(dst); err == nil && string(cur) == src {
+		return
+	}
+	tmp := dst + ".tmp"
+	if err := os.WriteFile(tmp, []byte(src), 0o644); err != nil {
+		return
+	}
+	_ = os.Rename(tmp, dst)
 }
 
 func (r *Runtime) saveState() error {
@@ -111,8 +173,13 @@ func (r *Runtime) saveState() error {
 }
 
 // compile builds the program and extracts metadata; failures are recorded on
-// the plugin instead of aborting the load.
-func compile(p *Plugin) {
+// the plugin instead of aborting the load. Top-level execution (init) runs
+// under the same interrupt budget as hooks, so a `while (true)` at the top of
+// a file cannot wedge a load.
+func compile(p *Plugin, timeout time.Duration) {
+	if timeout <= 0 {
+		timeout = hookTimeout
+	}
 	p.Error = ""
 	p.Hooks = nil
 	prog, err := goja.Compile(p.File, p.src, false)
@@ -121,7 +188,10 @@ func compile(p *Plugin) {
 		return
 	}
 	vm := goja.New()
-	if _, err := vm.RunProgram(prog); err != nil {
+	timer := time.AfterFunc(timeout, func() { vm.Interrupt("plugin timeout") })
+	_, err = vm.RunProgram(prog)
+	timer.Stop()
+	if err != nil {
 		p.Error = "load: " + err.Error()
 		return
 	}
@@ -187,18 +257,19 @@ func (r *Runtime) List() []Plugin {
 	return out
 }
 
-// SetEnabled toggles a plugin without reloading.
-func (r *Runtime) SetEnabled(file string, enabled bool) bool {
+// SetEnabled toggles a plugin without reloading. The bool reports whether the
+// plugin exists; the error reports persistence failure so the UI can say the
+// toggle will not survive a restart instead of silently succeeding.
+func (r *Runtime) SetEnabled(file string, enabled bool) (bool, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	for _, p := range r.plugins {
 		if p.File == file {
 			p.Enabled = enabled
-			_ = r.saveState()
-			return true
+			return true, r.saveState()
 		}
 	}
-	return false
+	return false, nil
 }
 
 // SetDir switches the plugins directory at runtime, rescanning it.
@@ -275,7 +346,7 @@ type Inspection struct {
 func Inspect(src string) Inspection {
 	var in Inspection
 	p := &Plugin{File: "check.js", Enabled: true, src: src}
-	compile(p)
+	compile(p, hookTimeout)
 	in.Error = p.Error
 	in.Name = p.Name
 	in.Version = p.Version
@@ -302,7 +373,7 @@ func TestRun(src, hook string, req *store.Request, resp *store.Response, timeout
 		return out
 	}
 	p := &Plugin{File: "test.js", Enabled: true, src: src}
-	compile(p)
+	compile(p, timeout)
 	if p.Error != "" {
 		out.Error = p.Error
 		return out
@@ -345,15 +416,25 @@ func (r *Runtime) log(p *Plugin, lines []string) {
 func (r *Runtime) recordError(p *Plugin, err error, hook string) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	p.Error = err.Error()
+	p.Attempts++
+	p.Errors++
+	if strings.Contains(err.Error(), "timeout") || strings.Contains(err.Error(), "interrupted") {
+		p.Timeouts++
+	}
+	p.LastError = err.Error()
+	p.LastErrorAt = time.Now().Format(time.RFC3339)
 	r.log(p, []string{hook + " error: " + err.Error()})
 }
 
-func (r *Runtime) recordSuccess(p *Plugin, logs []string) {
+func (r *Runtime) recordSuccess(p *Plugin, logs []string, modified bool) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	p.Error = ""
+	p.Attempts++
 	p.Hits++
+	if modified {
+		p.Modified++
+	}
+	// LastError stays: a later success must not erase the failure history.
 	r.log(p, logs)
 }
 
@@ -377,7 +458,7 @@ func (r *Runtime) ApplyRequest(req *store.Request) bool {
 			r.recordError(p, err, requestHook)
 			continue
 		}
-		r.recordSuccess(p, logs)
+		r.recordSuccess(p, logs, ok)
 		if ok {
 			changed = true
 		}
@@ -404,7 +485,7 @@ func (r *Runtime) ApplyResponse(req *store.Request, resp *store.Response) bool {
 			r.recordError(p, err, responseHook)
 			continue
 		}
-		r.recordSuccess(p, logs)
+		r.recordSuccess(p, logs, ok)
 		if ok {
 			changed = true
 		}
@@ -425,7 +506,14 @@ func hasHook(p *Plugin, name string) bool {
 // returns whether the message was modified, captured pulse.log lines, and an
 // error.
 func (r *Runtime) runHook(p *Plugin, hook string, req *store.Request, resp *store.Response, timeout time.Duration) (bool, []string, error) {
+	if timeout <= 0 {
+		timeout = hookTimeout
+	}
 	vm := goja.New()
+	// the program re-initializes in every fresh VM — the budget must cover
+	// that execution too, not just the hook call
+	timer := time.AfterFunc(timeout, func() { vm.Interrupt("plugin timeout") })
+	defer timer.Stop()
 	if _, err := vm.RunProgram(p.prog); err != nil {
 		return false, nil, fmt.Errorf("load: %w", err)
 	}
@@ -454,8 +542,6 @@ func (r *Runtime) runHook(p *Plugin, hook string, req *store.Request, resp *stor
 		return false, logs, nil
 	}
 
-	timer := time.AfterFunc(timeout, func() { vm.Interrupt("plugin timeout") })
-	defer timer.Stop()
 	if _, err := fn(goja.Undefined(), ctx); err != nil {
 		return false, logs, fmt.Errorf("%s: %w", hook, err)
 	}

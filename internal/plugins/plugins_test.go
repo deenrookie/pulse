@@ -106,7 +106,7 @@ func TestBrokenPluginsAreIsolated(t *testing.T) {
 		t.Fatal("healthy plugin did not apply")
 	}
 	for _, p := range rt.List() {
-		if p.File == "throws.js" && p.Error == "" {
+		if p.File == "throws.js" && p.LastError == "" {
 			t.Fatal("runtime error not recorded")
 		}
 		if p.File == "syntax.js" && p.Error == "" {
@@ -132,15 +132,18 @@ func TestInfiniteLoopIsInterrupted(t *testing.T) {
 	if got := len(req.Headers); got != 0 {
 		t.Fatalf("request unexpectedly modified: %+v", req.Headers)
 	}
-	if !strings.Contains(rt.List()[0].Error, "timeout") {
-		t.Fatalf("error = %q", rt.List()[0].Error)
+	if !strings.Contains(rt.List()[0].LastError, "interrupted") && !strings.Contains(rt.List()[0].LastError, "timeout") {
+		t.Fatalf("lastError = %q", rt.List()[0].LastError)
+	}
+	if rt.List()[0].Attempts != 1 || rt.List()[0].Errors != 1 || rt.List()[0].Hits != 0 {
+		t.Fatalf("counters = %+v", rt.List()[0])
 	}
 }
 
 func TestDisableAndReload(t *testing.T) {
 	rt := newRuntime(t, map[string]string{"add-header.js": addHeaderSrc})
-	if !rt.SetEnabled("add-header.js", false) {
-		t.Fatal("SetEnabled failed")
+	if ok, err := rt.SetEnabled("add-header.js", false); !ok || err != nil {
+		t.Fatalf("SetEnabled failed: %v", err)
 	}
 	req := &store.Request{Method: "GET", URL: "http://h/", Headers: []store.Header{}}
 	if rt.ApplyRequest(req) {

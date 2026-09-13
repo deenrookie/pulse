@@ -142,3 +142,32 @@ func TestValidationAndPersistence(t *testing.T) {
 		t.Fatalf("persisted rules = %d", got)
 	}
 }
+
+// Regression: rules loaded from disk at startup must have their regex cache
+// rebuilt — regex rules used to silently stop matching after a restart
+// because Open() parsed the JSON but never pre-compiled the patterns.
+func TestOpenRebuildsRegexCache(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "rules.json")
+	e1, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e1.Add(Rule{Enabled: true, Zone: "request_header", Match: `v(\d+)`, Replace: "ver-$1", Regex: true, Comment: ""}); err != nil {
+		t.Fatal(err)
+	}
+	req := &store.Request{Method: "GET", URL: "http://h/api", Headers: []store.Header{{Name: "X-V", Value: "v1 endpoint"}}}
+	if !e1.ApplyRequest(req) {
+		t.Fatal("baseline: regex rule did not apply")
+	}
+
+	// reopen from the persisted file — the cache starts empty
+	e2, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req2 := &store.Request{Method: "GET", URL: "http://h/api", Headers: []store.Header{{Name: "X-V", Value: "v1 endpoint"}}}
+	if !e2.ApplyRequest(req2) {
+		t.Fatal("regex rule did not apply after restart — cache not rebuilt")
+	}
+}
