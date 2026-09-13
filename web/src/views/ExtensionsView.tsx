@@ -6,7 +6,7 @@ import Split from '../ui/Split'
 import CodeEditor from '../ui/CodeEditor'
 import { confirm } from '../ui/Confirm'
 import ContextMenu, { type MenuItem } from '../components/ContextMenu'
-import type { PluginInfo, PluginSample, PluginTestResult, RewriteRule, RewriteZone, TestMessage } from '../types'
+import type { FlowMeta, PluginConfigView, PluginInfo, PluginSample, PluginTestResult, RewriteRule, RewriteZone, TestMessage } from '../types'
 
 const ZONES: [RewriteZone, string][] = [
   ['request_line', 'Request line / URL'],
@@ -370,6 +370,51 @@ function RewritePanel({ notify }: { notify: (text: string, kind?: 'ok' | 'err') 
       {menu && <ContextMenu x={menu.x} y={menu.y} items={rowMenu(menu.rule)} onClose={() => setMenu(null)} />}
     </div>
   )
+}
+
+
+/** base64 body (or plain) → text for fixtures */
+function atobUnicode(b64: string | null | undefined): string {
+  if (!b64) return ''
+  try {
+    const bin = atob(b64)
+    const bytes = new Uint8Array(bin.length)
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i)
+    return new TextDecoder().decode(bytes)
+  } catch {
+    return b64 // not base64 — treat as plain text
+  }
+}
+
+/** parse a pasted raw HTTP message (request, or response) into fixture shape */
+function parseRawMessage(raw: string): { request: TestMessage; response?: TestMessage } | null {
+  const lines = raw.replace(/\r\n/g, '\n').split('\n')
+  const empty = lines.findIndex((l, i) => i > 0 && l.trim() === '')
+  if (empty < 0) return null
+  const head = lines[0] ?? ''
+  const headers: { name: string; value: string }[] = []
+  for (const line of lines.slice(1, empty)) {
+    const i = line.indexOf(':')
+    if (i > 0) headers.push({ name: line.slice(0, i).trim(), value: line.slice(i + 1).trim() })
+  }
+  const body = lines.slice(empty + 1).join('\n')
+  const reqMatch = /^(\S+) (\S+)(?: (HTTP\/[\d.]+))?$/.exec(head)
+  if (reqMatch) {
+    const host = headers.find((h) => h.name.toLowerCase() === 'host')?.value
+    const url = /^https?:\/\//.test(reqMatch[2]) ? reqMatch[2] : 'http://' + (host || 'localhost') + reqMatch[2]
+    return {
+      request: { method: reqMatch[1], url, httpVersion: reqMatch[3] || 'HTTP/1.1', headers, body },
+    }
+  }
+  const respMatch = /^(HTTP\/[\d.]+) (\d{3})(?: (.*))?$/.exec(head)
+  if (respMatch) {
+    // a raw response alone: build a placeholder request around it
+    return {
+      request: { method: 'GET', url: 'http://example.com/', httpVersion: 'HTTP/1.1', headers: [], body: '' },
+      response: { status: Number(respMatch[2]), reason: (respMatch[3] || '').trim(), httpVersion: respMatch[1], headers, body },
+    }
+  }
+  return null
 }
 
 // ---------- plugin samples ----------
@@ -750,8 +795,115 @@ function EditorTab({
   /** what the last test actually ran — to mark results stale after edits */
   const [ranAgainst, setRanAgainst] = useState<{ src: string; fixture: string } | null>(null)
   const [draftSaved, setDraftSaved] = useState(false)
+  // R1 test bench: flow import + config panel
+  const [importOpen, setImportOpen] = useState(false)
+  const [importFilter, setImportFilter] = useState('')
+  const [importFlows, setImportFlows] = useState<FlowMeta[]>([])
+  const [configFields, setConfigFields] = useState<PluginConfigView[] | null>(null)
+  const [configDraft, setConfigDraft] = useState<Record<string, string>>({})
+  const [configBusy, setConfigBusy] = useState(false)
   const exists = plugins.some((p) => p.file === file)
   const live = plugins.find((p) => p.file === file)
+
+  // config schema appears when the live plugin declares one
+  useEffect(() => {
+    if (!live?.configSchema || Object.keys(live.configSchema).length === 0) {
+      setConfigFields(null)
+      return
+    }
+    api.getPluginConfig(file).then((r) => {
+      setConfigFields(r.fields)
+      const draft: Record<string, string> = {}
+      for (const f of r.fields) {
+        if (f.type === 'secret') draft[f.name] = ''
+        else draft[f.name] = f.value === undefined || f.value === null ? '' : String(f.value)
+      }
+      setConfigDraft(draft)
+    }).catch(() => setConfigFields(null))
+  }, [file, live?.configSchema, plugins])
+
+  const saveConfig = async () => {
+    setConfigBusy(true)
+    try {
+      const values: Record<string, unknown> = {}
+      for (const f of configFields ?? []) {
+        const raw = configDraft[f.name] ?? ''
+        if (f.type === 'secret') {
+          if (raw !== '') values[f.name] = raw // empty = keep existing
+          continue
+        }
+        if (raw === '' && f.value === undefined) continue
+        if (f.type === 'number') values[f.name] = Number(raw)
+        else if (f.type === 'boolean') values[f.name] = raw === 'true'
+        else values[f.name] = raw
+      }
+      const r = await api.setPluginConfig(file, values)
+      setConfigFields(r.fields)
+      const draft: Record<string, string> = {}
+      for (const f of r.fields) {
+        if (f.type === 'secret') draft[f.name] = ''
+        else draft[f.name] = f.value === undefined || f.value === null ? '' : String(f.value)
+      }
+      setConfigDraft(draft)
+      notify(`${file}: configuration saved`)
+    } catch (e) {
+      notify((e as Error).message, 'err')
+    } finally {
+      setConfigBusy(false)
+    }
+  }
+
+  // flow import: load the newest captured flows when the picker opens
+  useEffect(() => {
+    if (!importOpen) return
+    api.listFlows().then((r) => setImportFlows(r.items.slice().reverse())).catch(() => setImportFlows([]))
+  }, [importOpen])
+
+  const importFlow = async (id: string) => {
+    try {
+      const fl = await api.getFlow(id)
+      const msg = (side: 'request' | 'response'): TestMessage | undefined => {
+        if (side === 'request') {
+          const m = fl.request
+          return { method: m.method, url: m.url, httpVersion: m.httpVersion, headers: m.headers ?? [], body: atobUnicode(m.body ?? '') }
+        }
+        const m = fl.response
+        if (!m) return undefined
+        return { status: m.statusCode, reason: m.reason, httpVersion: m.httpVersion, headers: m.headers ?? [], body: atobUnicode(m.body ?? '') }
+      }
+      const req = msg('request')
+      if (!req) {
+        notify('This flow has no stored request', 'err')
+        return
+      }
+      setFixture(JSON.stringify({ request: req, response: msg('response') }, null, 2))
+      setImportOpen(false)
+      notify(`Fixture imported from ${fl.request.method} ${fl.request.url.slice(0, 60)}`)
+    } catch (e) {
+      notify((e as Error).message, 'err')
+    }
+  }
+
+  const pasteRaw = async () => {
+    let raw = ''
+    try {
+      raw = await navigator.clipboard.readText()
+    } catch {
+      notify('Clipboard unavailable — copy a raw HTTP message first', 'err')
+      return
+    }
+    if (!raw.trim()) {
+      notify('Clipboard is empty', 'err')
+      return
+    }
+    const parsed = parseRawMessage(raw)
+    if (!parsed) {
+      notify('Could not parse a request line from the clipboard text', 'err')
+      return
+    }
+    setFixture(JSON.stringify({ request: parsed.request, response: parsed.response }, null, 2))
+    notify('Fixture built from the raw message')
+  }
 
   const fileNameOk = /^[A-Za-z0-9][A-Za-z0-9_.-]*\.js$/.test(file)
 
@@ -922,6 +1074,47 @@ function EditorTab({
           Save to disk
         </button>
       </div>
+      {configFields && configFields.length > 0 && (
+        <div className="plugin-config-row">
+          <span className="lbl">
+            <Icon name="gear" size={12} />
+            Configuration
+          </span>
+          {configFields.map((f) => (
+            <label key={f.name} className="plugin-config-field" title={f.hint || f.name}>
+              <span className="k">{f.label || f.name}</span>
+              {f.type === 'boolean' ? (
+                <select className="select" value={configDraft[f.name] || 'false'} onChange={(e) => setConfigDraft({ ...configDraft, [f.name]: e.target.value })}>
+                  <option value="true">true</option>
+                  <option value="false">false</option>
+                </select>
+              ) : f.type === 'select' ? (
+                <select className="select" value={configDraft[f.name] ?? ''} onChange={(e) => setConfigDraft({ ...configDraft, [f.name]: e.target.value })}>
+                  {(f.options ?? []).map((o) => (
+                    <option key={o} value={o}>
+                      {o}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <input
+                  className="input mono"
+                  type={f.type === 'secret' ? 'password' : f.type === 'number' ? 'number' : 'text'}
+                  placeholder={f.type === 'secret' ? (f.set ? '(configured — leave empty to keep)' : 'not set') : String(f.default ?? '')}
+                  value={configDraft[f.name] ?? ''}
+                  spellCheck={false}
+                  disabled={configBusy}
+                  onChange={(e) => setConfigDraft({ ...configDraft, [f.name]: e.target.value })}
+                />
+              )}
+            </label>
+          ))}
+          <button className="btn ghost sm" disabled={configBusy} onClick={() => void saveConfig()}>
+            {configBusy ? <span className="spinner" /> : <Icon name="check" size={12} />}
+            Save config
+          </button>
+        </div>
+      )}
       <Split
         dir="v"
         storageKey="pulse.split.pluginEditor"
@@ -940,11 +1133,61 @@ function EditorTab({
                 runs against this JSON — no traffic is sent
               </span>
               <div className="spacer" />
+              <button
+                className="btn ghost sm"
+                disabled={busy}
+                title="Import a captured flow into the fixture"
+                onClick={() => setImportOpen(true)}
+              >
+                <Icon name="waves" size={13} />
+                From Flow
+              </button>
+              <button
+                className="btn ghost sm"
+                disabled={busy}
+                title="Paste a raw HTTP message to build the fixture"
+                onClick={pasteRaw}
+              >
+                <Icon name="file" size={13} />
+                From Raw
+              </button>
               <button className="btn ghost sm" disabled={busy} title="Run the hook against the fixture" onClick={doTest}>
                 {busy ? <span className="spinner" /> : <Icon name="play" size={13} />}
                 Test run
               </button>
             </div>
+            {importOpen && (
+              <div className="plugin-import">
+                <div className="fixture-head">
+                  <span className="lbl">Pick a captured flow</span>
+                  <input
+                    className="input mono"
+                    placeholder="filter by host/path…"
+                    value={importFilter}
+                    spellCheck={false}
+                    onChange={(e) => setImportFilter(e.target.value)}
+                  />
+                  <div className="spacer" />
+                  <button className="btn ghost sm" onClick={() => setImportOpen(false)}>
+                    <Icon name="x" size={12} />
+                    Cancel
+                  </button>
+                </div>
+                <div className="plugin-import-list">
+                  {importFlows
+                    .filter((f) => !importFilter || `${f.method} ${f.host}${f.path}`.toLowerCase().includes(importFilter.toLowerCase()))
+                    .slice(0, 30)
+                    .map((f) => (
+                      <button key={f.id} className="plugin-import-row" onClick={() => importFlow(f.id)}>
+                        <span className={`method-${f.method} mono`}>{f.method}</span>
+                        <span className="mono">{f.host}{f.path}</span>
+                        <span className={`mono st-${Math.floor((f.statusCode || 0) / 100)}xx`}>{f.statusCode || ''}</span>
+                      </button>
+                    ))}
+                  {importFlows.length === 0 && <div className="faint" style={{ padding: 10 }}>No captured flows yet — browse something through the proxy first.</div>}
+                </div>
+              </div>
+            )}
             <CodeEditor value={fixture} onChange={setFixture} language="json" />
             {result && (
               <div className="plugin-test-result">

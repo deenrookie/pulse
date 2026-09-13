@@ -130,6 +130,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/api/plugins/validate", s.handlePluginsValidate)
 	mux.HandleFunc("/api/plugins/test", s.handlePluginsTest)
 	mux.HandleFunc("/api/plugins/source/", s.handlePluginsSource)
+	mux.HandleFunc("/api/plugins/config/", s.handlePluginConfig)
 	mux.HandleFunc("/api/plugins/", s.handlePluginFile)
 	mux.HandleFunc("/", s.handleStatic)
 	return withCORS(s.gate(mux))

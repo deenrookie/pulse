@@ -1967,3 +1967,21 @@ body.col-resizing .col-split { background: var(--accent); }
 
 /* intercept bulk row */
 .bulk-row { display: flex; gap: 8px; padding: 8px 10px; border-bottom: 1px solid var(--border); flex: none; }
+
+/* R1 plugin config form + test-bench import */
+.plugin-config-row {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  padding: 6px 12px; border-bottom: 1px solid var(--border); background: var(--bg-raised);
+}
+.plugin-config-row .lbl { display: inline-flex; align-items: center; gap: 5px; color: var(--text-muted); font-size: 11.5px; flex: none; }
+.plugin-config-field { display: inline-flex; align-items: center; gap: 6px; }
+.plugin-config-field .k { color: var(--text-faint); font-size: 11px; }
+.plugin-config-field .input, .plugin-config-field .select { padding: 3px 8px; font-size: 12px; width: 160px; }
+.plugin-import { border-bottom: 1px solid var(--border); display: flex; flex-direction: column; max-height: 220px; }
+.plugin-import-list { overflow: auto; display: flex; flex-direction: column; }
+.plugin-import-row {
+  display: flex; gap: 10px; align-items: baseline; text-align: left; padding: 4px 12px;
+  border: none; background: none; color: var(--text); cursor: pointer; font: inherit;
+}
+.plugin-import-row:hover { background: var(--bg-hover); }
+.plugin-import-row .mono { font-size: 11.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

@@ -70,6 +70,32 @@ function onResponse(ctx) {
 | `pulse.log(msg)` | 输出一行日志（显示在 Plugins 面板，保留最近 60 行） |
 | `pulse.version` | Pulse 版本号 |
 
+## R1 SDK：`pulse.*` 报文与数据助手
+
+插件里可以直接使用以下宿主 API（作用于 `ctx.request` / `ctx.response` 的当前草稿，与直接改字段等效）：
+
+| API | 说明 |
+| --- | --- |
+| `pulse.headers.get/getAll/set/append/remove(message, name, …)` | 大小写不敏感；set 去重、append 保留重复、remove 返回删除数 |
+| `pulse.url.parse(url)` | 返回 `{scheme, host, port, path, query}` |
+| `pulse.query.getAll/set/append/remove(request, name, value?)` | 操作 URL 查询参数，保留重复参数与顺序 |
+| `pulse.cookies.get/set/remove(message, name, value)` | 按 Cookie 语义处理请求 Cookie 头 |
+| `pulse.body.json / setJSON / setText(message, …)` | JSON/文本 body 读写 |
+| `pulse.encoding.base64 / hex(text)` | 编码 |
+| `pulse.crypto.sha256(text)` / `hmacSha256(key, text)` | 十六进制摘要/签名 |
+
+### 状态与配置
+
+- `ctx.state.get/set/delete/keys()`：同一 Flow 的 request→response 阶段共享，事务结束释放。
+- `pulse.store.memory.get/set/delete/keys/increment(key, val?, ttlMs?)`：跨请求内存状态（重启丢失，支持 TTL 与原子 increment）。
+- `pulse.store.local.get/set/delete/keys(key, …)`：插件持久 JSON 状态（重启保留，256KB 上限）。
+- `plugin.config`：声明配置表单（`string/number/boolean/select/secret`），用户在编辑器上方的 Configuration 行填写；secret 只写不回显。运行时经 `ctx.config` 读取快照（含默认值合并）。
+
+### 测试台导入
+
+- **From Flow**：从已捕获流量挑选导入 request+response 作为夹具。
+- **From Raw**：粘贴原始 HTTP 报文（请求或响应）自动构造夹具。
+
 ## 插件目录
 
 默认是 `<数据目录>/plugins`。在 **Extensions → Plugins → Installed** 标签顶部的 *Plugin directory* 输入框里可以改成任意路径（回车或 Apply 生效，目录不存在会自动创建；Reset 恢复默认）。配置持久化在 `settings.json`（`pluginsDir` 字段），重启后仍然生效。

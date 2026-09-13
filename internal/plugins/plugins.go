@@ -50,6 +50,8 @@ type Plugin struct {
 	// RunningLastGood: the current source fails to load and the running
 	// program comes from the last good revision.
 	RunningLastGood bool `json:"runningLastGood,omitempty"`
+	// Config: the plugin's declared configuration schema (no values).
+	Config map[string]ConfigField `json:"configSchema,omitempty"`
 	Log     []string `json:"log,omitempty"`
 
 	src  string
@@ -63,14 +65,31 @@ type Runtime struct {
 	plugins   []*Plugin
 	statePath string
 	goodDir   string
+	storesDir string
 	timeout   time.Duration
+
+	memories map[string]*pluginStore          // file -> memory store
+	locals   map[string]*persistentStore      // file -> persistent store
+	configs  *configManager
+	tx       *txStates
 }
 
 func Open(dir, statePath string) (*Runtime, error) {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return nil, fmt.Errorf("create plugins dir: %w", err)
 	}
-	rt := &Runtime{dir: dir, statePath: statePath, goodDir: statePath + "-good", timeout: hookTimeout}
+	storesDir := storesDirFor(statePath)
+	if err := os.MkdirAll(storesDir, 0o755); err != nil {
+		return nil, fmt.Errorf("create plugin stores dir: %w", err)
+	}
+	rt := &Runtime{
+		dir: dir, statePath: statePath, goodDir: statePath + "-good", storesDir: storesDir,
+		timeout: hookTimeout,
+		memories: map[string]*pluginStore{},
+		locals:   map[string]*persistentStore{},
+		configs:  openConfigs(configPathFor(statePath)),
+		tx:       newTxStates(),
+	}
 	if err := os.MkdirAll(rt.goodDir, 0o755); err != nil {
 		return nil, fmt.Errorf("create plugin revisions dir: %w", err)
 	}
@@ -78,6 +97,26 @@ func Open(dir, statePath string) (*Runtime, error) {
 		return nil, err
 	}
 	return rt, nil
+}
+
+// memoryStore returns (creating on demand) the plugin's in-memory store.
+func (r *Runtime) memoryStore(file string) *pluginStore {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.memories[file] == nil {
+		r.memories[file] = newPluginStore()
+	}
+	return r.memories[file]
+}
+
+// localStore returns (creating on demand) the plugin's persistent store.
+func (r *Runtime) localStore(file string) *persistentStore {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.locals[file] == nil {
+		r.locals[file] = openPersistentStore(r.storesDir, file)
+	}
+	return r.locals[file]
 }
 
 // SetTimeout overrides the per-hook budget (tests).
@@ -211,6 +250,7 @@ func compile(p *Plugin, timeout time.Duration) {
 	if p.Name == "" {
 		p.Name = strings.TrimSuffix(p.File, ".js")
 	}
+	p.Config = extractConfig(vm)
 	if fn, ok := goja.AssertFunction(vm.Get(requestHook)); ok && fn != nil {
 		p.Hooks = append(p.Hooks, "request")
 	}
@@ -386,7 +426,7 @@ func TestRun(src, hook string, req *store.Request, resp *store.Response, timeout
 		out.Error = "plugin does not define " + hook + "(ctx)"
 		return out
 	}
-	changed, logs, err := (&Runtime{timeout: timeout}).runHook(p, hook, req, resp, timeout)
+	changed, logs, err := (&Runtime{timeout: timeout, memories: map[string]*pluginStore{}, locals: map[string]*persistentStore{}, configs: openConfigs(filepath.Join(os.TempDir(), "pulse-test-config-" + fmt.Sprint(os.Getpid()) + ".json")), tx: newTxStates()}).runHook(p, hook, req, resp, timeout)
 	if logs != nil {
 		out.Logs = logs
 	}
@@ -453,7 +493,7 @@ func (r *Runtime) ApplyRequest(req *store.Request) bool {
 
 	changed := false
 	for _, p := range plugins {
-		ok, logs, err := r.runHook(p, requestHook, req, nil, timeout)
+		ok, logs, err := r.runHookTx(p, requestHook, req, nil, timeout, req.ID)
 		if err != nil {
 			r.recordError(p, err, requestHook)
 			continue
@@ -480,7 +520,7 @@ func (r *Runtime) ApplyResponse(req *store.Request, resp *store.Response) bool {
 
 	changed := false
 	for _, p := range plugins {
-		ok, logs, err := r.runHook(p, responseHook, req, resp, timeout)
+		ok, logs, err := r.runHookTx(p, responseHook, req, resp, timeout, req.ID)
 		if err != nil {
 			r.recordError(p, err, responseHook)
 			continue
@@ -506,6 +546,12 @@ func hasHook(p *Plugin, name string) bool {
 // returns whether the message was modified, captured pulse.log lines, and an
 // error.
 func (r *Runtime) runHook(p *Plugin, hook string, req *store.Request, resp *store.Response, timeout time.Duration) (bool, []string, error) {
+	return r.runHookTx(p, hook, req, resp, timeout, "")
+}
+
+// runHookTx is runHook with an explicit transaction key (flow ID for live
+// traffic; "" for sandbox/test runs — each test run gets its own state).
+func (r *Runtime) runHookTx(p *Plugin, hook string, req *store.Request, resp *store.Response, timeout time.Duration, txKey string) (bool, []string, error) {
 	if timeout <= 0 {
 		timeout = hookTimeout
 	}
@@ -529,13 +575,58 @@ func (r *Runtime) runHook(p *Plugin, hook string, req *store.Request, resp *stor
 		}
 		return goja.Undefined()
 	})
+	// R1 SDK surface: message helpers, stores, config
+	sdk(vm, pulseObj)
+	buildStoresAPI(vm, pulseObj, r.memoryStore(p.File), r.localStore(p.File))
 	vm.Set("pulse", pulseObj)
+
+	// transaction state: request and response hooks of one flow share a map
+	txMap := r.tx.get(txKey, p.File)
+	if txMap == nil {
+		txMap = map[string]any{}
+	}
+	syncTx := func(m map[string]any) { r.tx.put(txKey, p.File, m) }
+
+	txObj := vm.NewObject()
+	_ = txObj.Set("get", func(call goja.FunctionCall) goja.Value {
+		if len(call.Arguments) < 1 {
+			return goja.Undefined()
+		}
+		if v, ok := txMap[call.Argument(0).String()]; ok {
+			return vm.ToValue(v)
+		}
+		return goja.Undefined()
+	})
+	_ = txObj.Set("set", func(call goja.FunctionCall) goja.Value {
+		if len(call.Arguments) >= 2 {
+			txMap[call.Argument(0).String()] = call.Argument(1).Export()
+			syncTx(txMap)
+		}
+		return goja.Undefined()
+	})
+	_ = txObj.Set("delete", func(call goja.FunctionCall) goja.Value {
+		if len(call.Arguments) >= 1 {
+			delete(txMap, call.Argument(0).String())
+			syncTx(txMap)
+		}
+		return goja.Undefined()
+	})
+	_ = txObj.Set("keys", func(call goja.FunctionCall) goja.Value {
+		out := make([]string, 0, len(txMap))
+		for k := range txMap {
+			out = append(out, k)
+		}
+		return vm.ToValue(out)
+	})
 
 	ctx := vm.NewObject()
 	_ = ctx.Set("request", exportRequest(vm, req))
 	if resp != nil {
 		_ = ctx.Set("response", exportResponse(vm, resp))
 	}
+	_ = ctx.Set("flowId", txKey)
+	_ = ctx.Set("state", txObj)
+	_ = ctx.Set("config", vm.ToValue(r.configs.snapshot(p.File, p.Config)))
 
 	fn, ok := goja.AssertFunction(vm.Get(hook))
 	if !ok || fn == nil {
@@ -550,6 +641,9 @@ func (r *Runtime) runHook(p *Plugin, hook string, req *store.Request, resp *stor
 	if resp != nil {
 		if applyBackResponse(ctx.Get("response"), resp) {
 			changed = true
+		}
+		if txKey != "" {
+			r.tx.drop(txKey) // response done — release the transaction
 		}
 	}
 	return changed, logs, nil
@@ -694,4 +788,49 @@ func headersEqual(a, b []store.Header) bool {
 		}
 	}
 	return true
+}
+
+// ---------- R1 public API: config + stores ----------
+
+// ConfigFields describes a plugin's config for the UI (secrets show set/not-set).
+func (r *Runtime) ConfigFields(file string) []ConfigFieldView {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	for _, p := range r.plugins {
+		if p.File == file {
+			return r.configs.describe(file, p.Config)
+		}
+	}
+	return nil
+}
+
+// SetConfigValues validates and persists user values for a plugin.
+func (r *Runtime) SetConfigValues(file string, values map[string]any) error {
+	r.mu.RLock()
+	var schema map[string]ConfigField
+	found := false
+	for _, p := range r.plugins {
+		if p.File == file {
+			schema = p.Config
+			found = true
+			break
+		}
+	}
+	r.mu.RUnlock()
+	if !found {
+		return fmt.Errorf("no such plugin: %s", file)
+	}
+	return r.configs.setValues(file, schema, values)
+}
+
+// MemoryStateSnapshot returns the plugin's in-memory store contents (tests).
+func (r *Runtime) MemoryStateSnapshot(file string) map[string]any {
+	mem := r.memoryStore(file)
+	out := map[string]any{}
+	for _, k := range mem.keys() {
+		if v, ok := mem.get(k); ok {
+			out[k] = v
+		}
+	}
+	return out
 }

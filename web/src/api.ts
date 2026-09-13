@@ -57,6 +57,7 @@ import type {
   HttpResponse,
   InterceptSummary,
   PluginInfo,
+  PluginConfigView,
   PluginInspection,
   PluginSample,
   PluginTestResult,
@@ -222,6 +223,15 @@ export const reloadPlugins = () => api<{ plugins: PluginInfo[]; dir: string }>('
 
 export const setPluginEnabled = (file: string, enabled: boolean) =>
   api<{ ok: boolean }>(`/api/plugins/${encodeURIComponent(file)}`, { method: 'PUT', body: JSON.stringify({ enabled }) })
+
+export const getPluginConfig = (file: string) =>
+  api<{ file: string; fields: PluginConfigView[] }>(`/api/plugins/config/${encodeURIComponent(file)}`)
+
+export const setPluginConfig = (file: string, values: Record<string, unknown>) =>
+  api<{ file: string; fields: PluginConfigView[] }>(`/api/plugins/config/${encodeURIComponent(file)}`, {
+    method: 'PUT',
+    body: JSON.stringify({ values }),
+  })
 
 export const getPluginSource = (file: string) =>
   api<{ file: string; src: string }>(`/api/plugins/source/${encodeURIComponent(file)}`)

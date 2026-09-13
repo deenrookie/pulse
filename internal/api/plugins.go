@@ -239,3 +239,32 @@ func respOut(out plugins.TestOutcome) any {
 	}
 	return responseToTestMessage(*out.Resp)
 }
+
+// handlePluginConfig: GET describe (secrets never echo values), PUT validate
+// and persist. Path: /api/plugins/config/{file}.
+func (s *Server) handlePluginConfig(w http.ResponseWriter, r *http.Request) {
+	file := strings.TrimPrefix(r.URL.Path, "/api/plugins/config/")
+	if file == "" || strings.ContainsAny(file, `/\`) {
+		http.NotFound(w, r)
+		return
+	}
+	switch r.Method {
+	case http.MethodGet:
+		writeJSON(w, http.StatusOK, map[string]any{"file": file, "fields": s.plug.ConfigFields(file)})
+	case http.MethodPut:
+		var body struct {
+			Values map[string]any `json:"values"`
+		}
+		if !readJSON(w, r, &body, 1<<20) || body.Values == nil {
+			writeErr(w, http.StatusBadRequest, "missing \"values\"")
+			return
+		}
+		if err := s.plug.SetConfigValues(file, body.Values); err != nil {
+			writeErr(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"file": file, "fields": s.plug.ConfigFields(file)})
+	default:
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+	}
+}

@@ -173,7 +173,26 @@ export interface PluginInfo {
   error?: string
   /** the source on disk fails to load; the last good revision is running */
   runningLastGood?: boolean
+  /** declared configuration schema (R1) */
+  configSchema?: Record<string, PluginConfigField>
   log?: string[]
+}
+
+/** one declared config field (plugin.config) */
+export interface PluginConfigField {
+  type: 'string' | 'number' | 'boolean' | 'select' | 'secret'
+  label?: string
+  default?: unknown
+  required?: boolean
+  options?: string[]
+  hint?: string
+}
+
+/** config field as rendered by the host (secrets: set, never the value) */
+export interface PluginConfigView extends PluginConfigField {
+  name: string
+  value?: unknown
+  set?: boolean
 }
 
 /** dry-compile result from POST /api/plugins/validate */
