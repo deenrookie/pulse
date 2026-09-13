@@ -539,6 +539,30 @@ export default function InterceptView({ pulse }: { pulse: PulseState }) {
     if (n > 0) pulse.notify(`Dropped ${n} response${n > 1 ? 's' : ''}`)
   }
 
+  // drop every held request (parity with the response column's Drop all)
+  const dropAllHeld = async () => {
+    if (pending.length === 0) return
+    const ok = await confirm({
+      title: `Drop ${pending.length} held request${pending.length > 1 ? 's' : ''}?`,
+      message: 'Each client connection is cut without a response. This cannot be undone.',
+      confirmLabel: 'Drop all',
+      danger: true,
+    })
+    if (!ok) return
+    setBusy(true)
+    let n = 0
+    for (const p of pending) {
+      try {
+        await pulse.dropPending(p.id)
+        n++
+      } catch {
+        /* already gone */
+      }
+    }
+    setBusy(false)
+    if (n > 0) pulse.notify(`Dropped ${n} request${n > 1 ? 's' : ''}`)
+  }
+
   // copy the currently held request into a Repeater tab (parity with Live Traffic);
   // when the raw buffer has been edited, the edited version is what gets sent
   const sendHeldToRepeater = async () => {
@@ -679,6 +703,10 @@ export default function InterceptView({ pulse }: { pulse: PulseState }) {
               <button className="btn ghost sm" disabled={busy} onClick={() => void forwardAllHeld(pending.map((p) => p.id))} title="Release every held request unchanged">
                 <Icon name="play" size={12} />
                 Forward all ({pending.length})
+              </button>
+              <button className="btn ghost sm" disabled={busy} onClick={() => void dropAllHeld()} title="Drop every held request — client connections are cut">
+                <Icon name="x" size={12} />
+                Drop all
               </button>
             </div>
           )}
