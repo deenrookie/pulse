@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/tls"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -258,10 +259,24 @@ func (c *Client) doHTTP1(req *store.Request) (*Result, error) {
 		_ = raw.SetDeadline(time.Now().Add(timeout))
 		if err := tc.Handshake(); err != nil {
 			conn.Close()
-			return nil, fmt.Errorf("tls handshake with %s: %w", hostport, err)
+			// Legacy gateways that support no ECDHE at all (seen in the wild:
+			// douyu's wsproxy :6672) reject any hello whose cipher list leads
+			// with ECDHE suites instead of falling back to the static-RSA
+			// suites both sides share. One retry with a plain-RSA TLS 1.2
+			// hello reaches them.
+			if isHandshakeFailure(err) {
+				if conn2, rerr := c.dialLegacyTLS(hostport, timeout); rerr == nil {
+					conn = conn2
+				} else {
+					return nil, fmt.Errorf("tls handshake with %s: %w", hostport, err)
+				}
+			} else {
+				return nil, fmt.Errorf("tls handshake with %s: %w", hostport, err)
+			}
+		} else {
+			_ = raw.SetDeadline(time.Time{})
+			conn = tc
 		}
-		_ = raw.SetDeadline(time.Time{})
-		conn = tc
 	}
 
 	if err := writeRequestHead(conn, req); err != nil {
@@ -345,4 +360,53 @@ func (c *Client) upstreamTLSConfig(hostport string) *tls.Config {
 func hasPort(host string) bool {
 	_, _, err := net.SplitHostPort(host)
 	return err == nil
+}
+
+// isHandshakeFailure reports whether the server answered the TLS handshake
+// with a handshake_failure alert (code 40) — the "nothing we offered is
+// acceptable" reply.
+func isHandshakeFailure(err error) bool {
+	var alert tls.AlertError
+	if errors.As(err, &alert) {
+		return uint8(alert) == 40 // handshake_failure
+	}
+	return strings.Contains(err.Error(), "handshake failure")
+}
+
+// dialLegacyTLS reconnects with a static-RSA, TLS 1.2 hello for origins that
+// support no ECDHE (their terminators reject ECDHE-leading hellos outright).
+func (c *Client) dialLegacyTLS(hostport string, timeout time.Duration) (net.Conn, error) {
+	raw, err := net.DialTimeout("tcp", hostport, timeout)
+	if err != nil {
+		return nil, err
+	}
+	cfg := &tls.Config{
+		ServerName: hostOnly(hostport),
+		CipherSuites: []uint16{
+			tls.TLS_RSA_WITH_AES_128_GCM_SHA256,
+			tls.TLS_RSA_WITH_AES_256_GCM_SHA384,
+			tls.TLS_RSA_WITH_AES_128_CBC_SHA,
+			tls.TLS_RSA_WITH_AES_256_CBC_SHA,
+		},
+	}
+	if c.UpstreamTLS != nil {
+		cfg.InsecureSkipVerify = c.UpstreamTLS.InsecureSkipVerify
+		cfg.RootCAs = c.UpstreamTLS.RootCAs
+	}
+	tc := tls.Client(raw, cfg)
+	_ = raw.SetDeadline(time.Now().Add(timeout))
+	if err := tc.Handshake(); err != nil {
+		raw.Close()
+		return nil, err
+	}
+	_ = raw.SetDeadline(time.Time{})
+	return tc, nil
+}
+
+func hostOnly(hostport string) string {
+	host, _, err := net.SplitHostPort(hostport)
+	if err != nil {
+		return hostport
+	}
+	return host
 }
