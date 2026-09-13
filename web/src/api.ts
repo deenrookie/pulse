@@ -259,6 +259,8 @@ export interface PulseSettings {
   proxyAddr: string
   /** target host rules — each includes its subdomains; drives the Scope filter */
   scope: string[]
+  /** lean capture: binary/static/JS response bodies are stubbed instead of stored */
+  stubStatic: boolean
 }
 
 export const getSettings = () => api<PulseSettings>('/api/settings')

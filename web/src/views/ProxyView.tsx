@@ -6,7 +6,7 @@ import Empty from '../ui/Empty'
 import Icon from '../ui/Icon'
 import { confirm } from '../ui/Confirm'
 import { rawToRequest, requestToRaw } from '../components/RawEditor'
-import { createRepeaterTab, apiBase } from '../api'
+import { createRepeaterTab, apiBase, getSettings, putSettings } from '../api'
 import HighlightRules, { ruleMatches, type HighlightRule } from '../ui/HighlightRules'
 import FilterDialog, { EMPTY_FILTER, filterActive, passesFilter, type FilterModel } from '../ui/FilterDialog'
 import type { PulseState } from '../state'
@@ -74,6 +74,20 @@ export default function ProxyView({ pulse }: { pulse: PulseState }) {
   const [hideStatic, setHideStatic] = useState(false)
   const [sort, setSort] = useState<SortSpec>({ key: null, dir: 1 })
   const [follow, setFollow] = useState(true)
+  const [lean, setLean] = useState(false)
+
+  useEffect(() => {
+    getSettings()
+      .then((s) => setLean(!!s.stubStatic))
+      .catch(() => {})
+  }, [])
+
+  const toggleLean = (v: boolean) => {
+    setLean(v)
+    putSettings({ stubStatic: v })
+      .then((s) => setLean(s.stubStatic))
+      .catch(() => setLean(!v))
+  }
   const [rules, setRules] = useState<HighlightRule[]>(loadRules)
   const [rulesPos, setRulesPos] = useState<{ x: number; y: number } | null>(null)
   const [rawEdit, setRawEdit] = useState<{ id: string; text: string } | null>(null)
@@ -375,6 +389,8 @@ export default function ProxyView({ pulse }: { pulse: PulseState }) {
               onSort={setSort}
               follow={follow}
               onFollowChange={setFollow}
+              lean={lean}
+              onLeanChange={toggleLean}
               onSelect={pulse.selectFlow}
               onDelete={pulse.removeFlow}
               onSendToRepeater={pulse.sendToRepeater}

@@ -31,6 +31,9 @@ interface Props {
   onSort: (s: SortSpec) => void
   follow: boolean
   onFollowChange: (v: boolean) => void
+  /** lean capture: static/binary/JS response bodies are stubbed (memory saver) */
+  lean: boolean
+  onLeanChange: (v: boolean) => void
   onSelect: (id: string) => void
   onDelete: (id: string) => void
   onSendToRepeater: (id: string) => Promise<boolean>
@@ -97,6 +100,8 @@ export default function FlowTable({
   onSort,
   follow,
   onFollowChange,
+  lean,
+  onLeanChange,
   onSelect,
   onDelete,
   onSendToRepeater,
@@ -350,6 +355,14 @@ export default function FlowTable({
           <input type="checkbox" checked={follow} onChange={(e) => onFollowChange(e.target.checked)} />
           <span className="track" />
           Follow
+        </label>
+        <label
+          className="switch"
+          title="Lean capture — response bodies of binary, static and JavaScript content types are replaced by a stub (request, status and headers are kept) to save memory"
+        >
+          <input type="checkbox" checked={lean} onChange={(e) => onLeanChange(e.target.checked)} />
+          <span className="track" />
+          Lean
         </label>
       </div>
       <div className="table-wrap" ref={wrapRef} onScroll={onScroll}>

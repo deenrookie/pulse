@@ -37,6 +37,9 @@ type Settings struct {
 	// Scope holds target host rules ("example.com" exact, "*.example.com"
 	// includes subdomains) used to focus the traffic view on the test target.
 	Scope []string `json:"scope"`
+	// StubStatic: lean capture — response bodies of binary, static and JS
+	// content types are replaced by a short stub instead of stored.
+	StubStatic bool `json:"stubStatic"`
 }
 
 func LoadSettings(dataDir string) (*Settings, error) {
@@ -96,6 +99,7 @@ func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
 			"responseTimeoutSec": s.set.ResponseTimeoutSec,
 			"memoryGuardMB":      s.set.MemoryGuardMB,
 			"largeBodyMB":        s.set.LargeBodyMB,
+			"stubStatic":         s.set.StubStatic,
 			"pluginsDir":         s.plug.Dir(),
 			"proxyAddr":          proxy,
 			"scope":              scopeOrEmpty(s.set.Scope),
@@ -115,6 +119,7 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 		ResponseTimeoutSec *int     `json:"responseTimeoutSec"`
 		MemoryGuardMB      *int     `json:"memoryGuardMB"`
 		LargeBodyMB        *int     `json:"largeBodyMB"`
+		StubStatic         *bool    `json:"stubStatic"`
 		PluginsDir         *string  `json:"pluginsDir"`
 		ProxyAddr          *string  `json:"proxyAddr"`
 		Scope              []string `json:"scope"`
@@ -197,6 +202,9 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 		}
 		set.LargeBodyMB = *body.LargeBodyMB
 	}
+	if body.StubStatic != nil {
+		set.StubStatic = *body.StubStatic
+	}
 	if err := set.save(); err != nil {
 		writeErr(w, http.StatusInternalServerError, err.Error())
 		return
@@ -205,6 +213,7 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 		s.eng.SetRepeaterTimeout(set.ResponseTimeoutSec)
 	}
 	s.st.SetMemoryGuard(set.MemoryGuardMB, set.LargeBodyMB)
+	s.st.SetStubStatic(set.StubStatic)
 	proxy := s.eng.Addr()
 	if proxy == "" {
 		proxy = s.ProxyAddr
@@ -213,6 +222,7 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 		"responseTimeoutSec": set.ResponseTimeoutSec,
 		"memoryGuardMB":      set.MemoryGuardMB,
 		"largeBodyMB":        set.LargeBodyMB,
+		"stubStatic":         set.StubStatic,
 		"pluginsDir":         s.plug.Dir(),
 		"proxyAddr":          proxy,
 		"scope":              scopeOrEmpty(set.Scope),

@@ -83,6 +83,7 @@ func New(st *store.Store, eng *proxy.Engine, rep *repeater.Manager, auth *certs.
 	}
 	eng.SetRepeaterTimeout(set.ResponseTimeoutSec)
 	st.SetMemoryGuard(set.MemoryGuardMB, set.LargeBodyMB)
+	st.SetStubStatic(set.StubStatic)
 	key, err := accessKeyFromEnv()
 	if err != nil {
 		return nil, fmt.Errorf("generate access key: %w", err)

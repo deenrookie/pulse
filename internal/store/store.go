@@ -113,6 +113,10 @@ type Store struct {
 	bodyBytes      int64
 	guardLimitByte int64 // 0 = default (500 MB)
 	guardOverByte  int64 // 0 = default (3 MB)
+
+	// lean-capture: when on, static/binary/JS response bodies are replaced
+	// by a short stub text instead of being stored
+	stubStatic bool
 }
 
 const (
@@ -140,6 +144,46 @@ func (s *Store) BodyBytes() int64 {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return s.bodyBytes
+}
+
+// SetStubStatic toggles lean capture: response bodies of binary, static and
+// JavaScript content types are stubbed out instead of stored.
+func (s *Store) SetStubStatic(on bool) {
+	s.mu.Lock()
+	s.stubStatic = on
+	s.mu.Unlock()
+}
+
+// StubStatic reports whether lean capture is on.
+func (s *Store) StubStatic() bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.stubStatic
+}
+
+// IsStubbedContentType reports whether a response of this content type is
+// replaced by a stub under lean capture: images, media, fonts, css,
+// javascript and opaque binaries. Dynamic/API payloads (html, json, xml,
+// forms, event streams) are always kept.
+func IsStubbedContentType(ct string) bool {
+	ct = strings.ToLower(strings.TrimSpace(strings.SplitN(ct, ";", 2)[0]))
+	if ct == "" {
+		return false
+	}
+	for _, p := range []string{"image/", "video/", "audio/", "font/"} {
+		if strings.HasPrefix(ct, p) {
+			return true
+		}
+	}
+	switch ct {
+	case "text/css",
+		"text/javascript", "application/javascript", "application/x-javascript", "application/ecmascript",
+		"application/octet-stream", "application/pdf",
+		"application/zip", "application/gzip", "application/x-gzip", "application/wasm",
+		"application/font-woff", "application/x-font-woff", "application/vnd.ms-fontobject":
+		return true
+	}
+	return false
 }
 
 // ShouldDropBody reports whether a newly captured response body of the given

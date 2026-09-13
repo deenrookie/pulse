@@ -359,11 +359,17 @@ func (e *Engine) executeRequest(req *store.Request, respond respondFunc) (*Resul
 		}
 	}
 	_ = respond(res.Resp, nil)
-	// memory guard: the client already received the full payload — strip
-	// oversized media/binary bodies before they are stored so they never
-	// stay resident (the flow keeps its metadata plus a drop notice)
+	// lean capture: the client already received the real payload — replace
+	// static/binary/JS bodies with a stub before storing so they never stay
+	// resident (the flow keeps its request, status and headers)
 	if ct, ok := headerValue(res.Resp.Headers, "Content-Type"); ok {
-		if e.store.ShouldDropBody(ct, len(res.Resp.Body)) {
+		if e.store.StubStatic() && store.IsStubbedContentType(ct) {
+			res.Resp.Body = []byte(fmt.Sprintf(
+				"[pulse] body stubbed by lean capture — content-type %s, %d bytes not stored\r\n", ct, len(res.Resp.Body)))
+			res.Resp.Truncated = false
+		} else if e.store.ShouldDropBody(ct, len(res.Resp.Body)) {
+			// memory guard: strip oversized media/binary bodies (metadata
+			// plus a drop notice stays)
 			res.Resp.DroppedSize = len(res.Resp.Body)
 			res.Resp.BodyDropped = true
 			res.Resp.Body = []byte{}

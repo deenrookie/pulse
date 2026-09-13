@@ -116,3 +116,38 @@ func TestShouldDropBody(t *testing.T) {
 		t.Fatal("default drop size is 3 MB — 2 MB stays")
 	}
 }
+
+func TestIsStubbedContentType(t *testing.T) {
+	stub := []string{
+		"application/javascript", "text/javascript; charset=utf-8", "application/x-javascript",
+		"text/css", "image/png", "image/svg+xml", "video/mp4", "audio/ogg",
+		"font/woff2", "application/font-woff", "application/octet-stream",
+		"application/pdf", "application/zip", "application/gzip", "application/wasm",
+	}
+	for _, ct := range stub {
+		if !IsStubbedContentType(ct) {
+			t.Errorf("%q should be stubbed", ct)
+		}
+	}
+	keep := []string{
+		"text/html", "application/json", "text/plain", "application/xml", "text/xml",
+		"application/x-www-form-urlencoded", "multipart/form-data", "text/event-stream",
+		"", "application/vnd.api+json",
+	}
+	for _, ct := range keep {
+		if IsStubbedContentType(ct) {
+			t.Errorf("%q must be kept", ct)
+		}
+	}
+}
+
+func TestStubStaticToggle(t *testing.T) {
+	s := newTestStore(t)
+	if s.StubStatic() {
+		t.Fatal("default off")
+	}
+	s.SetStubStatic(true)
+	if !s.StubStatic() {
+		t.Fatal("toggle lost")
+	}
+}
