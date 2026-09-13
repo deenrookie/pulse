@@ -3,7 +3,7 @@
 #   pulse_<ver>_linux_amd64.tar.gz     pulse    + README.md (0o755)
 #   pulse_<ver>_darwin_arm64.tar.gz    pulse    + README.md (0o755)
 $ErrorActionPreference = "Stop"
-$ver = "0.3.3"
+$ver = "0.3.5"
 $repo = "C:/Users/Deen/Documents/GitHub/pulse"
 $out = "$repo/dist-release"
 Remove-Item -Recurse -Force $out -ErrorAction SilentlyContinue
@@ -27,7 +27,7 @@ Compress-Archive -Path "$out/pulse.exe", "$repo/README.md" -DestinationPath "$ou
 # tar.gz with explicit 0o755 on the binary (Compress/Tar lose the mode)
 python - @'
 import tarfile, sys, os
-ver = "0.3.3"
+ver = "0.3.5"
 out = r"C:/Users/Deen/Documents/GitHub/pulse/dist-release"
 repo = r"C:/Users/Deen/Documents/GitHub/pulse"
 for plat in ("linux_amd64", "darwin_arm64"):
