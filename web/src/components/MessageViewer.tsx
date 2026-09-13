@@ -517,14 +517,32 @@ function TabBody({
 }
 
 /** renders text with a display cap + expander (multi-MB bodies jank) */
+/** text rendered with the same numbered gutter + wrap alignment the raw
+ *  views use, so every body surface reads identically */
+function NumberedText({ text }: { text: string }) {
+  const lines = text.split('\n')
+  return (
+    <pre className="code-view raw-lines">
+      {lines.map((l, i) => (
+        <div key={i}>
+          <span className="ln">{i + 1}</span>
+          {l || '\u00a0'}
+        </div>
+      ))}
+    </pre>
+  )
+}
+
 function CappedPre({ text, emptyHint }: { text: string; emptyHint?: string }) {
   const CAP = 200_000
   const [showAll, setShowAll] = useState(false)
-  if (!text && emptyHint !== undefined) return <pre className="code-view">{emptyHint}</pre>
-  if (text.length <= CAP || showAll) return <pre className="code-view">{text}</pre>
+  if (!text && emptyHint !== undefined) return <NumberedText text={emptyHint} />
+  if (text.length <= CAP || showAll) return <NumberedText text={text} />
   return (
     <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
-      <pre className="code-view" style={{ flex: 1, minHeight: 0, overflow: 'auto' }}>{text.slice(0, CAP)}</pre>
+      <div style={{ flex: 1, minHeight: 0, overflow: 'auto' }}>
+        <NumberedText text={text.slice(0, CAP)} />
+      </div>
       <div className="raw-cap">
         Showing the first {(CAP / 1000).toFixed(0)}k of {(text.length / 1e6).toFixed(2)}M characters
         <button className="mini" onClick={() => setShowAll(true)}>
