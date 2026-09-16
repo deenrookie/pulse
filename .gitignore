@@ -16,3 +16,4 @@ web/node_modules/
 *.exe~
 /pulse-dev.exe
 /.pulse-dev-bin.*
+dist-release/
