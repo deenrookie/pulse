@@ -3,7 +3,7 @@
 #   pulse_<ver>_linux_amd64.tar.gz     pulse    + README.md (0o755)
 #   pulse_<ver>_darwin_arm64.tar.gz    pulse    + README.md (0o755)
 $ErrorActionPreference = "Stop"
-$ver = "0.3.7"
+$ver = "0.3.8"
 $repo = "C:/Users/Deen/Documents/GitHub/pulse"
 $out = "$repo/dist-release"
 Remove-Item -Recurse -Force $out -ErrorAction SilentlyContinue
@@ -15,7 +15,7 @@ $targets = @(
     @{ Goos = "darwin";  Goarch = "arm64"; Ext = "";     Archive = "pulse_${ver}_darwin_arm64.tar.gz" }
 )
 foreach ($t in $targets) {
-    $bin = "$out/pulse$($t.Ext)"
+    $bin = "$out/pulse-$($t.Goos)-$($t.Goarch)$($t.Ext)"
     $env:GOOS = $t.Goos; $env:GOARCH = $t.Goarch
     go build -ldflags "-s -w" -o $bin ./cmd/pulse
     if ($LASTEXITCODE -ne 0) { throw "build failed for $($t.Goos)/$($t.Goarch)" }
@@ -27,7 +27,7 @@ Compress-Archive -Path "$out/pulse.exe", "$repo/README.md" -DestinationPath "$ou
 # tar.gz with explicit 0o755 on the binary (Compress/Tar lose the mode)
 python - @'
 import tarfile, sys, os
-ver = "0.3.7"
+ver = "0.3.8"
 out = r"C:/Users/Deen/Documents/GitHub/pulse/dist-release"
 repo = r"C:/Users/Deen/Documents/GitHub/pulse"
 for plat in ("linux_amd64", "darwin_arm64"):
