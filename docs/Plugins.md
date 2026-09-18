@@ -251,4 +251,4 @@ Repeater 请求面板头部的 **Apply plugin** 按钮对当前缓冲区副本�
 
 ## 路线图
 
-主动 HTTP、隔离 UI 面板、目录项目和 AI Skill 已交付。当前 Scope 只是流量视图过滤，插件需自行限定 host/path。后续需求以 [轻量优化方案](Optimization-2026-09.md) 为准，暂不扩展市场或云端插件执行。
+R0–R3 全量已交付（v0.3.7–v0.3.8）：主动 HTTP、隔离 UI 面板、目录项目和 AI Skill 均已上线。当前 Scope 只是流量视图过滤，插件需自行限定 host/path。剩余方向（WebSocket 帧级钩子、流式/SSE/gRPC 改写、定时任务、跨插件调用、插件市场、Node 兼容运行时）均为评估项，见 [产品路线图](Product.md)。

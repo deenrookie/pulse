@@ -251,4 +251,4 @@ In the repo at `examples/plugins/` (the same content ships built into **Extensio
 
 ## Roadmap
 
-Active HTTP, sandboxed UI panels, directory projects and the AI skill are shipped. The current Scope only filters the traffic view; plugins must restrict host/path themselves. Further needs follow the [lightweight optimization plan](Optimization-2026-09.md) (Chinese); no marketplace or cloud plugin execution for now.
+R0–R3 all shipped (v0.3.7–v0.3.8): active HTTP, sandboxed UI panels, directory projects and the AI skill are live. The current Scope only filters the traffic view; plugins must restrict host/path themselves. Remaining directions (WebSocket frame hooks, streaming/SSE/gRPC rewriting, scheduled tasks, cross-plugin calls, a marketplace, a Node-compatible runtime) are evaluation items — see the [product roadmap](Product.md).

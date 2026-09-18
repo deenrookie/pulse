@@ -1,4 +1,6 @@
-# 本轮交付与验证记录
+# 首轮交付与验证记录（历史）
+
+> 历史证据存档：本轮的「默认脱敏、30 分钟、32 条配额」等决策已被第二轮（[sharing-intruder.md](sharing-intruder.md)）的完整分享需求取代；首轮方案文档 Optimization-2026-09.md 在全部落地后已删除。以下仅作过程记录，不代表当前行为。
 
 日期：2026-09-16。环境：macOS arm64，Go 1.26.1，Node 20，实际安装的 Google Chrome；初始代码 e223756。交付为工作区源码与本地构建，未创建 PR、提交、发布或部署。
 
@@ -6,8 +8,8 @@
 
 | 目标 / 验收项 | 具体产物 | 核验结果 |
 | --- | --- | --- |
-| 阅读理解已有代码 | Optimization-2026-09.md 中的真实调用路径表 | 对照 main、proxy、store、api、Settings、Extensions 和插件 SDK/CLI 完成 |
-| 提出有特色、轻量、补充 Burp 的优化方案 | Product.md、Optimization-2026-09.md、双语 README | 明确定位、首期范围、优先级、不做范围、上限及升级条件；未新增运行依赖 |
+| 阅读理解已有代码 | 首轮方案（已删除）中的真实调用路径表 | 对照 main、proxy、store、api、Settings、Extensions 和插件 SDK/CLI 完成 |
+| 提出有特色、轻量、补充 Burp 的优化方案 | Product.md、首轮方案（已删除）、双语 README | 明确定位、首期范围、优先级、不做范围、上限及升级条件；未新增运行依赖 |
 | 临时网络流量分享 | api/shares.go、ShareDialog.tsx | 选中完成态单条流量、预览、创建、只读接收页面已实现并实操 |
 | 地址来自 Settings IP | Settings.ShareIP、SharingSettings.tsx、shareBase | 设置持久化；Chrome 打开本机 LAN IP 链接；实际端口 8000 而非前端 5176；IPv6 [::1] 实测通过 |
 | 临时语义 | timer、DELETE 管理路由、进程内 map | 撤销即时 404；1 分钟实际到期 404；同一时刻 30 分钟链接仍 200；重启后旧链接 404、列表空、IP 保留 |

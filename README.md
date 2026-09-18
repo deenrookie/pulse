@@ -152,7 +152,7 @@ cd web && npm run dev        # terminal 2 — http://127.0.0.1:5175
 
 ## 🧩 Plugin system
 
-**New in source builds:** Live Traffic → **Share** and Repeater → **Share exchange** publish the complete captured request and response using **Settings → Temporary sharing** IP. The recipient gets side-by-side highlighted Raw panes, search, right-click cURL/Python export, and the original snapshot download. No share-layer redaction, body filtering, count or size quota. Default expiry is 7 days, up to one year; links persist across restarts and can be revoked. LAN access needs a reachable UI bind such as `--ui 0.0.0.0:8787`. See [current scope and verification](docs/Verification.md).
+**Sharing (v0.3.9):** Live Traffic → **Share** and Repeater → **Share exchange** publish the complete captured request and response using **Settings → Temporary sharing** IP. The recipient gets side-by-side highlighted Raw panes, search, right-click cURL/Python export, and the original snapshot download. No share-layer redaction, body filtering, count or size quota. Default expiry is 7 days, up to one year; links persist across restarts and can be revoked. LAN access needs a reachable UI bind such as `--ui 0.0.0.0:8787`. Verification evidence: [docs/verification/](docs/verification/).
 
 **Intruder** separates Positions / Payloads / Results, supports Sniper, Battering ram and Pitchfork, position buttons, payload-file import, result sorting/search, decoded-response Grep, and side-by-side inspection. It opens the newest attack by default and restores its last results; the compact request-line list has quick delete and right-click actions. Stop finishes the current request and skips the remaining queue.
 
@@ -175,10 +175,11 @@ A fuller SDK is available: message helpers (`pulse.headers/url/query/cookies/bod
 
 ## 📚 Docs
 
-- [Product](docs/Product.md): positioning, competitors, scope, roadmap
+- [Product](docs/Product.md): positioning, scope, **roadmap** (shipped vs planned vs won't-do)
 - [Architecture](docs/Architecture.md): modules, data flow, pipeline order, security model, test strategy
 - [API reference](docs/API.md): REST + SSE endpoints
 - [Plugin guide](docs/Plugins.md)（[English](docs/Plugins.en.md)）: JS plugin API、样例、安全模型 / JS plugin API, samples, security model
+- [Verification evidence](docs/verification/): per-release test runs, screenshots, UI walkthrough results
 
 ## 🧪 Tests
 

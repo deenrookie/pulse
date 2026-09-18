@@ -1,4 +1,6 @@
-# 完整分享与 Intruder 优化：交付验证
+# 完整分享与 Intruder 优化：交付验证（历史证据）
+
+> 交付时的验证记录存档；当前行为以 [README](../../README.md)、[API](../API.md) 与[产品路线图](../Product.md)为准。
 
 日期：2026-09-16。环境：macOS arm64、Go 1.26.1、Node 20、Google Chrome 有窗口模式。工作区基于 e223756 加首轮未提交修改继续实现；未提交、推送或发布。
 
@@ -29,30 +31,30 @@ Intruder 沿用浏览器顺序调度，无后台任务框架：Sniper 一次替�
 
 ## 已执行验证
 
-- `go test -race ./...`：全部通过，见 [Go 输出](verification/r2/go-test-race.txt)。新测试覆盖完整数据、原流量不变、撤销、鉴权、无旧容量配额、长期限、磁盘错误、重启/到期、Repeater 配对和 Intruder 保存回滚。
+- `go test -race ./...`：全部通过，见 [Go 输出](r2/go-test-race.txt)。新测试覆盖完整数据、原流量不变、撤销、鉴权、无旧容量配额、长期限、磁盘错误、重启/到期、Repeater 配对和 Intruder 保存回滚。
 - `go vet ./...`：通过。
-- `cd web && npm run build`：TypeScript 与生产构建通过；[构建输出](verification/r2/frontend-build.txt)。JS 806.33 kB / gzip 262.37 kB，CSS 72.02 kB / gzip 13.23 kB。现有单 chunk >500 kB 提示仍在，未新增 npm/Go 运行依赖。
+- `cd web && npm run build`：TypeScript 与生产构建通过；[构建输出](r2/frontend-build.txt)。JS 806.33 kB / gzip 262.37 kB，CSS 72.02 kB / gzip 13.23 kB。现有单 chunk >500 kB 提示仍在，未新增 npm/Go 运行依赖。
 - `go build -o /tmp/pulse-r2-verification/pulse ./cmd/pulse`：通过，该二进制在 8000 实际运行。
 - `GOOS=windows GOARCH=amd64 go build -o /tmp/pulse-r2-verification/pulse-windows-amd64.exe ./cmd/pulse`：交叉编译通过。
-- `PULSE_TEST_UI=http://127.0.0.1:8000 PULSE_TEST_OUT=/tmp/pulse-r2-verification/final python3 scripts/verify-sharing-ui.py`：7 组核心场景通过，见 [核心操作结果](verification/r2/ui-results.json)。测试复制的 Python 用标准库 http.client，cURL 用 POSIX shell/openssl 解码原始字节，均实际请求本地上游并校验。
-- `PULSE_TEST_UI=http://127.0.0.1:8000 PULSE_TEST_OUT=/tmp/pulse-r2-verification/final python3 scripts/verify-intruder-ui.py`：4 组边界场景通过，见 [边界操作结果](verification/r2/edge-results.json)。包括位置、文件、保存恢复、gzip Grep、运行锁定、离开停发、长报文搜索、900px 与减少动态效果。
+- `PULSE_TEST_UI=http://127.0.0.1:8000 PULSE_TEST_OUT=/tmp/pulse-r2-verification/final python3 scripts/verify-sharing-ui.py`：7 组核心场景通过，见 [核心操作结果](r2/ui-results.json)。测试复制的 Python 用标准库 http.client，cURL 用 POSIX shell/openssl 解码原始字节，均实际请求本地上游并校验。
+- `PULSE_TEST_UI=http://127.0.0.1:8000 PULSE_TEST_OUT=/tmp/pulse-r2-verification/final python3 scripts/verify-intruder-ui.py`：4 组边界场景通过，见 [边界操作结果](r2/edge-results.json)。包括位置、文件、保存恢复、gzip Grep、运行锁定、离开停发、长报文搜索、900px 与减少动态效果。
 - 真实重启：先创建 90 天分享，停止旧进程，再启动最终二进制，原分享 JSON 与重启前逐字段完全一致。
 
 两个 UI 脚本需要本机 Chrome 与 Python playwright，必须对隔离数据目录运行，会创建测试流量、标签、攻击并修改分享设置。它们是验证依赖，不是产品运行依赖。
 
-截图：[完整分享](verification/r2/shared.png)、[Intruder 结果](verification/r2/intruder-results.png)。使用合成数据，未分享用户真实流量。
+截图：[完整分享](r2/shared.png)、[Intruder 结果](r2/intruder-results.png)。使用合成数据，未分享用户真实流量。
 
 补验通过：Live Traffic 行右键创建分享；Intruder 上游拒绝连接时仍可检查发送请求与错误；根 URL 直接带 query 的 Raw 导出保留查询串。
 
-回归修复：Live Traffic → Send to Repeater 现在记录创建出的精确 tab ID，并在异步标签列表包含该 ID 后才消费导航意图；不再用 mount-only 的“跳最新”布尔值。Vite 和最终内嵌二进制均模拟 Send 后立即点击 Repeater，分别从旧 tab-30/tab-34 跳到新 tab-31/tab-35，普通离开再返回也保持新 tab。证据见 [repeater-navigation.json](verification/r2/repeater-navigation.json)。
+回归修复：Live Traffic → Send to Repeater 现在记录创建出的精确 tab ID，并在异步标签列表包含该 ID 后才消费导航意图；不再用 mount-only 的“跳最新”布尔值。Vite 和最终内嵌二进制均模拟 Send 后立即点击 Repeater，分别从旧 tab-30/tab-34 跳到新 tab-31/tab-35，普通离开再返回也保持新 tab。证据见 [repeater-navigation.json](r2/repeater-navigation.json)。
 
-最终构建、跨重启及分享清理证据：[artifact-checks.json](verification/r2/artifact-checks.json)。
+最终构建、跨重启及分享清理证据：[artifact-checks.json](r2/artifact-checks.json)。
 
-后续界面完善：分享页将长 URL 拆为固定方法 + 单行省略 URL；Request-only 使用单列 Request 与非阻塞提示；Raw 展示和复制正文复用 Live Traffic 自动解码，公开 token 提供受限 gzip/deflate/br/bzip2 解码端点，完整 JSON/Hex 仍保留原压缩字节。Intruder 移除 Attack name，默认打开最新记录并保存最后一轮结果摘要/Flow ID；左栏对齐 Repeater 的请求首行、悬浮快速删除和右键发送。验证脚本见 [verify-share-intruder-polish.py](../scripts/verify-share-intruder-polish.py)。
+后续界面完善：分享页将长 URL 拆为固定方法 + 单行省略 URL；Request-only 使用单列 Request 与非阻塞提示；Raw 展示和复制正文复用 Live Traffic 自动解码，公开 token 提供受限 gzip/deflate/br/bzip2 解码端点，完整 JSON/Hex 仍保留原压缩字节。Intruder 移除 Attack name，默认打开最新记录并保存最后一轮结果摘要/Flow ID；左栏对齐 Repeater 的请求首行、悬浮快速删除和右键发送。验证脚本见 [verify-share-intruder-polish.py](../../scripts/verify-share-intruder-polish.py)。
 
 边界补验：有历史的 Repeater tab 在编辑但未再次发送时，Share request 只分享当前 Request；只有显式 historyAt 才分享对应历史 Request/Response，避免把当前请求与旧响应配对。公开分享实际捕获 Brotli 响应并在浏览器中显示解码文本；全新数据目录的 Intruder 显示可操作空状态。
 
-本轮最终证据：[Request-only 分享](verification/r4/request-only-share.png)、[Brotli 分享](verification/r4/brotli-share.png)、[Intruder 结果恢复](verification/r4/intruder-restored.png)、[全新实例空状态](verification/r4/intruder-empty.png)、[浏览器结果](verification/r4/ui-results.json)、[Go race](verification/r4/go-test-race.txt) 与 [前端构建](verification/r4/frontend-build.txt)。
+本轮最终证据：[Request-only 分享](r4/request-only-share.png)、[Brotli 分享](r4/brotli-share.png)、[Intruder 结果恢复](r4/intruder-restored.png)、[全新实例空状态](r4/intruder-empty.png)、[浏览器结果](r4/ui-results.json)、[Go race](r4/go-test-race.txt) 与 [前端构建](r4/frontend-build.txt)。
 
 ### 本轮需求到产物审计
 
@@ -75,4 +77,4 @@ Intruder 沿用浏览器顺序调度，无后台任务框架：Sniper 一次替�
 - 分享扩展依据本轮明确要求执行。Intruder 范围问题没有收到选择回复，按已说明的推荐基础操作闭环实施，不把默认方案写成用户确认。
 - 实时预览 5176 在 UI 修改前已经核对源码路径并提供，保留运行。最终 8000 应用内嵌资源已与 web/dist 比对。
 
-首轮实现的“默认脱敏、正文可选、32 条/2 MiB、重启失效”已被本轮明确需求替换。[首轮记录](verification/first-round.md) 仅保留历史证据，不作为当前行为说明。
+首轮实现的“默认脱敏、正文可选、32 条/2 MiB、重启失效”已被本轮明确需求替换。[首轮记录](first-round.md) 仅保留历史证据，不作为当前行为说明。

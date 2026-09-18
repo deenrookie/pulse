@@ -40,9 +40,9 @@
 | **Intruder** | Burp 式批量模糊测试：raw 模板中用 `§…§` 标记位置 + 载荷列表，逐发比对状态/长度/耗时，基线偏差高亮、**Grep 命中列**、单集 & **Pitchfork 每位置载荷集**模式、响应检查器（`Ctrl+7`，流量右键 Send to Intruder） |
 | **Site Map** | host→path→method 端点树聚合（状态着色、搜索），端点级**状态变体**分组（200·12 / 500·2），点击检查最新请求/响应；页脚 **Comparer** 工具比对任意两段 raw |
 | **Repeater** | raw 编辑器改包重发，标签持久化/搜索/标记，响应即查，**与上次响应 Diff**（字级高亮）；**Params 标签可编辑**直写回 raw |
-| **Extensions** | **Match & Replace**（5 作用域、正则/字面量、命中计数）；**JS 插件**（onRequest/onResponse 钩子，隔离 VM + 2s 超时，热重载，日志面板，**CodeMirror 在线编辑器**：Check 干跑校验 / 沙箱 Test run / 一键写入插件目录，**插件目录可配置**，内置样例代码） |
+| **Extensions** | **Match & Replace**（5 作用域、正则/字面量、命中计数）；**JS 插件**（onRequest/onResponse 钩子，隔离 VM + 超时，热加载，日志面板，**CodeMirror 在线编辑器**：Check 干跑校验 / 沙箱 Test run / 一键写入插件目录，**插件目录可配置**，内置样例代码）；**SDK**（`pulse.headers/url/query/cookies/body/encoding/crypto`，`ctx.state` + 内存/持久存储，配置表单且 secret 不回显）；**主动插件**（`pulse.http.send` 异步请求带超时/防递归，`ctx.respond`/`ctx.drop`，`onComplete`，Mock 网络测试模式，右键 Actions，Repeater *Apply plugin*）；**目录项目**（`pulse.plugin.json` 清单、SDK `.d.ts` + CLI `plugins check/test`、沙箱 UI 面板、授权 `pulse.files` 访问） |
 | **WebSocket** | RFC 6455 帧级捕获：text/binary/close/ping/pong 双向记录，检查器内专页查看 |
-| **Settings** | CA 证书下载与各平台安装指引、运行状态、快捷键速查 |
+| **Settings** | CA 证书下载与各平台安装指引、**运行时代理地址热重绑**、内存防护、运行状态、快捷键速查 |
 
 请求管线顺序：`插件 → 重写规则 → 拦截 → 上游`；存储的流量始终是实际发送/接收的最终形态。Repeater 发送不经插件与重写（与 Burp 默认一致）。
 
@@ -80,7 +80,19 @@ go build -o pulse.exe ./cmd/pulse        # Linux/macOS: -o pulse
 # 自定义：--proxy :9090 --ui :9000 --data-dir D:/pulse-data
 ```
 
-打开控制台 <http://127.0.0.1:8787>。
+打开控制台 <http://127.0.0.1:8787>。同一构建也托管在 <https://pulsesec.vercel.app/>（经 CORS 驱动本地实例）。
+
+### 远程 / 托管面板访问
+
+控制台默认只监听回环地址。通过托管面板（或局域网其他机器）操控时：
+
+1. UI 绑定可达地址启动：`pulse --ui 0.0.0.0:8787`
+2. 固定或查看访问密钥：`PULSE_KEY=... pulse ...`（不指定则随机生成并打印在启动日志；回环访问无需密钥）
+3. 托管面板打开 **Settings → Remote instance**，填实例地址（如 `http://192.168.1.5:8787`）与密钥（仅存该浏览器 localStorage）
+
+非回环 API 调用必须带密钥（`X-Pulse-Key` 头，或 SSE 流的 `?key=`）。
+
+> **Chrome 局域网权限** —— HTTPS 页面（如托管面板）需授予 *local network access* 权限后才能访问 `127.0.0.1` / 局域网服务：点击地址栏左侧 🔒 → **Site settings** → **Local network access** → **Allow** 后刷新。直接打开 <http://127.0.0.1:8787> 则无需该权限。
 
 ### 抓取 HTTPS（一次性）
 
@@ -129,7 +141,7 @@ cd web && npm run dev    # http://127.0.0.1:5175
 
 ## 🧩 插件系统
 
-**源码版新增**：Live Traffic → **Share**、Repeater → **Share exchange** 分享完整捕获请求和响应，地址使用 **Settings → Temporary sharing** 的 IP。接收页面左右高亮 Raw、搜索、右键 cURL/Python、完整 JSON 下载；分享层不脱敏、不裁剪正文、不限制条数或容量。默认 7 天、最长 1 年，持久化后重启仍有效，可主动撤销。局域网需以可达 UI 地址启动，例如 `--ui 0.0.0.0:8787`。见 [当前交付与验证](docs/Verification.md)。
+**流量分享（v0.3.9）**：Live Traffic → **Share**、Repeater → **Share exchange** 分享完整捕获请求和响应，地址使用 **Settings → Temporary sharing** 的 IP。接收页面左右高亮 Raw、搜索、右键 cURL/Python、完整 JSON 下载；分享层不脱敏、不裁剪正文、不限制条数或容量。默认 7 天、最长 1 年，持久化后重启仍有效，可主动撤销。局域网需以可达 UI 地址启动，例如 `--ui 0.0.0.0:8787`。验证证据见 [docs/verification/](docs/verification/)。
 
 **Intruder** 提供 Positions / Payloads / Results 分页、Sniper / Battering ram / Pitchfork、位置按钮、载荷文件导入、结果排序搜索、解码后 Grep 和左右请求/响应检查。默认打开最新记录并恢复上次结果；请求首行列表支持快速删除和右键操作。停止会等待当前请求结束，不再发出后续请求。
 
@@ -146,14 +158,17 @@ function onRequest(ctx) {
 }
 ```
 
-控制台内置在线编辑器：**Check** 干跑编译（错误精确到行列）、**Test run** 沙箱试跑（零流量）、一键保存到插件目录热加载；插件目录可随时在界面上更换。详见[插件开发指南](docs/Plugins.md)。
+控制台内置在线编辑器：**Check** 干跑编译（错误精确到行列）、**Test run** 沙箱试跑（零流量，可从捕获 Flow 导入夹具）、草稿自动保存，坏源码不落盘生效——上一个有效修订继续运行，插件目录可随时在界面上更换。
+
+更完整的 SDK：报文助手（`pulse.headers/url/query/cookies/body`）、编码与 SHA-256/HMAC、按事务 `ctx.state`、跨请求内存 + 持久存储、`plugin.config` 配置表单（secret 不回显）、异步 `pulse.http.send`（记录为 `source: plugin`，防递归）、`ctx.respond`/`ctx.drop`、`onComplete` 分析、Mock 网络测试模式、右键 Actions、Repeater *Apply plugin*；大型插件可组织为**目录项目**（`pulse.plugin.json` 清单、SDK `.d.ts` + `pulse plugins check/test` CLI、沙箱 UI 面板、授权 `pulse.files` 目录访问）。详见[插件开发指南](docs/Plugins.md)（[English](docs/Plugins.en.md)）。
 
 ## 📚 文档
 
-- [产品文档](docs/Product.md)：定位、竞品对比、范围、路线图
+- [产品文档](docs/Product.md)：定位、范围、**路线图**（已实现 / 规划评估 / 明确不做）
 - [技术架构](docs/Architecture.md)：模块、数据流、管线顺序、安全模型、测试策略
 - [API 参考](docs/API.md)：REST + SSE 接口规范
-- [插件开发指南](docs/Plugins.md)：JS 插件 API、示例、安全模型
+- [插件开发指南](docs/Plugins.md)（[English](docs/Plugins.en.md)）：JS 插件 API、示例、安全模型
+- [验证证据](docs/verification/)：各轮交付的测试运行、截图与 UI 走查结果
 
 ## 🧪 测试
 
