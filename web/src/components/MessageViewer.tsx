@@ -635,7 +635,7 @@ function useRawWrap(): [boolean, () => void] {
 
 /** Burp-style raw view: start line, headers with colored names, blank
  *  line, body — with an in-content search bar and a context menu. */
-function RawView({
+export function RawView({
   headLine,
   headers,
   text,
@@ -643,6 +643,8 @@ function RawView({
   curlRequest,
   urlForCopy,
   extraMenu,
+  standalone = false,
+  full = false,
 }: {
   headLine?: string
   headers: Header[]
@@ -653,6 +655,8 @@ function RawView({
   urlForCopy?: string
   /** caller-specific entries shown first in the context menu */
   extraMenu?: MenuItem[]
+  standalone?: boolean
+  full?: boolean
 }) {
   const [q, setQ] = useState('')
   const [hit, setHit] = useState(0)
@@ -681,7 +685,7 @@ function RawView({
   // rendering that synchronously freezes the tab. Show a prefix + expander.
   const CAP = 200_000
   const [showAll, setShowAll] = useState(false)
-  const rawText = showAll ? fullRaw : fullRaw.length > CAP ? fullRaw.slice(0, CAP) : fullRaw
+  const rawText = full || showAll ? fullRaw : fullRaw.length > CAP ? fullRaw.slice(0, CAP) : fullRaw
 
   // find-on-enter: q is what the input holds, needle is what is APPLIED.
   // Typing alone never highlights — Enter (or the step buttons) commits the
@@ -690,6 +694,7 @@ function RawView({
   const commit = () => {
     const next = q.trim().toLowerCase()
     setNeedle(next)
+    if (next) setShowAll(true)
     setHit(0)
     if (next) requestAnimationFrame(() => applyCur(0, true))
   }
@@ -795,7 +800,7 @@ function RawView({
               await copyToClipboard(selText, { label: 'selection' })
             },
           },
-          {
+          ...(!standalone ? [{
             icon: 'terminal' as const,
             label: 'Send to Decoder',
             hint: '⌃⇧D',
@@ -803,7 +808,7 @@ function RawView({
             onClick: () => {
               window.dispatchEvent(new CustomEvent('pulse:send-to-decoder', { detail: selText }))
             },
-          },
+          }] : []),
         ]
       : []),
     ...((flowIdForCurl || curlRequest)
@@ -889,6 +894,7 @@ function RawView({
       </button>
       <pre
         ref={preRef}
+        tabIndex={0}
         className={`code-view raw-lines ${wrap ? '' : 'no-wrap'}`}
         onMouseDown={(e) => {
           if (e.button === 2) lastSelRef.current = readSel()
@@ -908,6 +914,7 @@ function RawView({
       <div className="raw-search">
         <Icon name="search" size={11} />
         <input
+          aria-label="Find in raw"
           value={q}
           spellCheck={false}
           placeholder="Find in raw… (Enter to search)"
@@ -943,7 +950,7 @@ function RawView({
           </>
         )}
       </div>
-      {fullRaw.length > CAP && !showAll && (
+      {fullRaw.length > CAP && !showAll && !full && (
         <div className="raw-cap">
           Showing the first {(CAP / 1000).toFixed(0)}k of {(fullRaw.length / 1e6).toFixed(2)}M characters — rendering everything can freeze the tab
           <button className="mini" onClick={() => setShowAll(true)}>
@@ -982,7 +989,7 @@ function RawLine({ line, n, inHead }: { line: string; n: number; inHead: boolean
     <div className="raw-hdr">
       <span className="ln">{n + 1}</span>
       <CopyableText className="raw-hname" text={name} />
-      <span className="raw-colon">:</span>
+      <span className="raw-colon">: </span>
       {isCookie ? (
         <CookieValue value={value.slice(1)} />
       ) : (

@@ -663,21 +663,13 @@ export default function InterceptView({ pulse }: { pulse: PulseState }) {
       onClick: async () => {
         try {
           const req = await api.getHeldRequest(p.id)
-          const tab = await api.createRepeaterTab({
-            request: {
-              method: req.method,
-              url: req.url,
-              httpVersion: req.httpVersion,
-              headers: req.headers,
-              body: req.body ?? '',
-            },
+          await pulse.sendRequestToRepeater({
+            method: req.method,
+            url: req.url,
+            httpVersion: req.httpVersion,
+            headers: req.headers,
+            body: req.body ?? '',
           })
-          try {
-            localStorage.setItem('pulse.repeater.jumpNewest', '1')
-          } catch {
-            /* ignore */
-          }
-          pulse.notify(`Sent to Repeater (${tab.id})`)
         } catch (e) {
           pulse.notify(`Send failed: ${(e as Error).message}`, 'err')
         }

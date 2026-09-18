@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useState } from 'react'
 import FlowTable, { type SortSpec } from '../components/FlowTable'
+import ShareDialog from '../components/ShareDialog'
 import { RequestInspector, ResponseInspector } from '../components/MessageViewer'
 import Split from '../ui/Split'
 import Empty from '../ui/Empty'
 import Icon from '../ui/Icon'
 import { confirm } from '../ui/Confirm'
 import { rawToRequest, requestToRaw } from '../components/RawEditor'
-import { createRepeaterTab, apiBase, getSettings, putSettings, listPlugins } from '../api'
+import { apiBase, getSettings, putSettings, listPlugins } from '../api'
 import type { PluginInfo } from '../types'
 import HighlightRules, { ruleMatches, type HighlightRule } from '../ui/HighlightRules'
 import FilterDialog, { EMPTY_FILTER, filterActive, passesFilter, type FilterModel } from '../ui/FilterDialog'
@@ -69,6 +70,7 @@ function viewParam(name: string): string | null {
 }
 
 export default function ProxyView({ pulse }: { pulse: PulseState }) {
+  const [shareFlow, setShareFlow] = useState<string | null>(null)
   const [q, setQ] = useState('')
   const [statuses, setStatuses] = useState<Set<string>>(new Set())
   const [method, setMethod] = useState('ANY')
@@ -246,13 +248,7 @@ export default function ProxyView({ pulse }: { pulse: PulseState }) {
     if (editedRaw !== null) {
       const parsed = rawToRequest(editedRaw, fl.request.url)
       try {
-        await createRepeaterTab({ request: parsed })
-        try {
-          localStorage.setItem('pulse.repeater.jumpNewest', '1')
-        } catch {
-          /* ignore */
-        }
-        pulse.notify('Sent edited request to Repeater')
+        await pulse.sendRequestToRepeater(parsed)
       } catch (e) {
         pulse.notify(`Send failed: ${(e as Error).message}`, 'err')
       }
@@ -458,6 +454,7 @@ export default function ProxyView({ pulse }: { pulse: PulseState }) {
               onSelect={pulse.selectFlow}
               onDelete={pulse.removeFlow}
               onSendToRepeater={pulse.sendToRepeater}
+              onShare={setShareFlow}
               notify={pulse.notify}
               proxyAddr={pulse.status?.proxyAddr}
               filtered={filtersActive}
@@ -491,6 +488,11 @@ export default function ProxyView({ pulse }: { pulse: PulseState }) {
                 <span className="title">Inspector</span>
               )}
               <div className="spacer" />
+              {fl && (
+                <button className="btn sm" onClick={() => setShareFlow(fl.id)}>
+                  <Icon name="link" size={13} /> Share
+                </button>
+              )}
               {fl && (
                 <button
                   className="btn ghost sm icon-btn"
@@ -532,6 +534,7 @@ export default function ProxyView({ pulse }: { pulse: PulseState }) {
         }
       />
       {filterOpen && <FilterDialog value={filter} onChange={saveFilter} onClose={() => setFilterOpen(false)} />}
+      {shareFlow && <ShareDialog source={{ flowId: shareFlow }} onClose={() => setShareFlow(null)} />}
       {rulesPos && (
         <HighlightRules
           rules={rules}

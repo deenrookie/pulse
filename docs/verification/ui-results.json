@@ -1,0 +1,18 @@
+{
+  "checks": [
+    "invalid IP shows inline error",
+    "share IP persists after page reload",
+    "preview redacts credentials, query values and cookies; bodies opt out",
+    "Escape closes native dialog and returns focus",
+    "link uses Settings IP and backend port",
+    "LAN recipient reads snapshot with no key; HTML remains text; control API returns 401",
+    "revoke from Settings immediately invalidates recipient URL",
+    "Skills deep link, copy and ZIP download succeed",
+    "Skills to Editor: typed plugin compiles and sandbox result shows rewrite",
+    "Skills readable at 900px with reduced motion",
+    "no browser runtime errors"
+  ],
+  "pageErrors": [],
+  "shareIP": "192.168.31.95",
+  "flow": "req-13"
+}

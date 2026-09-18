@@ -4,7 +4,7 @@
 
 **通过浏览器操控的本地 Web 安全测试平台**
 
-对标 Burp Suite / Caido 核心工作流的 MITM 抓包、拦截改包、重放、重写与插件扩展工具。
+本地优先的轻量流量调试工作台：快速抓包、重放、分享必要证据，并用小型 JavaScript 插件适配业务流程，作为专业安全审计工具的日常补充。
 
 [English](README.md) · [简体中文](README.zh-CN.md)
 
@@ -75,12 +75,12 @@ Expand-Archive pulse.zip -Force; .\pulse.exe
 cd web && npm install && npm run build && cd ..
 go build -o pulse.exe ./cmd/pulse        # Linux/macOS: -o pulse
 
-# 运行：代理 127.0.0.1:8080，控制台 127.0.0.1:8000
+# 运行：代理 127.0.0.1:8080，控制台 127.0.0.1:8787
 ./pulse.exe
 # 自定义：--proxy :9090 --ui :9000 --data-dir D:/pulse-data
 ```
 
-打开控制台 <http://127.0.0.1:8000>。
+打开控制台 <http://127.0.0.1:8787>。
 
 ### 抓取 HTTPS（一次性）
 
@@ -101,7 +101,7 @@ go build -o pulse.exe ./cmd/pulse        # Linux/macOS: -o pulse
 │ 浏览器/客户端 ├──────────────────────▶│ Pulse :8080 ├──▶│ 目标服务器 │
 └────────────┘                        │  (MITM 引擎) │   └──────────┘
 ┌────────────┐   REST + SSE (控制)    │             │
-│ 控制台浏览器  ├──────────────────────▶│ Pulse :8000 │
+│ 控制台浏览器  ├──────────────────────▶│ Pulse :8787 │
 └────────────┘                        └─────────────┘
 ```
 
@@ -128,6 +128,12 @@ cd web && npm run dev    # http://127.0.0.1:5175
 </details>
 
 ## 🧩 插件系统
+
+**源码版新增**：Live Traffic → **Share**、Repeater → **Share exchange** 分享完整捕获请求和响应，地址使用 **Settings → Temporary sharing** 的 IP。接收页面左右高亮 Raw、搜索、右键 cURL/Python、完整 JSON 下载；分享层不脱敏、不裁剪正文、不限制条数或容量。默认 7 天、最长 1 年，持久化后重启仍有效，可主动撤销。局域网需以可达 UI 地址启动，例如 `--ui 0.0.0.0:8787`。见 [当前交付与验证](docs/Verification.md)。
+
+**Intruder** 提供 Positions / Payloads / Results 分页、Sniper / Battering ram / Pitchfork、位置按钮、载荷文件导入、结果排序搜索、解码后 Grep 和左右请求/响应检查。默认打开最新记录并恢复上次结果；请求首行列表支持快速删除和右键操作。停止会等待当前请求结束，不再发出后续请求。
+
+**Extensions → Plugins → Skills** 提供可复制的 `SKILL.md` 和完整插件开发包（模板、夹具、SDK 类型、Python 沙箱断言脚本），方便 AI 编写并调试插件。将下载的 `pulse-plugin-dev` 放到 AI 工具的 skills 目录后重新加载，或直接粘贴说明。Pulse 不连接任何 AI 云服务。
 
 放在插件目录下的 JavaScript 文件（ES5.1+，goja 运行时），可观察并修改经过代理的每一个请求与响应——无需安装任何东西：
 

@@ -11,6 +11,7 @@ import (
 	"compress/gzip"
 	"compress/zlib"
 	"encoding/base64"
+	"fmt"
 	"io"
 	"net/http"
 	"strings"
@@ -31,7 +32,24 @@ func (s *Server) handleDecode(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, "invalid base64 body")
 		return
 	}
-	enc := strings.ToLower(strings.TrimSpace(body.Encoding))
+	out, err := decodeBodyBytes(raw, body.Encoding)
+	if err != nil {
+		if strings.HasPrefix(err.Error(), "unsupported encoding:") {
+			writeErr(w, http.StatusBadRequest, err.Error())
+		} else {
+			writeErr(w, http.StatusUnprocessableEntity, "decode failed: "+err.Error())
+		}
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"body":    base64.StdEncoding.EncodeToString(out),
+		"bytes":   len(out),
+		"encoded": len(raw),
+	})
+}
+
+func decodeBodyBytes(raw []byte, encoding string) ([]byte, error) {
+	enc := strings.ToLower(strings.TrimSpace(encoding))
 	var out []byte
 	var decErr error
 	switch {
@@ -53,19 +71,13 @@ func (s *Server) handleDecode(w http.ResponseWriter, r *http.Request) {
 		}
 	case enc == "br":
 		out, decErr = io.ReadAll(brotli.NewReader(bytes.NewReader(raw)))
-	case enc == "bzip2":
+	case enc == "bzip2" || enc == "x-bzip2":
 		out, decErr = io.ReadAll(bzip2.NewReader(bytes.NewReader(raw)))
 	default:
-		writeErr(w, http.StatusBadRequest, "unsupported encoding: "+body.Encoding)
-		return
+		return nil, fmt.Errorf("unsupported encoding: %s", encoding)
 	}
 	if decErr != nil {
-		writeErr(w, http.StatusUnprocessableEntity, "decode failed: "+decErr.Error())
-		return
+		return nil, decErr
 	}
-	writeJSON(w, http.StatusOK, map[string]any{
-		"body":    base64.StdEncoding.EncodeToString(out),
-		"bytes":   len(out),
-		"encoded": len(raw),
-	})
+	return out, nil
 }

@@ -1,0 +1,5 @@
+[
+  "Request-only share renders, decodes gzip and truncates long URL without page overflow",
+  "Latest attack auto-selects, attack name is absent, and results survive reload",
+  "Intruder item right-click sends to the selected Repeater tab; quick delete selects next or empty"
+]

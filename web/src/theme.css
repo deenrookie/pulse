@@ -1991,3 +1991,73 @@ body.col-resizing .col-split { background: var(--accent); }
   flex: 1; min-height: 0; width: 100%;
   border: none; background: var(--bg-input);
 }
+/* Sharing and plugin skills retain the workbench's quiet, readable surfaces. */
+.share-dialog { width: min(760px, calc(100vw - 40px)); max-height: calc(100dvh - 48px); overflow: auto; box-sizing: border-box; background: var(--bg-panel); color: var(--text); border: 1px solid var(--border-strong); border-radius: 12px; padding: 24px; }
+.share-dialog::backdrop { background: #0009; }
+.share-heading, .share-actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.share-heading { justify-content: space-between; }
+.share-heading h2 { margin: 0; font-size: 18px; }
+.share-field { display: flex; flex-direction: column; gap: 8px; min-width: 0; margin: 12px 0; }
+.share-field .input { width: 100%; box-sizing: border-box; }
+.share-preview { min-height: 220px; height: 32vh; resize: vertical; line-height: 1.6; white-space: pre; }
+.share-actions { margin: 12px 0; }
+.share-warning { color: var(--text); border-left: 3px solid var(--accent); padding-left: 12px; }
+.share-item { padding: 12px 0; border-top: 1px solid var(--border); }
+.share-dialog :focus-visible, .sharing-settings :focus-visible, .skills-panel :focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.skills-panel { overflow: auto; padding: 24px; }
+.skills-panel h2 { font-size: 20px; margin: 0 0 8px; }
+.skill-source { white-space: pre-wrap; overflow-wrap: anywhere; font: 12px/1.7 var(--mono, monospace); background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 20px; tab-size: 2; }
+.skill-intro { max-width: 760px; }
+
+.share-dialog-wide { width: min(1380px, calc(100vw - 40px)); height: min(850px, calc(100dvh - 48px)); }
+.share-dialog-wide[open] { display: flex; flex-direction: column; gap: 8px; }
+.share-dialog-wide .sub, .share-dialog-wide .share-actions, .share-dialog-wide .share-field { margin: 4px 0; }
+.snapshot-pair { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr); flex: 1; min-height: 220px; gap: 8px; overflow: hidden; }
+.snapshot-pair.request-only { grid-template-columns: minmax(0, 1fr); position: relative; }
+.request-only-note { position: absolute; right: 12px; bottom: 40px; max-width: min(360px, 45%); display: flex; flex-direction: column; gap: 3px; padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg-raised); color: var(--text-muted); box-shadow: var(--shadow-sm); }
+.request-only-note code { overflow-wrap: anywhere; white-space: normal; color: var(--text-faint); }
+.snapshot-message { min-width: 0; min-height: 0; overflow: hidden; }
+.snapshot-message .raw-wrap { flex: 1; min-height: 0; }
+.snapshot-message .code-view { flex: 1; min-height: 0; overflow: auto; }
+.snapshot-message .ctx-menu, .share-dialog .ctx-menu { position: fixed; max-height: calc(100vh - 24px); overflow: auto; }
+.shared-traffic { display: flex; flex-direction: column; height: 100dvh; box-sizing: border-box; padding: 24px; gap: 8px; background: var(--bg); color: var(--text); }
+.shared-header { display: flex; align-items: center; justify-content: space-between; gap: 24px; }
+.shared-header h1 { font-size: 18px; line-height: 1.5; margin: 4px 0; overflow-wrap: anywhere; }
+.shared-header > div { min-width: 0; }
+.shared-title { display: grid; grid-template-columns: max-content minmax(0, 1fr); align-items: baseline; column-gap: 10px; flex: 1; min-width: 0; }
+.shared-title > .faint { grid-column: 1 / -1; }
+.shared-title h1 { white-space: nowrap; }
+.shared-url { display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-muted); }
+.encoding-badge { color: var(--ok); font-size: 10px; font-family: var(--mono); }
+.request-only-empty code { max-width: min(560px, 90%); white-space: normal; overflow-wrap: anywhere; color: var(--text-faint); }
+.shared-header > .btn { flex: none; }
+.snapshot-notice { min-height: 18px; color: var(--text-muted); }
+.position-tools { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 8px; border-bottom: 1px solid var(--border); }
+.intruder-view { display: flex; flex-direction: row; }
+.intruder-main { display: flex; flex-direction: column; min-width: 0; min-height: 0; flex: 1; padding: 12px; gap: 8px; }
+.intruder-view .side-item { width: 100%; text-align: left; color: inherit; background: transparent; display: flex; flex-direction: column; }
+.intruder-view .side-item .t { min-width: 0; flex: 1; }
+.intruder-view .side-item.selected { background: var(--bg-active); }
+.intruder-tabs { display: flex; align-items: center; gap: 8px; border-bottom: 1px solid var(--border); padding-bottom: 6px; }
+.intruder-tabs .faint { margin-left: auto; }
+.intruder-position-panel, .intruder-results { display: flex; flex-direction: column; flex: 1; min-height: 0; overflow: hidden; }
+.intruder-options { display: flex; gap: 16px; flex-wrap: wrap; }
+.intruder-options label { display: flex; align-items: center; gap: 8px; }
+.intruder-options label:first-child { flex: 1; }
+.intruder-options input { flex: 1; min-width: 160px; }
+.intruder-payload-panel { display: flex; gap: 12px; flex: 1; min-height: 0; }
+.intruder-payload-panel .cfg-col { flex: 1; min-width: 0; }
+.intruder-payload-panel .cfg-col:last-child { flex: .5; }
+.intruder-result-table { overflow: auto; flex: 1; min-height: 0; }
+.intruder-result-table th button { background: none; border: none; color: inherit; font: inherit; cursor: pointer; padding: 4px 0; }
+.intruder-results > .panel-head input { width: min(360px,50%); }
+.intruder-error { color: var(--danger); padding: 10px; border: 1px solid var(--danger); border-radius: 6px; }
+.intruder-status, .intruder-progress { padding: 6px 10px; background: var(--bg-panel); display: flex; align-items: center; gap: 12px; }
+.intruder-progress progress { flex: 1; accent-color: var(--accent); }
+.intruder-view :focus-visible, .snapshot-pair :focus-visible, .shared-traffic :focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+@media (max-width: 760px) {
+  .snapshot-pair { grid-template-columns: 1fr; grid-template-rows: minmax(220px,1fr) minmax(220px,1fr); overflow: auto; }
+  .shared-traffic { padding: 12px; }
+  .shared-header { flex-wrap: wrap; gap: 8px; }
+  .intruder-view .side-list { width: 130px; }
+}

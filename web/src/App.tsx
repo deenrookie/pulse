@@ -134,7 +134,7 @@ export default function App() {
   const [decoderOpen, setDecoderOpen] = useState(false)
   const [comparerOpen, setComparerOpen] = useState(false)
   const [decoderSeed, setDecoderSeed] = useState<{ text: string; n: number } | null>(null)
-  const [intruderSeed, setIntruderSeed] = useState<{ raw: string; n: number } | null>(null)
+  const [intruderSeed, setIntruderSeed] = useState<{ raw: string; targetURL?: string; n: number } | null>(null)
 
   // SSE down while REST answers — the signature of the browser proxy
   // forwarding the panel's own API (the capture pipeline buffers the
@@ -177,9 +177,10 @@ export default function App() {
   // prop (dispatched before that view mounts, so an event listener would miss it)
   useEffect(() => {
     const onSeed = (e: Event) => {
-      const raw = (e as CustomEvent<string>).detail
+      const detail = (e as CustomEvent<string | { raw: string; targetURL?: string }>).detail
+      const raw = typeof detail === 'string' ? detail : detail.raw
       if (!raw) return
-      setIntruderSeed((prev) => ({ raw, n: (prev?.n ?? 0) + 1 }))
+      setIntruderSeed(() => ({ raw, targetURL: typeof detail === 'string' ? undefined : detail.targetURL, n: Date.now() }))
       go('intruder')
     }
     window.addEventListener('pulse:send-to-intruder', onSeed)
@@ -405,7 +406,7 @@ export default function App() {
           {tab === 'proxy' && <ProxyView pulse={pulse} />}
           {tab === 'intercept' && <InterceptView pulse={pulse} />}
           {tab === 'repeater' && <RepeaterView pulse={pulse} goProxy={() => go('proxy')} />}
-          {tab === 'intruder' && <IntruderView pulse={pulse} openSeed={intruderSeed} />}
+          {tab === 'intruder' && <IntruderView pulse={pulse} openSeed={intruderSeed} onSeedConsumed={() => setIntruderSeed(null)} />}
           {tab === 'sitemap' && <SiteMapView pulse={pulse} goProxy={() => go('proxy')} />}
           {tab === 'extensions' && <ExtensionsView notify={pulse.notify} />}
           {tab === 'settings' && <SettingsView pulse={pulse} />}

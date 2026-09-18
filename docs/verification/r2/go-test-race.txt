@@ -1,0 +1,11 @@
+?   	pulse/cmd/pulse	[no test files]
+ok  	pulse/internal/api	3.423s
+ok  	pulse/internal/certs	(cached)
+ok  	pulse/internal/events	(cached)
+ok  	pulse/internal/plugins	(cached)
+ok  	pulse/internal/proxy	(cached)
+?   	pulse/internal/repeater	[no test files]
+ok  	pulse/internal/rewrite	(cached)
+ok  	pulse/internal/store	(cached)
+ok  	pulse/internal/update	(cached)
+?   	pulse/web	[no test files]

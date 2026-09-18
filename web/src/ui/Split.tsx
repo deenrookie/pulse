@@ -80,7 +80,20 @@ export default function Split({ dir, storageKey, initial = 0.55, min = 0.15, max
       <div
         className={`splitter ${dragging ? 'dragging' : ''}`}
         role="separator"
+        tabIndex={0}
+        aria-label="Resize panels"
+        aria-valuemin={Math.round(min * 100)}
+        aria-valuemax={Math.round(max * 100)}
+        aria-valuenow={Math.round(frac * 100)}
         aria-orientation={dir === 'h' ? 'vertical' : 'horizontal'}
+        onKeyDown={(e) => {
+          const keys = dir === 'h' ? ['ArrowLeft', 'ArrowRight'] : ['ArrowUp', 'ArrowDown']
+          if (!keys.includes(e.key)) return
+          e.preventDefault()
+          const next = clamp(frac + (e.key === keys[0] ? -0.05 : 0.05), min, max)
+          setFrac(next)
+          try { localStorage.setItem(storageKey, String(next)) } catch { /* storage unavailable */ }
+        }}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}

@@ -1,416 +1,799 @@
-// Intruder — Burp-style batch fuzzing. An attack is a raw request template
-// where §payload§ marks positions plus a payload list; Start substitutes
-// each payload into every position (single-set mode) and fires the requests
-// one by one, collecting status/length/time for comparison against the
-// baseline (first result). Attack plans persist in the backend.
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import Icon from '../ui/Icon'
 import Empty from '../ui/Empty'
 import Split from '../ui/Split'
 import { confirm } from '../ui/Confirm'
-import { ResponseInspector } from '../components/MessageViewer'
-import { rawToRequest } from '../components/RawEditor'
-import RawEditor from '../components/RawEditor'
+import RawEditor, { rawToRequest } from '../components/RawEditor'
+import FlowSnapshot, { snapshotMenu } from '../components/FlowSnapshot'
+import ContextMenu, { type MenuItem } from '../components/ContextMenu'
+import ShareDialog from '../components/ShareDialog'
+import {
+  attackPlan,
+  bodySize,
+  countPositions,
+  grepHitsFor,
+  payloadLines,
+  templateBaseURL,
+  type AttackMode,
+} from '../intruder'
 import * as api from '../api'
 import type { PulseState } from '../state'
-import type { Attack, AttackResult, Flow } from '../types'
+import type { Attack, AttackResult } from '../types'
 
-const TEMPLATE_HINT = `GET /login?user=§admin§ HTTP/1.1
-Host: example.com
+const TEMPLATE = ['GET /login?user=§admin§ HTTP/1.1', 'Host: example.com', '', ''].join(
+  String.fromCharCode(10),
+)
+const draftKey = (id: string) => 'pulse.intruder.draft.' + id
+type Draft = {
+  raw: string
+  payloads: string
+  payloadSets: string[]
+  grep: string
+  mode: AttackMode
+  targetURL: string
+}
+const emptyDraft: Draft = {
+  raw: TEMPLATE,
+  payloads: 'admin' + String.fromCharCode(10) + 'guest',
+  payloadSets: [],
+  grep: '',
+  mode: 'sniper',
+  targetURL: 'http://example.com',
+}
 
-§body§`
-
-export default function IntruderView({ pulse, openSeed }: { pulse: PulseState; openSeed?: { raw: string; n: number } | null }) {
+export default function IntruderView({
+  pulse,
+  openSeed,
+  onSeedConsumed,
+}: {
+  pulse: PulseState
+  openSeed?: { raw: string; targetURL?: string; n: number } | null
+  onSeedConsumed?: () => void
+}) {
   const [attacks, setAttacks] = useState<Attack[]>([])
   const [currentId, setCurrentId] = useState<string | null>(null)
-  // draft editor state (saved on demand)
-  const [title, setTitle] = useState('')
-  const [raw, setRaw] = useState(TEMPLATE_HINT)
-  const [payloads, setPayloads] = useState('admin\nroot\nguest')
-  const [grep, setGrep] = useState('')
-  const [perPosition, setPerPosition] = useState(false)
-  const [sets, setSets] = useState<string[]>([])
+  const [draft, setDraft] = useState<Draft>(emptyDraft)
+  const [tab, setTab] = useState<'positions' | 'payloads' | 'results'>('positions')
   const [running, setRunning] = useState(false)
-  const [progress, setProgress] = useState('')
+  const [stopping, setStopping] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [progress, setProgress] = useState({ done: 0, total: 0 })
   const [results, setResults] = useState<AttackResult[]>([])
   const [selectedIdx, setSelectedIdx] = useState<number | null>(null)
-  const stopRef = useRef(false)
+  const [error, setError] = useState('')
+  const [status, setStatus] = useState('')
+  const [filter, setFilter] = useState('')
+  const [sort, setSort] = useState<{
+    key: 'index' | 'payload' | 'statusCode' | 'length' | 'ms'
+    dir: 1 | -1
+  }>({ key: 'index', dir: 1 })
+  const [menu, setMenu] = useState<{
+    x: number
+    y: number
+    index: number
+  } | null>(null)
+  const [attackMenuState, setAttackMenuState] = useState<{ x: number; y: number; attack: Attack } | null>(
+    null,
+  )
+  const [shareFlow, setShareFlow] = useState<string | null>(null)
+  const [setIndex, setSetIndex] = useState(0)
+  const run = useRef({ active: false, stop: false })
+  const seedHandled = useRef<number | null>(null)
+  const mounted = useRef(true)
+  const importRef = useRef<HTMLInputElement>(null)
+  const patch = (value: Partial<Draft>) => setDraft((d) => ({ ...d, ...value }))
 
-  const refresh = () => api.listAttacks().then((r) => setAttacks(r.attacks)).catch(() => {})
+  const refresh = async () => {
+    const r = await api.listAttacks()
+    setAttacks(r.attacks)
+    return r.attacks
+  }
+  const open = (attack: Attack) => {
+    if (run.current.active) return
+    let next: Draft = {
+      raw: attack.raw,
+      payloads: attack.payloads,
+      payloadSets: attack.payloadSets ?? [],
+      grep: attack.grep ?? '',
+      mode: attack.mode ?? (attack.payloadSets?.length ? 'pitchfork' : 'battering-ram'),
+      targetURL: attack.targetURL || templateBaseURL(attack.raw),
+    }
+    try {
+      const saved = localStorage.getItem(draftKey(attack.id))
+      if (saved) {
+        const d = JSON.parse(saved)
+        if (
+          d &&
+          ['raw', 'payloads', 'grep', 'targetURL'].every((key) => typeof d[key] === 'string') &&
+          ['sniper', 'battering-ram', 'pitchfork'].includes(d.mode) &&
+          Array.isArray(d.payloadSets) &&
+          d.payloadSets.every((value: unknown) => typeof value === 'string')
+        )
+          next = d
+      }
+    } catch {
+      /* storage unavailable */
+    }
+    setCurrentId(attack.id)
+    setDraft(next)
+    const savedResults: AttackResult[] = (attack.results ?? []).map((result) => ({ ...result, flow: null }))
+    setResults(savedResults)
+    setSelectedIdx(savedResults.length ? 0 : null)
+    setError('')
+    setStatus('')
+    setTab(savedResults.length ? 'results' : 'positions')
+    setSetIndex(0)
+    history.replaceState(null, '', '#/intruder?attack=' + encodeURIComponent(attack.id))
+  }
   useEffect(() => {
-    refresh()
+    mounted.current = true
+    void refresh()
+      .then((list) => {
+        if (openSeed?.raw) return
+        const id = new URLSearchParams(location.hash.split('?')[1]).get('attack')
+        const found = list.find((a) => a.id === id) ?? list[0]
+        if (found) open(found)
+      })
+      .catch((e) => setError(e.message))
+    return () => {
+      mounted.current = false
+      run.current.stop = true
+    }
   }, [])
-
-  // "Send to Intruder" from Live Traffic / Repeater: App hands the request's
-  // raw form over as a seed prop (the event fires before this view mounts)
   useEffect(() => {
-    if (!openSeed?.raw) return
-    void (async () => {
-      try {
-        const a = await api.createAttack({ title: '', raw: openSeed.raw, payloads: '', grep: '' })
+    if (!openSeed?.raw || seedHandled.current === openSeed.n) return
+    seedHandled.current = openSeed.n
+    void api
+      .createAttack({
+        ...emptyDraft,
+        raw: openSeed.raw,
+        targetURL: openSeed.targetURL || templateBaseURL(openSeed.raw),
+        payloads: '',
+      })
+      .then(async (a) => {
         await refresh()
         open(a)
-        pulse.notify('Sent to Intruder — mark positions with §…§ and add payloads')
-      } catch (err) {
-        pulse.notify((err as Error).message, 'err')
-      }
-    })()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+        onSeedConsumed?.()
+      })
+      .catch((e) => setError(e.message))
   }, [openSeed?.n])
-
-  // deep link: #/intruder?attack=atk-1
   useEffect(() => {
-    const apply = () => {
-      const h = location.hash
-      const i = h.indexOf('?')
-      if (i < 0) return
-      const id = new URLSearchParams(h.slice(i + 1)).get('attack')
-      if (id) void load(id)
+    if (!currentId) return
+    try {
+      localStorage.setItem(draftKey(currentId), JSON.stringify(draft))
+    } catch {
+      setError('Draft could not be saved in this browser. Use Save before leaving.')
     }
-    apply()
-    window.addEventListener('hashchange', apply)
-    return () => window.removeEventListener('hashchange', apply)
-  }, [attacks])
-
-  const open = (a: Attack) => {
-    setCurrentId(a.id)
-    setTitle(a.title)
-    setRaw(a.raw)
-    setPayloads(a.payloads)
-    setGrep(a.grep ?? '')
-    setPerPosition(!!a.payloadSets && a.payloadSets.length > 0)
-    setSets(a.payloadSets ?? [])
-    setResults([])
-    setSelectedIdx(null)
-  }
-
-  const load = async (id: string) => {
-    const found = attacks.find((a) => a.id === id) ?? (await api.listAttacks().then((r) => r.attacks.find((a) => a.id === id)))
-    if (found) open(found)
-  }
-
-  const create = async () => {
-    const a = await api.createAttack({ title: '', raw: TEMPLATE_HINT, payloads: '', grep: '' })
-    await refresh()
-    open(a)
-  }
+  }, [currentId, draft])
 
   const save = async () => {
     if (!currentId) return
+    setSaving(true)
+    setError('')
     try {
-      await api.updateAttack(currentId, { title: title.trim() || autoTitle(), raw, payloads, payloadSets: perPosition ? sets.slice(0, countPositions(raw)) : undefined, grep })
+      await api.updateAttack(currentId, draft)
       await refresh()
-      pulse.notify('Attack saved')
+      setStatus('Attack saved')
     } catch (e) {
-      pulse.notify((e as Error).message, 'err')
+      setError((e as Error).message)
+    } finally {
+      setSaving(false)
     }
   }
-
-  const remove = async () => {
-    if (!currentId) return
-    const ok = await confirm({ title: 'Delete attack?', message: 'The saved template and payload list are removed.', confirmLabel: 'Delete', danger: true })
-    if (!ok) return
-    await api.deleteAttack(currentId)
-    setCurrentId(null)
-    await refresh()
+  const create = async () => {
+    try {
+      const a = await api.createAttack(emptyDraft)
+      await refresh()
+      open(a)
+    } catch (e) {
+      setError((e as Error).message)
+    }
   }
-
-  const autoTitle = () => {
-    const first = raw.split('\n')[0] ?? ''
-    return first.slice(0, 60)
-  }
-
-  // ---- attack execution: substitute every §position§ with each payload ----
+  const remove = async () => currentId && removeAttack(currentId)
+  const plan = useMemo(() => {
+    try {
+      return {
+        value: attackPlan(draft.raw, draft.mode, draft.payloads, draft.payloadSets),
+        error: '',
+      }
+    } catch (e) {
+      return { value: null, error: (e as Error).message }
+    }
+  }, [draft])
   const start = async () => {
-    const grepList = grep.split('\n').map((p) => p.trim()).filter(Boolean)
-    if (!raw.includes('§')) {
-      pulse.notify('Mark at least one position with §payload§ in the template', 'err')
+    if (run.current.active) return
+    setStatus('')
+    if (!plan.value) {
+      setError(plan.error)
       return
     }
-    const posCount = countPositions(raw)
-    // single set → every position gets the same payload; per-position sets →
-    // pitchfork: round i substitutes position j with sets[j][i]
-    const rounds: { label: string; values: string[] }[] = []
-    if (perPosition) {
-      const lists = sets.slice(0, posCount).map((set) => set.split('\n').map((p) => p.trim()).filter(Boolean))
-      if (lists.length !== posCount || lists.some((l) => l.length === 0)) {
-        pulse.notify(`Per-position mode needs one non-empty set for each of the ${posCount} positions`, 'err')
-        return
+    const target = (() => {
+      try {
+        return new URL(draft.targetURL)
+      } catch {
+        return null
       }
-      const n = Math.min(...lists.map((l) => l.length))
-      for (let i = 0; i < n; i++) rounds.push({ label: lists.map((l) => l[i]).join(' · '), values: lists.map((l) => l[i]) })
-    } else {
-      const list = payloads.split('\n').map((p) => p.trim()).filter(Boolean)
-      if (list.length === 0) {
-        pulse.notify('Add payloads — one per line', 'err')
-        return
-      }
-      for (const p of list) rounds.push({ label: p, values: [p] })
+    })()
+    if (!target || !['http:', 'https:'].includes(target.protocol)) {
+      setError('Set an HTTP or HTTPS target URL.')
+      return
     }
-    stopRef.current = false
+    const schedule = plan.value,
+      snapshot = { ...draft },
+      keywords = payloadLines(draft.grep)
+    run.current = { active: true, stop: false }
     setRunning(true)
+    setStopping(false)
     setResults([])
     setSelectedIdx(null)
+    setProgress({ done: 0, total: schedule.count })
+    setTab('results')
+    setError('')
+    setStatus('')
     const out: AttackResult[] = []
-    for (let i = 0; i < rounds.length; i++) {
-      if (stopRef.current) break
-      const payload = rounds[i].label
-      const segs = raw.split('§')
-      const substituted = segs.map((part, idx) => (idx % 2 === 1 ? (rounds[i].values[Math.floor(idx / 2)] ?? '') : part)).join('')
-      const parsed = rawToRequest(substituted, templateBaseURL(raw))
-      if ('error' in parsed) {
-        out.push({ payload, statusCode: 0, reason: 'parse: ' + parsed.error, length: 0, ms: 0, flow: null, grepHits: [] })
+    try {
+      for (let index = 0; index < schedule.count; index++) {
+        if (run.current.stop) break
+        const round = schedule.round(index)
+        try {
+          const { flow } = await api.fireAttack({
+            request: rawToRequest(round.raw, snapshot.targetURL),
+          })
+          out.push({
+            payload: round.payload,
+            position: round.position,
+            statusCode: flow.response?.statusCode ?? 0,
+            reason: flow.error || flow.response?.reason || '',
+            length: bodySize(flow),
+            ms: flow.response?.durationMs ?? 0,
+            flow,
+            flowId: flow.id,
+            grepHits: await grepHitsFor(flow, keywords),
+          })
+        } catch (e) {
+          out.push({
+            payload: round.payload,
+            position: round.position,
+            statusCode: 0,
+            reason: (e as Error).message,
+            length: 0,
+            ms: 0,
+            flow: null,
+            grepHits: [],
+          })
+        }
+        if (!mounted.current) break
         setResults([...out])
-        continue
+        setProgress({ done: out.length, total: schedule.count })
       }
-      setProgress(`${i + 1}/${rounds.length} · ${payload}`)
-      try {
-        const r = await api.fireAttack({ request: parsed })
-        const fl: Flow = r.flow
-        out.push({
-          payload,
-          statusCode: fl.response?.statusCode ?? 0,
-          reason: fl.error || fl.response?.reason || '',
-          length: fl.response ? bodySize(fl) : 0,
-          ms: fl.response?.durationMs ?? 0,
-          flow: fl,
-          grepHits: grepHitsFor(fl, grepList),
-        })
-      } catch (e) {
-        out.push({ payload, statusCode: 0, reason: (e as Error).message, length: 0, ms: 0, flow: null, grepHits: [] })
+    } finally {
+      run.current.active = false
+      if (currentId) {
+        try {
+          await api.saveAttackResults(currentId, out)
+          if (mounted.current) await refresh()
+        } catch (e) {
+          if (mounted.current) setError('Results finished but could not be saved: ' + (e as Error).message)
+        }
       }
-      setResults([...out])
+      if (mounted.current) {
+        setRunning(false)
+        setStopping(false)
+        setStatus((run.current.stop ? 'Stopped' : 'Finished') + ' · ' + out.length + ' requests')
+        pulse.notify(run.current.stop ? 'Attack stopped' : 'Attack finished')
+        if (out.length) setSelectedIdx(0)
+      }
     }
-    setRunning(false)
-    setProgress('')
-    pulse.notify(stopRef.current ? 'Attack stopped' : `Attack finished — ${out.length} requests`)
+  }
+  const positions = countPositions(draft.raw)
+  const selectedSet = Math.min(setIndex, Math.max(positions - 1, 0))
+  const payloadText = draft.mode === 'pitchfork' ? (draft.payloadSets[selectedSet] ?? '') : draft.payloads
+  const setPayloadText = (text: string) => {
+    if (draft.mode === 'pitchfork') {
+      const next = [...draft.payloadSets]
+      next[selectedSet] = text
+      patch({ payloadSets: next })
+    } else patch({ payloads: text })
+  }
+  const keywords = payloadLines(draft.grep)
+  const visible = results
+    .map((r, index) => ({ ...r, index }))
+    .filter((r) =>
+      [r.payload, r.position, r.statusCode, r.reason, r.flow?.request.url, ...r.grepHits]
+        .join(' ')
+        .toLowerCase()
+        .includes(filter.toLowerCase()),
+    )
+    .sort((a, b) => {
+      const av = a[sort.key] ?? '',
+        bv = b[sort.key] ?? ''
+      return (
+        (typeof av === 'number' && typeof bv === 'number' ? av - bv : String(av).localeCompare(String(bv))) *
+        sort.dir
+      )
+    })
+  const sortBy = (key: typeof sort.key) =>
+    setSort((s) => ({ key, dir: s.key === key && s.dir === 1 ? -1 : 1 }))
+  const selected = selectedIdx === null ? null : results[selectedIdx]
+  useEffect(() => {
+    if (selectedIdx === null) return
+    const result = results[selectedIdx]
+    if (!result || result.flow || !result.flowId) return
+    let active = true
+    void api
+      .getFlow(result.flowId)
+      .then((flow) => {
+        if (!active) return
+        setResults((current) =>
+          current.map((item, index) => (index === selectedIdx ? { ...item, flow } : item)),
+        )
+      })
+      .catch(() => {})
+    return () => {
+      active = false
+    }
+  }, [selectedIdx, results])
+  const resultMenu = (index: number): MenuItem[] => {
+    const flow = results[index]?.flow
+    if (!flow) return []
+    return [
+      {
+        label: 'Send to Repeater',
+        icon: 'send',
+        onClick: async () => {
+          try {
+            await pulse.sendRequestToRepeater({ ...flow.request, body: flow.request.body ?? '' })
+            location.hash = '#/repeater'
+          } catch (e) {
+            setError((e as Error).message)
+          }
+        },
+      },
+      {
+        label: 'Share complete traffic',
+        icon: 'link',
+        onClick: () => setShareFlow(flow.id),
+      },
+      ...snapshotMenu(flow),
+    ]
   }
 
-  const stop = () => {
-    stopRef.current = true
+  const removeAttack = async (id: string, confirmFirst = true) => {
+    if (
+      running ||
+      (confirmFirst &&
+        !(await confirm({
+          title: 'Delete attack?',
+          message: 'Remove this attack and its saved results.',
+          confirmLabel: 'Delete',
+          danger: true,
+        })))
+    )
+      return
+    try {
+      await api.deleteAttack(id)
+      localStorage.removeItem(draftKey(id))
+      const next = (await refresh()).filter((attack) => attack.id !== id)
+      if (currentId === id) {
+        if (next[0]) open(next[0])
+        else setCurrentId(null)
+      }
+    } catch (e) {
+      setError((e as Error).message)
+    }
   }
 
-  const grepListHeaders = () => grep.split('\n').map((p) => p.trim()).filter(Boolean).slice(0, 8)
-  const baseline = results[0]
-  const selected = selectedIdx !== null ? results[selectedIdx] : null
+  const attackMenu = (attack: Attack): MenuItem[] => [
+    { label: 'Open attack', icon: 'file', onClick: () => open(attack) },
+    {
+      label: 'Send template to Repeater',
+      icon: 'send',
+      onClick: async () => {
+        try {
+          const request = rawToRequest(attack.raw, attack.targetURL || templateBaseURL(attack.raw))
+          await pulse.sendRequestToRepeater(request)
+          location.hash = '#/repeater'
+        } catch (e) {
+          setError((e as Error).message)
+        }
+      },
+    },
+    {
+      label: 'Delete attack',
+      icon: 'trash',
+      danger: true,
+      separatorAfter: true,
+      onClick: () => void removeAttack(attack.id),
+    },
+  ]
 
   return (
-    <div className="view">
-      <div className="side-list">
+    <div className="view intruder-view">
+      <aside className="side-list">
         <div className="side-head">
           <span>Attacks</span>
-          <button className="btn ghost sm icon-btn" title="New attack" onClick={() => void create()}>
+          <button className="btn sm" disabled={running} onClick={() => void create()} aria-label="New attack">
             <Icon name="plus" size={13} />
           </button>
         </div>
-        {attacks.length === 0 ? (
-          <div className="side-empty">Right-click a flow → “Send to Intruder”, or press + for a blank attack.</div>
-        ) : (
-          attacks.map((a) => (
-            <div
-              key={a.id}
-              className={`side-item ${currentId === a.id ? 'selected' : ''}`}
-              onClick={() => open(a)}
-              title={a.title}
-            >
-              <div className="t mono">{a.title || a.raw.split('\n')[0]?.slice(0, 26)}</div>
-              <div className="m faint mono">
-                {a.payloads.split('\n').filter(Boolean).length} payloads · {countPositions(a.raw)} positions
-              </div>
+        {attacks.map((a) => (
+          <div
+            className={'side-item ' + (a.id === currentId ? 'selected' : '')}
+            key={a.id}
+            role="button"
+            tabIndex={running ? -1 : 0}
+            onClick={() => open(a)}
+            onKeyDown={(e) => e.key === 'Enter' && open(a)}
+            onContextMenu={(e) => {
+              e.preventDefault()
+              setAttackMenuState({ x: e.clientX, y: e.clientY, attack: a })
+            }}
+            title="Right-click for actions"
+          >
+            <div className="l1">
+              <Icon name="bolt" size={11} className="lead-icon" />
+              <span className="t mono">{a.raw.split(String.fromCharCode(10))[0]}</span>
+              <span className="grow" />
+              <span className="id">{a.id.replace('atk-', '')}</span>
+              <button
+                className="tab-x"
+                aria-label={'Delete attack ' + a.id}
+                disabled={running}
+                onClick={(e) => {
+                  e.stopPropagation()
+                  void removeAttack(a.id, false)
+                }}
+              >
+                <Icon name="x" size={11} />
+              </button>
             </div>
-          ))
+            <div className="l2">
+              {a.mode ?? 'battering-ram'} · {countPositions(a.raw)} positions
+              {a.results?.length ? ' · ' + a.results.length + ' results' : ''}
+            </div>
+          </div>
+        ))}
+        {!attacks.length && (
+          <p className="side-empty">Create an attack or send a request from Live Traffic / Repeater.</p>
         )}
-      </div>
-      <div className="view-fill" style={{ padding: 10, display: 'flex', flexDirection: 'column', gap: 8, position: 'relative' }}>
-        {currentId === null ? (
+      </aside>
+      <div className="intruder-main">
+        {error && (
+          <div className="intruder-error" role="alert">
+            {error}
+          </div>
+        )}
+        {!currentId ? (
           <Empty icon="bolt" title="No attack selected">
-            Pick an attack on the left, right-click any flow → <b>Send to Intruder</b>,
-            <br />
-            or start a blank template with <b>+</b>.
+            <span>Start with a blank request, or send one from Live Traffic / Repeater.</span>
+            <button className="btn primary sm" onClick={() => void create()}>
+              <Icon name="plus" size={13} /> New attack
+            </button>
           </Empty>
         ) : (
           <>
             <div className="panel-head">
-              <input
-                className="input"
-                style={{ width: 260 }}
-                placeholder="Attack name (first line of the request is used if empty)"
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-              />
+              <span className="title mono">{draft.raw.split(String.fromCharCode(10))[0]}</span>
               <div className="spacer" />
+              <button className="btn sm" disabled={running || saving} onClick={() => void save()}>
+                {saving ? 'Saving…' : 'Save'}
+              </button>
+              <button className="btn danger sm" disabled={running || saving} onClick={() => void remove()}>
+                Delete
+              </button>
               {running ? (
-                <button className="btn danger sm" onClick={stop}>
-                  <Icon name="x" size={13} />
-                  Stop
+                <button
+                  className="btn danger"
+                  disabled={stopping}
+                  onClick={() => {
+                    run.current.stop = true
+                    setStopping(true)
+                  }}
+                >
+                  {stopping ? 'Stopping after current request…' : 'Stop attack'}
                 </button>
               ) : (
-                <button className="btn primary sm" onClick={start} title="Substitute each payload into every §position§ and fire">
-                  <Icon name="play" size={13} />
+                <button className="btn primary" onClick={() => void start()}>
                   Start attack
                 </button>
               )}
-              {running && <span className="meta mono">{progress}</span>}
-              <button className="btn ghost sm" onClick={save}>Save</button>
-              <button className="btn danger sm" onClick={remove}>Delete</button>
             </div>
-            <Split
-              dir="v"
-              storageKey="pulse.split.intruder"
-              initial={0.5}
-              a={
-                <div className="intruder-config">
-                  <div className="cfg-col">
-                    <div className="cfg-label">
-                      Request template <span className="faint">— wrap fuzz targets in §…§ (header names, JSON/Cookie/form keys and §positions§ are highlighted)</span>
-                    </div>
-                    <RawEditor value={raw} onChange={setRaw} markPositions />
-                  </div>
-                  <div className="cfg-col" style={{ flex: 0.6 }}>
-                    <div className="cfg-label">
-                      Payloads{' '}
-                      <button
-                        className={`btn ghost sm ${perPosition ? 'active' : ''}`}
-                        style={{ padding: '1px 8px', fontSize: 10.5 }}
-                        title={perPosition ? 'Switch to a single shared payload set' : `Pitchfork: one set per §position§ (${countPositions(raw)} positions), zipped`}
-                        onClick={() => {
-                          const n = countPositions(raw)
-                          setPerPosition((v) => !v)
-                          setSets((prev) => (prev.length >= n ? prev : [...prev, ...Array(n - prev.length).fill('')]))
-                        }}
-                      >
-                        {perPosition ? `per-position ×${countPositions(raw)}` : 'single set'}
-                      </button>
-                    </div>
-                    {perPosition ? (
-                      <div className="pos-sets">
-                        {Array.from({ length: countPositions(raw) }).map((_, j) => (
-                          <div key={j} className="pos-set">
-                            <span className="pos-tag mono" title={`§position ${j + 1}§`}>§{j + 1}§</span>
-                            <textarea
-                              className="cfg-src"
-                              value={sets[j] ?? ''}
-                              spellCheck={false}
-                              placeholder={'payload\npayload'}
-                              onChange={(e) => setSets((prev) => prev.map((v, k) => (k === j ? e.target.value : v)))}
-                            />
-                          </div>
-                        ))}
-                      </div>
-                    ) : (
-                      <textarea
-                        className="cfg-src"
-                        value={payloads}
-                        spellCheck={false}
-                        onChange={(e) => setPayloads(e.target.value)}
-                      />
-                    )}
-                  </div>
-                  <div className="cfg-col" style={{ flex: 0.35 }}>
-                    <div className="cfg-label">
-                      Grep match <span className="faint">— hits light up columns</span>
-                    </div>
-                    <textarea
-                      className="cfg-src"
-                      value={grep}
-                      spellCheck={false}
-                      placeholder={'error\nadmin\nroot'}
-                      onChange={(e) => setGrep(e.target.value)}
+            <div className="intruder-tabs" role="tablist" aria-label="Attack configuration">
+              {(['positions', 'payloads', 'results'] as const).map((t) => (
+                <button
+                  key={t}
+                  role="tab"
+                  aria-selected={tab === t}
+                  className={tab === t ? 'subtab active' : 'subtab'}
+                  onClick={() => setTab(t)}
+                >
+                  {t[0].toUpperCase() + t.slice(1)}
+                  {t === 'results' && results.length ? ' (' + results.length + ')' : ''}
+                </button>
+              ))}
+              <span className="faint">
+                {positions} positions · {plan.value?.count ?? 0} requests
+              </span>
+            </div>
+            {running && (
+              <div className="intruder-progress" role="status">
+                <progress max={progress.total} value={progress.done} />
+                <span>
+                  {progress.done}/{progress.total} completed
+                </span>
+              </div>
+            )}
+            {status && (
+              <div className="intruder-status" role="status">
+                {status}
+              </div>
+            )}
+            {tab === 'positions' && (
+              <div className="intruder-position-panel">
+                <div className="intruder-options">
+                  <label>
+                    Target URL
+                    <input
+                      className="input mono"
+                      disabled={running}
+                      value={draft.targetURL}
+                      onChange={(e) => patch({ targetURL: e.target.value })}
                     />
-                  </div>
+                  </label>
+                  <label>
+                    Attack type
+                    <select
+                      className="input"
+                      disabled={running}
+                      value={draft.mode}
+                      onChange={(e) => patch({ mode: e.target.value as AttackMode })}
+                    >
+                      <option value="sniper">Sniper</option>
+                      <option value="battering-ram">Battering ram</option>
+                      <option value="pitchfork">Pitchfork</option>
+                    </select>
+                  </label>
                 </div>
-              }
-              b={
-                <div className="panel-body" style={{ display: 'flex', flexDirection: 'column' }}>
-                  {results.length === 0 ? (
-                    <Empty icon="bolt" title="No results yet">
-                      Press <b>Start attack</b> — each payload is fired once;
-                      <br />
-                      the first result is the baseline, deviations are highlighted.
-                    </Empty>
-                  ) : (
-                    <>
-                      <table className="rules-table intruder-table">
-                        <thead>
-                          <tr>
-                            <th style={{ width: 36 }}>#</th>
-                            <th>Payload</th>
-                            <th style={{ width: 70 }}>Status</th>
-                            <th style={{ width: 80 }}>Length</th>
-                            <th style={{ width: 70 }}>Took</th>
-                            {grepListHeaders().map((k) => (
-                              <th key={k} className="grep-col" title={`grep: ${k}`}>{k}</th>
-                            ))}
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {results.map((r, i) => {
-                            const deviates = baseline && (r.statusCode !== baseline.statusCode || r.length !== baseline.length)
-                            return (
+                <p className="sub">
+                  {draft.mode === 'sniper'
+                    ? 'Replace one position at a time; keep other values unchanged.'
+                    : draft.mode === 'battering-ram'
+                      ? 'Use the same payload in every marked position for each request.'
+                      : 'Use one payload set per position, advancing them together.'}{' '}
+                  Host header sets the destination host; Target URL preserves HTTP / HTTPS.
+                </p>
+                <RawEditor
+                  value={draft.raw}
+                  onChange={(raw) => patch({ raw })}
+                  markPositions
+                  readOnly={running}
+                />
+              </div>
+            )}
+            {tab === 'payloads' && (
+              <div className="intruder-payload-panel">
+                <div className="cfg-col">
+                  <div className="share-actions">
+                    <label>
+                      Payload set{' '}
+                      <select
+                        className="input"
+                        aria-label="Payload set"
+                        disabled={running || draft.mode !== 'pitchfork'}
+                        value={selectedSet}
+                        onChange={(e) => setSetIndex(Number(e.target.value))}
+                      >
+                        {Array.from(
+                          {
+                            length: draft.mode === 'pitchfork' ? Math.max(positions, 1) : 1,
+                          },
+                          (_, i) => (
+                            <option key={i} value={i}>
+                              {i + 1}
+                            </option>
+                          ),
+                        )}
+                      </select>
+                    </label>
+                    <span>{payloadLines(payloadText).length} payloads</span>
+                    <button className="btn sm" disabled={running} onClick={() => importRef.current?.click()}>
+                      Load file
+                    </button>
+                    <input
+                      ref={importRef}
+                      type="file"
+                      hidden
+                      onChange={async (e) => {
+                        const file = e.target.files?.[0]
+                        if (file) {
+                          try {
+                            setPayloadText(await file.text())
+                          } catch (err) {
+                            setError((err as Error).message)
+                          }
+                        }
+                        e.target.value = ''
+                      }}
+                    />
+                    <button
+                      className="btn sm"
+                      disabled={running}
+                      onClick={() =>
+                        setPayloadText([...new Set(payloadLines(payloadText))].join(String.fromCharCode(10)))
+                      }
+                    >
+                      Deduplicate
+                    </button>
+                  </div>
+                  <textarea
+                    className="cfg-src"
+                    aria-label="Payload values"
+                    disabled={running}
+                    value={payloadText}
+                    onChange={(e) => setPayloadText(e.target.value)}
+                    placeholder="One payload per line"
+                  />
+                  <p className="sub">
+                    Whitespace in payloads is preserved. Empty lines are ignored. {plan.value?.warning}
+                  </p>
+                </div>
+                <div className="cfg-col">
+                  <label className="cfg-label" htmlFor="intruder-grep">
+                    Grep match
+                  </label>
+                  <textarea
+                    id="intruder-grep"
+                    className="cfg-src"
+                    disabled={running}
+                    value={draft.grep}
+                    onChange={(e) => patch({ grep: e.target.value })}
+                    placeholder="One response keyword per line"
+                  />
+                  <p className="sub">
+                    Case-insensitive matches against status, headers and decoded text bytes.
+                  </p>
+                </div>
+              </div>
+            )}
+            {tab === 'results' && (
+              <div className="intruder-results">
+                <div className="panel-head">
+                  <input
+                    className="input"
+                    aria-label="Search results"
+                    placeholder="Search payload, URL, status or error…"
+                    value={filter}
+                    onChange={(e) => setFilter(e.target.value)}
+                  />
+                  <span className="meta">
+                    {visible.length}/{results.length} shown · first result is baseline
+                  </span>
+                </div>
+                {!results.length ? (
+                  <Empty icon="bolt" title={running ? 'Waiting for first result…' : 'No results yet'}>
+                    Configure positions and payloads, then start the attack.
+                  </Empty>
+                ) : (
+                  <Split
+                    dir="v"
+                    storageKey="pulse.split.intruder.results"
+                    initial={0.4}
+                    a={
+                      <div className="intruder-result-table">
+                        <table className="rules-table intruder-table">
+                          <thead>
+                            <tr>
+                              {(
+                                [
+                                  ['index', '#'],
+                                  ['payload', 'Payload'],
+                                  ['statusCode', 'Status'],
+                                  ['length', 'Length'],
+                                  ['ms', 'Time'],
+                                ] as const
+                              ).map(([key, label]) => (
+                                <th
+                                  key={key}
+                                  aria-sort={
+                                    sort.key === key ? (sort.dir === 1 ? 'ascending' : 'descending') : 'none'
+                                  }
+                                >
+                                  <button onClick={() => sortBy(key)}>
+                                    {label}
+                                    {sort.key === key ? (sort.dir === 1 ? ' ↑' : ' ↓') : ''}
+                                  </button>
+                                </th>
+                              ))}
+                              <th>Position</th>
+                              {keywords.map((k, i) => (
+                                <th key={i}>{k}</th>
+                              ))}
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {visible.map((r) => (
                               <tr
-                                key={i}
-                                className={selectedIdx === i ? 'selected' : deviates ? 'deviates' : ''}
-                                onClick={() => setSelectedIdx(i)}
-                                title={r.reason || 'Click to inspect the response'}
+                                key={r.index}
+                                tabIndex={0}
+                                aria-selected={selectedIdx === r.index}
+                                className={
+                                  selectedIdx === r.index
+                                    ? 'selected'
+                                    : r.statusCode !== results[0].statusCode || r.length !== results[0].length
+                                      ? 'deviates'
+                                      : ''
+                                }
+                                onClick={() => setSelectedIdx(r.index)}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter') setSelectedIdx(r.index)
+                                  if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+                                    e.preventDefault()
+                                    const i = visible.findIndex((v) => v.index === r.index)
+                                    const next = visible[i + (e.key === 'ArrowDown' ? 1 : -1)]
+                                    if (next) {
+                                      setSelectedIdx(next.index)
+                                      const row =
+                                        e.key === 'ArrowDown'
+                                          ? e.currentTarget.nextElementSibling
+                                          : e.currentTarget.previousElementSibling
+                                      ;(row as HTMLElement | null)?.focus()
+                                    }
+                                  }
+                                }}
+                                onContextMenu={(e) => {
+                                  e.preventDefault()
+                                  setSelectedIdx(r.index)
+                                  setMenu({
+                                    x: e.clientX,
+                                    y: e.clientY,
+                                    index: r.index,
+                                  })
+                                }}
+                                title={r.reason}
                               >
-                                <td className="faint">{i + 1}</td>
+                                <td>{r.index + 1}</td>
                                 <td className="mono">{r.payload}</td>
-                                <td className={`mono ${r.statusCode ? `status${Math.floor(r.statusCode / 100)}` : ''}`}>{r.statusCode || '—'}</td>
-                                <td className="mono">{r.length || '—'}</td>
-                                <td className="mono faint">{r.ms}ms</td>
-                                {grepListHeaders().map((k) => (
-                                  <td key={k} className="grep-cell">{r.grepHits.includes(k) ? '✓' : ''}</td>
+                                <td>{r.statusCode || 'Error'}</td>
+                                <td>{r.length}</td>
+                                <td>{r.ms}ms</td>
+                                <td>{r.position}</td>
+                                {keywords.map((k, i) => (
+                                  <td key={i}>{r.grepHits.includes(k) ? '✓' : ''}</td>
                                 ))}
                               </tr>
-                            )
-                          })}
-                        </tbody>
-                      </table>
-                      {selected && selected.flow?.response && (
-                        <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', borderTop: '1px solid var(--border)' }}>
-                          <ResponseInspector resp={selected.flow.response} error={selected.flow.error} flowId={selected.flow.id} />
-                        </div>
-                      )}
-                    </>
-                  )}
-                </div>
-              }
-            />
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    }
+                    b={
+                      selected?.flow ? (
+                        <FlowSnapshot flow={selected.flow} extraMenu={resultMenu(selectedIdx!).slice(0, 2)} />
+                      ) : (
+                        <Empty icon="eye" title={selected?.reason || 'Select a result'}>
+                          Inspect the sent request and received response side by side.
+                        </Empty>
+                      )
+                    }
+                  />
+                )}
+              </div>
+            )}
           </>
         )}
       </div>
+      {menu && (
+        <ContextMenu x={menu.x} y={menu.y} items={resultMenu(menu.index)} onClose={() => setMenu(null)} />
+      )}
+      {attackMenuState && (
+        <ContextMenu
+          x={attackMenuState.x}
+          y={attackMenuState.y}
+          items={attackMenu(attackMenuState.attack)}
+          onClose={() => setAttackMenuState(null)}
+        />
+      )}
+      {shareFlow && <ShareDialog source={{ flowId: shareFlow }} onClose={() => setShareFlow(null)} />}
     </div>
   )
 }
-
-function countPositions(raw: string): number {
-  return Math.floor((raw.split('§').length - 1) / 2)
-}
-
-/** rawToRequest needs an absolute URL; the template's Host line provides it */
-function templateBaseURL(raw: string): string {
-  for (const line of raw.split('\n')) {
-    const m = line.match(/^\s*Host\s*:\s*(\S+)/i)
-    if (m) return 'http://' + m[1]
-  }
-  return 'http://example.com'
-}
-
-/** which grep keywords appear in the response (status + headers + body) */
-function grepHitsFor(fl: Flow, keywords: string[]): string[] {
-  if (keywords.length === 0 || !fl.response) return []
-  const hay = (
-    `${fl.response.statusCode} ${fl.response.reason}\n` +
-    (fl.response.headers ?? []).map((h) => `${h.name}: ${h.value}`).join('\n') +
-    '\n' +
-    (fl.response.body ?? '')
-  ).toLowerCase()
-  return keywords.filter((k) => hay.includes(k.toLowerCase()))
-}
-
-function bodySize(fl: Flow): number {
-  const b = fl.response?.body ?? ''
-  // stored base64 → actual bytes ≈ 3/4 of the encoded length
-  return Math.floor((b.length * 3) / 4)
-}
-

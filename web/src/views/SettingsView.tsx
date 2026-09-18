@@ -3,6 +3,7 @@ import { getSettings, putSettings, apiBase, getRemoteConfig, saveRemoteConfig, c
 import type { UpdateInfo } from '../api'
 import type { PulseState } from '../state'
 import { useEffect, useState } from 'react'
+import SharingSettings from '../components/SharingSettings'
 import { applyFontSize, loadFontSize, FONT_DEFAULT, FONT_MIN, FONT_MAX } from '../ui/fontSize'
 
 export default function SettingsView({ pulse }: { pulse: PulseState }) {
@@ -160,6 +161,7 @@ export default function SettingsView({ pulse }: { pulse: PulseState }) {
     <div className="view">
       <div className="settings-wrap">
         <div className="settings">
+        <SharingSettings />
         <div className="card">
           <h3>
             <Icon name="lock" size={15} />

@@ -28,8 +28,9 @@ import type { EditableRequest, EditableResponse, HttpRequest, HttpResponse } fro
 export function requestToRaw(req: HttpRequest): string {
   const i = req.url.indexOf('://')
   const rest = i >= 0 ? req.url.slice(i + 3) : req.url
-  const slash = rest.indexOf('/')
-  const path = slash >= 0 ? rest.slice(slash) : '/'
+  const targetStart = rest.search(/[/?#]/)
+  const target = targetStart >= 0 ? rest.slice(targetStart) : '/'
+  const path = target.startsWith('/') ? target : '/' + target
   // Go omits nil header slices as JSON null — bare API-created requests land here
   const headers = (req.headers ?? []).map((h) => `${h.name}: ${h.value}`).join('\n')
   const body = bodyToText(req.body)
@@ -164,11 +165,15 @@ export default function RawEditor({
   value,
   onChange,
   markPositions = false,
+  readOnly = false,
+  extraMenu = [],
 }: {
   value: string
   onChange: (next: string) => void
   /** tint §payload§ markers (Intruder templates) like Burp's position marks */
   markPositions?: boolean
+  readOnly?: boolean
+  extraMenu?: MenuItem[]
 }) {
   const [wrap, toggleWrap] = useRawWrap()
   const mirrorRef = useRef<HTMLPreElement>(null)
@@ -253,6 +258,7 @@ export default function RawEditor({
 
   // replace the buffer and land the caret where the edit happened
   const applyEdit = (next: string, caret: number) => {
+    if (readOnly) return
     onChange(next)
     requestAnimationFrame(() => {
       const ta = textareaRef.current
@@ -268,6 +274,10 @@ export default function RawEditor({
     const headers = ok ? parsed.headers : []
     const bodyText = ok ? bodyToText(parsed.body) : ''
     return [
+      ...extraMenu,
+      ...(markPositions && !readOnly ? [{ label: 'Add position § §', disabled: !sel, onClick: () => {
+        if (sel) applyEdit(value.slice(0,sel.start)+'§'+sel.text+'§'+value.slice(sel.end),sel.end+2)
+      } }, { label: 'Clear positions', onClick: () => onChange(value.split('§').join('')) }] : []),
       // selection group (Burp-style): edit ops on the selected range
       ...(sel
         ? ([
@@ -408,6 +418,7 @@ export default function RawEditor({
         )
       }
       const idx = line.indexOf(':')
+      if (markPositions && line.includes('§')) return <div key={i}>{ln}{renderPositionMarks(line)}</div>
       if (i > 0 && i < headEnd && idx > 0 && !line.startsWith(' ') && !line.startsWith('\t')) {
         const name = line.slice(0, idx)
         const value = line.slice(idx + 1)
@@ -452,6 +463,25 @@ export default function RawEditor({
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
+      {markPositions && <div className="position-tools">
+        <button className="btn sm" disabled={readOnly} onMouseDown={e => e.preventDefault()} onClick={() => {
+          const ta = textareaRef.current
+          if (!ta) return
+          const start = ta.selectionStart, end = ta.selectionEnd
+          applyEdit(value.slice(0,start)+'§'+value.slice(start,end)+'§'+value.slice(end),end+2)
+        }}>Add § §</button>
+        <button className="btn sm" disabled={readOnly} onMouseDown={e => e.preventDefault()} onClick={() => {
+          const ta = textareaRef.current
+          if (!ta) return
+          const start = value.lastIndexOf('§',ta.selectionStart)
+          if (start < 0) return
+          const opening = value.slice(0,start).split('§').length % 2 === 1 ? start : value.lastIndexOf('§',start-1)
+          const end = value.indexOf('§',opening+1)
+          if (opening >= 0 && end > opening) applyEdit(value.slice(0,opening)+value.slice(opening+1,end)+value.slice(end+1),opening)
+        }}>Remove position</button>
+        <button className="btn sm" disabled={readOnly || !value.includes('§')} onClick={() => onChange(value.split('§').join(''))}>Clear positions</button>
+        <span className="faint">Select a value, then Add · {Math.floor((value.split('§').length-1)/2)} positions</span>
+      </div>}
       <div
         className="raw-edit-stack"
         style={sharedText}
@@ -470,6 +500,8 @@ export default function RawEditor({
           className="editor raw over-mirror"
           style={sharedText}
           value={value}
+          readOnly={readOnly}
+          aria-label={markPositions ? 'Request template' : 'Raw request'}
           spellCheck={false}
           ref={textareaRef}
           onChange={(e) => onChange(e.target.value)}

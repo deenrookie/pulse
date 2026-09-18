@@ -49,6 +49,7 @@ export function authHeaders(): Record<string, string> {
 }
 import type {
   Attack,
+  AttackResult,
   EditableRequest,
   EditableResponse,
   Flow,
@@ -114,14 +115,20 @@ export const restartUpdate = () => api<{ restarting: boolean }>('/api/update/res
 
 export const listAttacks = () => api<{ attacks: Attack[] }>('/api/intruder')
 
-export const createAttack = (payload: { title?: string; raw: string; payloads?: string; payloadSets?: string[]; grep?: string }) =>
+export const createAttack = (payload: { raw: string; payloads?: string; payloadSets?: string[]; grep?: string; mode?: Attack['mode']; targetURL?: string }) =>
   api<Attack>('/api/intruder', { method: 'POST', body: JSON.stringify(payload) })
 
-export const updateAttack = (id: string, payload: { title?: string; raw: string; payloads: string; payloadSets?: string[]; grep: string }) =>
+export const updateAttack = (id: string, payload: { raw: string; payloads: string; payloadSets?: string[]; grep: string; mode?: Attack['mode']; targetURL?: string }) =>
   api<Attack>(`/api/intruder/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify(payload) })
 
 export const deleteAttack = (id: string) =>
   api<{ ok: boolean }>(`/api/intruder/${encodeURIComponent(id)}`, { method: 'DELETE' })
+
+export const saveAttackResults = (id: string, results: AttackResult[]) =>
+  api<{ ok: boolean }>(`/api/intruder/${encodeURIComponent(id)}/results`, {
+    method: 'PUT',
+    body: JSON.stringify({ results: results.map(({ flow, ...result }) => ({ ...result, flowId: result.flowId ?? flow?.id })) }),
+  })
 
 /** fire one substituted request; the engine sends it upstream, nothing persists */
 export const fireAttack = (payload: { request: EditableRequest }) =>
@@ -278,6 +285,7 @@ export const validatePlugin = (src: string) =>
 
 /** embedded showcase sources for the Samples tab */
 export const listPluginSamples = () => api<{ samples: PluginSample[] }>('/api/plugins/samples')
+export const getPluginSkill = () => api<{ name: string; content: string }>('/api/plugins/skill')
 
 /** run one hook against a fixture inside the sandbox VM — zero traffic */
 export const testPlugin = (payload: { src: string; hook: 'request' | 'response'; request: TestMessage; response?: TestMessage }) =>
@@ -286,6 +294,7 @@ export const testPlugin = (payload: { src: string; hook: 'request' | 'response';
 // ---------- settings ----------
 
 export interface PulseSettings {
+  shareIP: string
   responseTimeoutSec: number
   /** resident-body budget (MB): past it, new binary bodies > largeBodyMB are dropped */
   memoryGuardMB: number
@@ -304,6 +313,21 @@ export const getSettings = () => api<PulseSettings>('/api/settings')
 
 export const putSettings = (patch: Partial<PulseSettings>) =>
   api<PulseSettings>('/api/settings', { method: 'PUT', body: JSON.stringify(patch) })
+
+export interface TrafficShare {
+  id: string
+  url: string
+  flowId: string
+  expiresAt: string
+  createdAt: string
+}
+export type ShareSource = { flowId: string } | { repeaterId: string; historyAt?: string }
+export const listShares = () => api<{ shares: TrafficShare[] }>('/api/shares')
+export const revokeShare = (id: string) => api<void>('/api/shares/' + encodeURIComponent(id), { method: 'DELETE' })
+export const previewShare = (source: ShareSource) =>
+  api<Flow>('/api/shares/preview', { method: 'POST', body: JSON.stringify(source) })
+export const createShare = (source: ShareSource, ttlMinutes: number) =>
+  api<TrafficShare>('/api/shares', { method: 'POST', body: JSON.stringify({ ...source, ttlMinutes }) })
 
 // ---------- context-menu helpers ----------
 
@@ -437,14 +461,16 @@ export async function bodyToTextDecoded(
 ): Promise<{ text: string; encoding: string; decodedBytes: number }> {
   const bytes = decodeBody(b64)
   const enc = (contentEncoding || '').trim().toLowerCase()
-  const formats: Record<string, 'gzip' | 'deflate' | 'br'> = {
+  const formats: Record<string, 'gzip' | 'deflate' | 'br' | 'bzip2'> = {
     gzip: 'gzip',
     xgzip: 'gzip',
     deflate: 'deflate',
     br: 'br',
+    bzip2: 'bzip2',
+    xbzip2: 'bzip2',
   }
   const fmt = formats[enc.replace(/[^a-z]/g, '')]
-  if (bytes.length > 0 && fmt && typeof DecompressionStream !== 'undefined') {
+  if (bytes.length > 0 && fmt && fmt !== 'bzip2' && typeof DecompressionStream !== 'undefined') {
     try {
       const ok =
         fmt === 'br'

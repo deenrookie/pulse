@@ -6,7 +6,9 @@ package api
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -19,14 +21,28 @@ import (
 
 // IntruderAttack is one saved attack plan.
 type IntruderAttack struct {
-	ID        string    `json:"id"`
-	Title     string    `json:"title"`
-	Raw       string    `json:"raw"`      // request template, §payload§ marks positions
-	Payloads   string   `json:"payloads"`           // single set: one per line
-	PayloadSets []string `json:"payloadSets,omitempty"` // pitchfork: one set (one per line) per §position§
-	Grep      string    `json:"grep"`     // match keywords, one per line — hits become result columns
-	CreatedAt time.Time `json:"createdAt"`
-	UpdatedAt time.Time `json:"updatedAt"`
+	Mode        string           `json:"mode"`
+	TargetURL   string           `json:"targetURL"`
+	ID          string           `json:"id"`
+	Raw         string           `json:"raw"`                   // request template, §payload§ marks positions
+	Payloads    string           `json:"payloads"`              // single set: one per line
+	PayloadSets []string         `json:"payloadSets,omitempty"` // pitchfork: one set (one per line) per §position§
+	Grep        string           `json:"grep"`                  // match keywords, one per line — hits become result columns
+	Results     []IntruderResult `json:"results,omitempty"`
+	LastRunAt   *time.Time       `json:"lastRunAt,omitempty"`
+	CreatedAt   time.Time        `json:"createdAt"`
+	UpdatedAt   time.Time        `json:"updatedAt"`
+}
+
+type IntruderResult struct {
+	Payload    string   `json:"payload"`
+	Position   string   `json:"position,omitempty"`
+	StatusCode int      `json:"statusCode"`
+	Reason     string   `json:"reason"`
+	Length     int      `json:"length"`
+	Ms         int64    `json:"ms"`
+	FlowID     string   `json:"flowId,omitempty"`
+	GrepHits   []string `json:"grepHits"`
 }
 
 type intruderStore struct {
@@ -59,12 +75,16 @@ func (s *intruderStore) load() {
 	}
 }
 
-func (s *intruderStore) save() {
+func (s *intruderStore) save() error {
 	data, err := json.MarshalIndent(s.attacks, "", "  ")
 	if err != nil {
-		return
+		return err
 	}
-	_ = os.WriteFile(s.path, data, 0o644)
+	tmp := s.path + ".tmp"
+	if err := os.WriteFile(tmp, data, 0600); err != nil {
+		return err
+	}
+	return os.Rename(tmp, s.path)
 }
 
 func (s *intruderStore) list() []IntruderAttack {
@@ -77,68 +97,109 @@ func (s *intruderStore) list() []IntruderAttack {
 	return out
 }
 
-func (s *intruderStore) get(id string) (*IntruderAttack, bool) {
-	for _, a := range s.attacks {
-		if a.ID == id {
-			return a, true
+func (s *intruderStore) put(id string, input IntruderAttack) (*IntruderAttack, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if input.Mode == "" {
+		input.Mode = "battering-ram"
+		if len(input.PayloadSets) > 0 {
+			input.Mode = "pitchfork"
 		}
 	}
-	return nil, false
+	if input.Mode != "sniper" && input.Mode != "battering-ram" && input.Mode != "pitchfork" {
+		return nil, fmt.Errorf("invalid attack mode")
+	}
+	if strings.TrimSpace(input.Raw) == "" {
+		return nil, fmt.Errorf("request template is required")
+	}
+	if input.TargetURL != "" {
+		u, err := url.Parse(input.TargetURL)
+		if err != nil || u.Host == "" || (u.Scheme != "http" && u.Scheme != "https") {
+			return nil, fmt.Errorf("targetURL must be an HTTP or HTTPS URL")
+		}
+	}
+	input.UpdatedAt = time.Now()
+	old := s.attacks
+	next := append([]*IntruderAttack(nil), s.attacks...)
+	if id == "" {
+		input.ID = "atk-" + strconv.Itoa(s.nextID)
+		input.CreatedAt = input.UpdatedAt
+		next = append(next, &input)
+	} else {
+		found := false
+		for i, a := range next {
+			if a.ID == id {
+				input.Results = a.Results
+				input.LastRunAt = a.LastRunAt
+				input.ID = id
+				input.CreatedAt = a.CreatedAt
+				next[i] = &input
+				found = true
+				break
+			}
+		}
+		if !found {
+			return nil, os.ErrNotExist
+		}
+	}
+	s.attacks = next
+	if err := s.save(); err != nil {
+		s.attacks = old
+		return nil, err
+	}
+	if id == "" {
+		s.nextID++
+	}
+	return &input, nil
 }
 
-func (s *intruderStore) create(title, raw, payloads string, payloadSets []string, grep string) *IntruderAttack {
+func (s *intruderStore) saveResults(id string, results []IntruderResult) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	a := &IntruderAttack{
-		ID:        "atk-" + strconv.Itoa(s.nextID),
-		Title:       title,
-		Raw:         raw,
-		Payloads:    payloads,
-		PayloadSets: payloadSets,
-		Grep:        grep,
-		CreatedAt: time.Now(),
-		UpdatedAt: time.Now(),
+	for _, attack := range s.attacks {
+		if attack.ID != id {
+			continue
+		}
+		oldResults, oldRun := attack.Results, attack.LastRunAt
+		now := time.Now()
+		attack.Results = append([]IntruderResult(nil), results...)
+		attack.LastRunAt = &now
+		if err := s.save(); err != nil {
+			attack.Results, attack.LastRunAt = oldResults, oldRun
+			return err
+		}
+		return nil
 	}
-	s.nextID++
-	s.attacks = append(s.attacks, a)
-	s.save()
-	return a
+	return os.ErrNotExist
 }
 
-func (s *intruderStore) update(id, title, raw, payloads string, payloadSets []string, grep string) (*IntruderAttack, bool) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	a, ok := s.get(id)
-	if !ok {
-		return nil, false
-	}
-	if title != "" {
-		a.Title = title
-	}
-	a.Raw, a.Payloads, a.PayloadSets, a.Grep, a.UpdatedAt = raw, payloads, payloadSets, grep, time.Now()
-	s.save()
-	return a, true
-}
-
-func (s *intruderStore) delete(id string) bool {
+func (s *intruderStore) delete(id string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	for i, a := range s.attacks {
 		if a.ID == id {
-			s.attacks = append(s.attacks[:i], s.attacks[i+1:]...)
-			s.save()
-			return true
+			old := s.attacks
+			next := append([]*IntruderAttack(nil), old[:i]...)
+			s.attacks = append(next, old[i+1:]...)
+			if err := s.save(); err != nil {
+				s.attacks = old
+				return err
+			}
+			return nil
 		}
 	}
-	return false
+	return os.ErrNotExist
 }
 
 // handleIntruder: GET list / POST create / PUT+DELETE /api/intruder/{id} and
 // POST /api/intruder/fire — one templated request sent upstream, nothing kept.
 func (s *Server) handleIntruder(w http.ResponseWriter, r *http.Request) {
-	rest := strings.TrimPrefix(r.URL.Path, "/api/intruder/")
+	rest := strings.TrimPrefix(strings.TrimPrefix(r.URL.Path, "/api/intruder"), "/")
 	id, action, _ := strings.Cut(rest, "/")
-	_ = action
+	if action != "" && action != "results" {
+		http.NotFound(w, r)
+		return
+	}
 
 	// POST /api/intruder/fire — one templated request sent upstream ("fire"
 	// can't collide with attack ids, which are atk-N)
@@ -163,47 +224,67 @@ func (s *Server) handleIntruder(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]any{"flow": fl})
 		return
 	}
+	if action == "results" {
+		if r.Method != http.MethodPut {
+			http.Error(w, "method not allowed", 405)
+			return
+		}
+		var body struct {
+			Results []IntruderResult `json:"results"`
+		}
+		if !readJSON(w, r, &body, 32<<20) {
+			return
+		}
+		if body.Results == nil {
+			body.Results = []IntruderResult{}
+		}
+		if err := s.intr.saveResults(id, body.Results); err != nil {
+			code := 500
+			if os.IsNotExist(err) {
+				code = 404
+			}
+			writeErr(w, code, err.Error())
+			return
+		}
+		writeJSON(w, 200, map[string]bool{"ok": true})
+		return
+	}
 
 	switch {
 	case r.Method == http.MethodGet && id == "":
 		writeJSON(w, http.StatusOK, map[string]any{"attacks": s.intr.list()})
-	case r.Method == http.MethodPost && id == "":
-		var body struct {
-			Title    string `json:"title"`
-			Raw      string `json:"raw"`
-			Payloads    string   `json:"payloads"`
-			PayloadSets []string `json:"payloadSets"`
-			Grep        string   `json:"grep"`
-		}
-		if !readJSON(w, r, &body, 4<<20) || strings.TrimSpace(body.Raw) == "" {
-			writeErr(w, http.StatusBadRequest, "missing \"raw\" request template")
+	case (r.Method == http.MethodPost && id == "") || (r.Method == http.MethodPut && id != ""):
+		var input IntruderAttack
+		if !readJSON(w, r, &input, 4<<20) {
 			return
 		}
-		writeJSON(w, http.StatusCreated, s.intr.create(strings.TrimSpace(body.Title), body.Raw, body.Payloads, body.PayloadSets, body.Grep))
-	case r.Method == http.MethodPut && id != "":
-		var body struct {
-			Title    string `json:"title"`
-			Raw      string `json:"raw"`
-			Payloads    string   `json:"payloads"`
-			PayloadSets []string `json:"payloadSets"`
-			Grep        string   `json:"grep"`
-		}
-		if !readJSON(w, r, &body, 4<<20) {
+		a, err := s.intr.put(id, input)
+		if err != nil {
+			code := http.StatusBadRequest
+			if os.IsNotExist(err) {
+				code = http.StatusNotFound
+			} else if _, ok := err.(*os.PathError); ok {
+				code = http.StatusInternalServerError
+			}
+			writeErr(w, code, err.Error())
 			return
 		}
-		a, ok := s.intr.update(id, body.Title, body.Raw, body.Payloads, body.PayloadSets, body.Grep)
-		if !ok {
-			writeErr(w, http.StatusNotFound, "no such attack: "+id)
-			return
+		code := http.StatusOK
+		if id == "" {
+			code = http.StatusCreated
 		}
-		writeJSON(w, http.StatusOK, a)
+		writeJSON(w, code, a)
 	case r.Method == http.MethodDelete && id != "":
-		if !s.intr.delete(id) {
-			writeErr(w, http.StatusNotFound, "no such attack: "+id)
+		if err := s.intr.delete(id); err != nil {
+			code := 500
+			if os.IsNotExist(err) {
+				code = 404
+			}
+			writeErr(w, code, err.Error())
 			return
 		}
-		writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+		writeJSON(w, 200, map[string]bool{"ok": true})
 	default:
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		http.Error(w, "method not allowed", 405)
 	}
 }

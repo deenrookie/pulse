@@ -1,0 +1,5 @@
+{
+  "hook": "request",
+  "request": { "method": "GET", "url": "https://unrelated.example.test/v1/items", "headers": [], "body": "" },
+  "expect": { "changed": false, "request.url": "https://unrelated.example.test/v1/items" }
+}

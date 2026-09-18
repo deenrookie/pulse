@@ -1,0 +1,15 @@
+{
+  "embeddedAssetsMatch": true,
+  "ninetyDayShareSurvivesRestart": true,
+  "testSharesRemoved": true,
+  "binaries": {
+    "pulse": {
+      "size": 24024450,
+      "sha256": "9ec0b41d111015efae9089fefd2241dc3056b80d1cceb47ce4f18cc08e98c290"
+    },
+    "pulse-windows-amd64.exe": {
+      "size": 25120256,
+      "sha256": "9a057766eafdedcc91c70f0d124d5479744b8bb10056f82019345c38f85cc95f"
+    }
+  }
+}

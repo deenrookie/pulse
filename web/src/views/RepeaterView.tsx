@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
+import ShareDialog from '../components/ShareDialog'
+import type { ShareSource } from '../api'
 import { rawToRequest, requestToRaw } from '../components/RawEditor'
 import { applyPluginToRequest, listPlugins } from '../api'
 import type { PluginApplyResult } from '../types'
@@ -15,6 +17,7 @@ import { bodyToText, copyToClipboard, createRepeaterTab, encodeBody, listRepeate
 import { DiffView } from '../ui/Diff'
 import type { PulseState } from '../state'
 import type { RepeaterTab } from '../types'
+import { consumeRepeaterTab, lastRepeaterTab, pendingRepeaterTab } from '../repeaterNav'
 
 const MARKS_KEY = 'pulse.marks'
 
@@ -249,7 +252,13 @@ function RequestOptions({ autoCL, setAutoCL }: { autoCL: boolean; setAutoCL: (v:
 export default function RepeaterView({ pulse, goProxy }: { pulse: PulseState; goProxy: () => void }) {
   const [tabsMirror, setRepeaterTabsDirect] = useState<RepeaterTab[] | null>(null)
   const tabs = tabsMirror ?? pulse.repeaterTabs
-  const [selected, setSelected] = useState<string | null>(null)
+  // Capture navigation intent before the first render. If the tab list is
+  // still refreshing, keep this exact ID selected until it arrives instead
+  // of briefly falling back to tabs[0] and writing that old tab to the URL.
+  const explicitTabOnEntry = useRef(viewParam('tab'))
+  const [selected, setSelected] = useState<string | null>(
+    () => explicitTabOnEntry.current ?? pendingRepeaterTab() ?? lastRepeaterTab(),
+  )
   const [search, setSearch] = useState('')
   const [marks, setMarks] = useState<Record<string, Mark>>(loadMarks)
   const [menu, setMenu] = useState<{ x: number; y: number; tab: RepeaterTab } | null>(null)
@@ -304,42 +313,51 @@ export default function RepeaterView({ pulse, goProxy }: { pulse: PulseState; go
   useEffect(() => {
     const apply = () => {
       const id = viewParam('tab')
-      if (id) setSelected(id)
+      if (id) {
+        explicitTabOnEntry.current = id
+        setSelected(id)
+      }
     }
     apply()
     window.addEventListener('hashchange', apply)
     return () => window.removeEventListener('hashchange', apply)
   }, [])
 
-  // entering the Repeater view: if a send-to-repeater happened since the last
-  // visit, focus the newest tab; otherwise restore the last-operated one
+  const initialSelectionResolved = useRef(false)
+
+  // Send to Repeater records the exact created tab. Wait until that tab is
+  // present in the asynchronously refreshed list, then select and consume it.
+  // This runs on list changes as well as mount; the previous mount-only
+  // boolean could be consumed before the new tab arrived.
   useEffect(() => {
-    let jump = false
-    try {
-      jump = localStorage.getItem('pulse.repeater.jumpNewest') === '1'
-      if (jump) localStorage.removeItem('pulse.repeater.jumpNewest')
-    } catch {
-      /* ignore */
+    if (explicitTabOnEntry.current) {
+      initialSelectionResolved.current = true
+      return // explicit deep link wins
     }
-    if (viewParam('tab')) return // explicit deep link wins
-    if (tabs.length === 0) return
-    if (jump) {
-      const newest = tabs.reduce((a, b) => (a.updatedAt >= b.updatedAt ? a : b))
-      setSelected(newest.id)
+    const pending = pendingRepeaterTab()
+    if (pending) {
+      if (tabs.some((t) => t.id === pending)) {
+        setSelected(pending)
+        consumeRepeaterTab(pending)
+        initialSelectionResolved.current = true
+      }
       return
     }
+    if (initialSelectionResolved.current) return
+    if (tabs.length === 0) return
     try {
       const saved = localStorage.getItem('pulse.repeater.selected')
       if (saved && tabs.some((t) => t.id === saved)) {
         setSelected(saved)
+        initialSelectionResolved.current = true
         return
       }
     } catch {
       /* ignore */
     }
     setSelected(null) // falls back to tabs[0]
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+    initialSelectionResolved.current = true
+  }, [tabs])
 
   // remember the operated tab so a plain revisit restores it
   useEffect(() => {
@@ -480,6 +498,7 @@ export default function RepeaterView({ pulse, goProxy }: { pulse: PulseState; go
   // Ctrl/Cmd+Enter sends; Ctrl+R (and the raw context menu) duplicate the tab
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      if (document.querySelector('dialog[open]')) return
       if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
         e.preventDefault()
         void send()
@@ -506,7 +525,10 @@ export default function RepeaterView({ pulse, goProxy }: { pulse: PulseState; go
     return { x: r.right + 8, y: r.top }
   }
 
+  const [shareSource, setShareSource] = useState<ShareSource | null>(null)
   const tabMenu = (t: RepeaterTab): MenuItem[] => [
+    { label: 'Send to Intruder', icon: 'bolt', onClick: () => { window.dispatchEvent(new CustomEvent('pulse:send-to-intruder', { detail: { raw: t.id === currentId && raw ? raw.text : requestToRaw(t.request), targetURL: t.request.url } })) } },
+    { label: t.history?.length ? 'Share last exchange' : 'Share request', icon: 'link', disabled: busy, onClick: () => setShareSource({ repeaterId: t.id, historyAt: t.history?.[t.history.length - 1]?.at }) },
     {
       icon: 'play',
       label: 'Send now',
@@ -646,6 +668,7 @@ export default function RepeaterView({ pulse, goProxy }: { pulse: PulseState; go
 
   return (
     <div className="view padded row">
+      {shareSource && <ShareDialog source={shareSource} onClose={() => setShareSource(null)} />}
       <Split
         dir="h"
         storageKey="pulse.split.reptrail"
@@ -778,6 +801,9 @@ export default function RepeaterView({ pulse, goProxy }: { pulse: PulseState; go
               <button className="btn danger sm" disabled={!tab} onClick={() => currentId && remove(currentId)}>
                 <Icon name="trash" size={13} />
                 Delete
+              </button>
+              <button className="btn sm" disabled={busy || !tab} title={hist[shownIdx]?.request ? 'Share the request and response from the selected send' : 'Share the saved request without a response'} onClick={() => currentId && setShareSource({ repeaterId: currentId, historyAt: hist[shownIdx]?.at })}>
+                <Icon name="link" size={13} /> {hist[shownIdx]?.request ? 'Share exchange' : 'Share request'}
               </button>
               <button
                 className="btn ghost sm icon-btn"

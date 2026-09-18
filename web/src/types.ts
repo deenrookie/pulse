@@ -95,6 +95,7 @@ export interface InterceptSummary {
 }
 
 export interface RepeaterHistoryEntry {
+  request?: HttpRequest
   response?: HttpResponse
   error?: string
   at: string
@@ -269,8 +270,9 @@ export interface SearchHit {
 
 /** saved Intruder attack plan */
 export interface Attack {
+  mode?: 'sniper' | 'battering-ram' | 'pitchfork'
+  targetURL?: string
   id: string
-  title: string
   /** raw request template; §payload§ marks positions */
   raw: string
   /** payload list, one per line */
@@ -279,18 +281,26 @@ export interface Attack {
   payloadSets?: string[]
   /** grep-match keywords, one per line — hits become result columns */
   grep: string
+  results?: SavedAttackResult[]
+  lastRunAt?: string
   createdAt: string
   updatedAt: string
 }
 
 /** one fired request in an attack run */
 export interface AttackResult {
+  position?: string
   payload: string
   statusCode: number
   reason: string
   length: number
   ms: number
   flow: Flow | null
+  flowId?: string
   /** labels of grep keywords found in this response */
   grepHits: string[]
+}
+
+export interface SavedAttackResult extends Omit<AttackResult, 'flow'> {
+  flowId?: string
 }

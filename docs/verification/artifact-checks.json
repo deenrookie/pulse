@@ -1,0 +1,16 @@
+{
+  "embeddedAssetsMatch": true,
+  "skillKitMatches": true,
+  "temporarySharesCleared": true,
+  "validationPluginRemoved": true,
+  "binaries": {
+    "pulse": {
+      "bytes": 24710178,
+      "sha256": "5ce4aaa16c5e745b984e1c2c1de7a272290eefef833b9edbb3404409f360d30c"
+    },
+    "pulse-windows-amd64.exe": {
+      "bytes": 25803264,
+      "sha256": "54f6a9e717ade6df3360253182bca170232119e62d6bf647f6ef53305faf8fac"
+    }
+  }
+}

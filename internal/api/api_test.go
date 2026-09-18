@@ -26,12 +26,12 @@ import (
 )
 
 type testEnv struct {
-	ts      *httptest.Server
-	st      *store.Store
-	eng     *proxy.Engine
-	rep     *repeater.Manager
+	ts        *httptest.Server
+	st        *store.Store
+	eng       *proxy.Engine
+	rep       *repeater.Manager
 	proxyAddr string
-	dir     string
+	dir       string
 }
 
 func newEnv(t *testing.T) *testEnv {
@@ -243,10 +243,10 @@ func TestSSEEvents(t *testing.T) {
 
 func TestInterceptAPIForwardWithModification(t *testing.T) {
 	e := newEnv(t)
-	var gotBody string
+	bodies := make(chan string, 1)
 	up := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		b, _ := io.ReadAll(r.Body)
-		gotBody = string(b)
+		bodies <- string(b)
 		w.WriteHeader(200)
 	}))
 	defer up.Close()
@@ -297,12 +297,13 @@ func TestInterceptAPIForwardWithModification(t *testing.T) {
 	if resp.StatusCode != 200 {
 		t.Fatalf("forward = %d", resp.StatusCode)
 	}
-	deadline = time.Now().Add(3 * time.Second)
-	for time.Now().Before(deadline) && gotBody == "" {
-		time.Sleep(20 * time.Millisecond)
-	}
-	if gotBody != "changed-via-api" {
-		t.Fatalf("upstream body = %q", gotBody)
+	select {
+	case gotBody := <-bodies:
+		if gotBody != "changed-via-api" {
+			t.Fatalf("upstream body = %q", gotBody)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("upstream body never arrived")
 	}
 }
 

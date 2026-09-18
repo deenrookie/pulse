@@ -1,0 +1,20 @@
+
+> pulse-web@0.3.0 build
+> tsc --noEmit && vite build
+
+vite v5.4.21 building for production...
+transforming...
+✓ 88 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/index.html                                        0.94 kB │ gzip:   0.56 kB
+dist/assets/jetbrains-mono-latin-400-BrRFx4uz.woff2   21.09 kB
+dist/assets/jetbrains-mono-latin-500-BybgyI72.woff2   21.82 kB
+dist/assets/index-CctfCMJC.css                        73.03 kB │ gzip:  13.40 kB
+dist/assets/index-BNTznR3m.js                        809.56 kB │ gzip: 263.33 kB
+
+(!) Some chunks are larger than 500 kB after minification. Consider:
+- Using dynamic import() to code-split the application
+- Use build.rollupOptions.output.manualChunks to improve chunking: https://rollupjs.org/configuration-options/#output-manualchunks
+- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+✓ built in 1.11s

@@ -25,8 +25,14 @@ export default function ContextMenu({ x, y, items, onClose }: Props) {
   const [pos, setPos] = useState({ left: x, top: y, origin: 'top left' })
 
   useEffect(() => {
+    const previous = document.activeElement as HTMLElement | null
+    return () => { if (previous?.isConnected) previous.focus({ preventScroll: true }) }
+  }, [])
+
+  useEffect(() => {
     const el = ref.current
     if (!el) return
+    el.querySelector<HTMLButtonElement>('button:not(:disabled)')?.focus({ preventScroll: true })
     const rect = el.getBoundingClientRect()
     let left = x
     let top = y
@@ -61,6 +67,15 @@ export default function ContextMenu({ x, y, items, onClose }: Props) {
   return (
     <div
       ref={ref}
+      role="menu"
+      onKeyDown={(e) => {
+        if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(e.key)) return
+        e.preventDefault()
+        const buttons = Array.from(ref.current?.querySelectorAll<HTMLButtonElement>('button:not(:disabled)') ?? [])
+        const current = buttons.indexOf(document.activeElement as HTMLButtonElement)
+        const index = e.key === 'Home' ? 0 : e.key === 'End' ? buttons.length - 1 : (current + (e.key === 'ArrowDown' ? 1 : -1) + buttons.length) % buttons.length
+        buttons[index]?.focus()
+      }}
       className="ctx-menu"
       style={{ left: pos.left, top: pos.top, transformOrigin: pos.origin }}
       onContextMenu={(e) => e.preventDefault()}
@@ -70,9 +85,10 @@ export default function ContextMenu({ x, y, items, onClose }: Props) {
       {items.map((item, i) => (
         <div key={i}>
           <button
+            role="menuitem"
             className={`ctx-item ${item.danger ? 'danger' : ''}`}
             disabled={item.disabled}
-            onMouseUp={(e) => {
+            onClick={(e) => {
               e.stopPropagation()
               if (item.disabled) return
               onClose()

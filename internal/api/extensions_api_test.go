@@ -105,7 +105,7 @@ func TestPluginsAPIAndLiveEffect(t *testing.T) {
 		t.Fatalf("plugins after reload = %+v", reloaded.Plugins)
 	}
 
-	if _, err := proxiedClient(e.proxyAddr).Get(up.URL+"/p"); err != nil {
+	if _, err := proxiedClient(e.proxyAddr).Get(up.URL + "/p"); err != nil {
 		t.Fatalf("proxied get: %v", err)
 	}
 	if sawHeader != "yes" {
@@ -114,7 +114,7 @@ func TestPluginsAPIAndLiveEffect(t *testing.T) {
 
 	// disable → effect gone
 	e.do(t, "PUT", "/api/plugins/live.js", map[string]bool{"enabled": false})
-	if _, err := proxiedClient(e.proxyAddr).Get(up.URL+"/p2"); err != nil {
+	if _, err := proxiedClient(e.proxyAddr).Get(up.URL + "/p2"); err != nil {
 		t.Fatalf("proxied get 2: %v", err)
 	}
 	if sawHeader != "" {
@@ -155,7 +155,7 @@ function onRequest(ctx) { ctx.request.headers.push({ name: "X-Editor-Plugin", va
 		t.Fatalf("save = %d %s", resp.StatusCode, data)
 	}
 	var saved struct {
-		Error   string          `json:"error"`
+		Error   string           `json:"error"`
 		Plugins []plugins.Plugin `json:"plugins"`
 	}
 	json.Unmarshal(data, &saved)
@@ -295,7 +295,7 @@ func TestPluginsDirChange(t *testing.T) {
 	}
 	_, data = e.do(t, "GET", "/api/plugins", nil)
 	var list struct {
-		Dir     string          `json:"dir"`
+		Dir     string           `json:"dir"`
 		Plugins []plugins.Plugin `json:"plugins"`
 	}
 	json.Unmarshal(data, &list)
@@ -333,7 +333,7 @@ func TestFlowRenderEndpoint(t *testing.T) {
 		fmt.Fprint(w, "<h1>rendered</h1>")
 	}))
 	defer up.Close()
-	if _, err := proxiedClient(e.proxyAddr).Get(up.URL+"/page"); err != nil {
+	if _, err := proxiedClient(e.proxyAddr).Get(up.URL + "/page"); err != nil {
 		t.Fatal(err)
 	}
 	if !waitFlows(t, e, 1) {
@@ -491,15 +491,15 @@ func TestHARExport(t *testing.T) {
 			Entries []struct {
 				StartedDateTime string `json:"startedDateTime"`
 				Request         struct {
-					Method string `json:"method"`
-					URL    string `json:"url"`
+					Method  string `json:"method"`
+					URL     string `json:"url"`
 					Headers []struct {
 						Name  string `json:"name"`
 						Value string `json:"value"`
 					} `json:"headers"`
 				} `json:"request"`
 				Response struct {
-					Status  int    `json:"status"`
+					Status  int `json:"status"`
 					Content struct {
 						Size     int    `json:"size"`
 						MimeType string `json:"mimeType"`
@@ -636,11 +636,10 @@ func TestIntruderAPI(t *testing.T) {
 		t.Fatalf("create = %d %s", resp.StatusCode, data)
 	}
 	var atk struct {
-		ID    string `json:"id"`
-		Title string `json:"title"`
+		ID string `json:"id"`
 	}
 	json.Unmarshal(data, &atk)
-	if atk.ID == "" || atk.Title != "user fuzz" {
+	if atk.ID == "" {
 		t.Fatalf("attack = %+v", atk)
 	}
 
@@ -668,16 +667,34 @@ func TestIntruderAPI(t *testing.T) {
 		t.Fatalf("fire response = %+v", fired)
 	}
 
+	resp, data = e.do(t, "PUT", "/api/intruder/"+atk.ID+"/results", map[string]any{"results": []map[string]any{{
+		"payload": "carol", "position": "1", "statusCode": 200, "length": 10,
+		"ms": 3, "flowId": "req-saved", "grepHits": []string{"user"},
+	}}})
+	if resp.StatusCode != 200 {
+		t.Fatalf("save results = %d %s", resp.StatusCode, data)
+	}
+
 	// 列表 + 更新 + 删除
 	_, data = e.do(t, "GET", "/api/intruder", nil)
 	var list struct {
-		Attacks []struct{ ID string } `json:"attacks"`
+		Attacks []struct {
+			ID      string `json:"id"`
+			Results []struct {
+				FlowID string `json:"flowId"`
+			} `json:"results"`
+		} `json:"attacks"`
 	}
 	json.Unmarshal(data, &list)
-	if len(list.Attacks) != 1 {
+	if len(list.Attacks) != 1 || len(list.Attacks[0].Results) != 1 || list.Attacks[0].Results[0].FlowID != "req-saved" {
 		t.Fatalf("attacks = %+v", list)
 	}
 	e.do(t, "PUT", "/api/intruder/"+atk.ID, map[string]any{"raw": "GET / HTTP/1.1\nHost: x\n\n", "payloads": "1\n"})
+	_, data = e.do(t, "GET", "/api/intruder", nil)
+	json.Unmarshal(data, &list)
+	if len(list.Attacks[0].Results) != 1 {
+		t.Fatal("updating plan discarded saved results")
+	}
 	resp, _ = e.do(t, "DELETE", "/api/intruder/"+atk.ID, nil)
 	if resp.StatusCode != 200 {
 		t.Fatalf("delete = %d", resp.StatusCode)

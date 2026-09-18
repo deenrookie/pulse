@@ -31,7 +31,7 @@ import (
 )
 
 type Server struct {
-	Version  string
+	Version   string
 	ProxyAddr string
 	UIAddr    string
 	DataDir   string
@@ -39,16 +39,17 @@ type Server struct {
 	// Set from PULSE_KEY or generated randomly at startup.
 	AccessKey string
 
-	st   *store.Store
-	eng  *proxy.Engine
-	rep  *repeater.Manager
-	auth *certs.Authority
-	bus  *events.Bus
-	rw   *rewrite.Engine
-	plug *plugins.Runtime
-	set  *Settings
-	intr *intruderStore
-	anno *annoStore
+	st     *store.Store
+	eng    *proxy.Engine
+	rep    *repeater.Manager
+	auth   *certs.Authority
+	bus    *events.Bus
+	rw     *rewrite.Engine
+	plug   *plugins.Runtime
+	set    *Settings
+	intr   *intruderStore
+	anno   *annoStore
+	shares *shareStore
 }
 
 // accessKeyFromEnv returns PULSE_KEY when set, otherwise a fresh random key.
@@ -92,11 +93,16 @@ func New(st *store.Store, eng *proxy.Engine, rep *repeater.Manager, auth *certs.
 	if err != nil {
 		return nil, fmt.Errorf("generate access key: %w", err)
 	}
+	shares, err := openShares(dataDir)
+	if err != nil {
+		return nil, fmt.Errorf("load shares: %w", err)
+	}
 	srv := &Server{
 		Version: version, ProxyAddr: proxyAddr, UIAddr: uiAddr, DataDir: dataDir, AccessKey: key,
 		st: st, eng: eng, rep: rep, auth: auth, bus: bus, rw: rw, plug: plug, set: set,
-		intr: newIntruderStore(dataDir),
-		anno: newAnnoStore(dataDir),
+		intr:   newIntruderStore(dataDir),
+		anno:   newAnnoStore(dataDir),
+		shares: shares,
 	}
 	// R2: plugin HTTP requests round-trip through the api layer so they are
 	// recorded as source:plugin flows (chain-bypassed, recursion-safe)
@@ -112,6 +118,9 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/api/cert", s.handleCert)
 	mux.HandleFunc("/api/decode", s.handleDecode)
 	mux.HandleFunc("/api/settings", s.handleSettings)
+	mux.HandleFunc("/api/shares", s.handleShares)
+	mux.HandleFunc("/api/shares/preview", s.handleShares)
+	mux.HandleFunc("/api/shares/", s.handleShareDelete)
 	mux.HandleFunc("/api/search", s.handleSearch)
 	mux.HandleFunc("/api/update/check", s.handleUpdateCheck)
 	mux.HandleFunc("/api/update/apply", s.handleUpdateApply)
@@ -138,11 +147,20 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/api/plugins/action/", s.handlePluginAction)
 	mux.HandleFunc("/api/plugins/apply", s.handlePluginsApply)
 	mux.HandleFunc("/api/plugins/sdk", s.handlePluginsSDK)
+	mux.HandleFunc("/api/plugins/skill", s.handlePluginSkill)
+	mux.HandleFunc("/api/plugins/skill/download", s.handlePluginSkill)
 	mux.HandleFunc("/api/plugins/files/", s.handlePluginFilesGrant)
 	mux.HandleFunc("/api/plugins/test-mock", s.handlePluginsTestMock)
 	mux.HandleFunc("/api/plugins/", s.handlePluginFile)
 	mux.HandleFunc("/", s.handleStatic)
-	return withCORS(s.gate(mux))
+	control := withCORS(s.gate(mux))
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasPrefix(r.URL.Path, "/share/") {
+			s.handlePublicShare(w, r)
+			return
+		}
+		control.ServeHTTP(w, r)
+	})
 }
 
 // hostedPanelOrigin is the deployed web panel allowed to call this local API
@@ -262,7 +280,9 @@ func (s *Server) handleStatic(w http.ResponseWriter, r *http.Request) {
 	}
 	// hashed assets never change content, everything else (the SPA shell)
 	// must revalidate so UI updates are picked up on refresh
-	if strings.HasPrefix(r.URL.Path, "/assets/") {
+	if strings.HasPrefix(r.URL.Path, "/share/") {
+		w.Header().Set("Cache-Control", "no-store")
+	} else if strings.HasPrefix(r.URL.Path, "/assets/") {
 		w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
 	} else {
 		w.Header().Set("Cache-Control", "no-cache")

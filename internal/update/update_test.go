@@ -1,10 +1,10 @@
 package update
 
 import (
+	"archive/tar"
 	"archive/zip"
 	"bytes"
 	"compress/gzip"
-	"archive/tar"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -104,7 +104,12 @@ func TestReplaceSwapsAndKeepsOld(t *testing.T) {
 }
 
 func TestCheckAgainstMockAPI(t *testing.T) {
-	asset := map[string]any{"name": "pulse_9.9.9_windows_amd64.zip", "browser_download_url": "http://x/z.zip", "size": 11}
+	ext := ".tar.gz"
+	if runtime.GOOS == "windows" {
+		ext = ".zip"
+	}
+	name := "pulse_9.9.9_" + runtime.GOOS + "_" + runtime.GOARCH + ext
+	asset := map[string]any{"name": name, "browser_download_url": "http://x/z.zip", "size": 11}
 	body, _ := json.Marshal(map[string]any{"tag_name": "v9.9.9", "html_url": "http://x", "body": "notes", "assets": []any{asset}})
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/repos/deenrookie/pulse/releases/latest" {
@@ -120,10 +125,7 @@ func TestCheckAgainstMockAPI(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !res.Newer || res.Latest != "9.9.9" || res.AssetName != "pulse_9.9.9_windows_amd64.zip" {
+	if !res.Newer || res.Latest != "9.9.9" || res.AssetName != name {
 		t.Fatalf("check result: %+v", res)
-	}
-	if runtime.GOOS != "windows" {
-		t.Log("asset pick asserted for windows naming on non-windows runner — fine, matcher is name-based")
 	}
 }

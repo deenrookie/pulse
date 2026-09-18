@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import * as api from './api'
 import type { EditableRequest, Flow, FlowMeta, InterceptSummary, RepeaterTab, Status } from './types'
+import { armRepeaterTab } from './repeaterNav'
 
 const MAX_ROWS = 5000
 
@@ -232,15 +233,10 @@ export function usePulse() {
     async (flowId: string) => {
       try {
         const tab = await api.createRepeaterTab({ flowId })
+        armRepeaterTab(tab.id)
         const r = await api.listRepeater()
         setRepeaterTabs(r.tabs)
         notify(`Sent to Repeater (${tab.id})`)
-        // arm the "focus newest on next Repeater visit" behavior
-        try {
-          localStorage.setItem('pulse.repeater.jumpNewest', '1')
-        } catch {
-          /* ignore */
-        }
         return true
       } catch (e) {
         notify(`Send to Repeater failed: ${(e as Error).message}`, 'err')
@@ -251,19 +247,15 @@ export function usePulse() {
   )
 
   // Intercept's held requests are not flows — same outcome from a parsed
-  // request object (tab created, Repeater badge refreshed, jump-newest armed)
+  // request object (tab created, Repeater badge refreshed, exact tab armed)
   const sendRequestToRepeater = useCallback(
     async (request: EditableRequest) => {
       try {
         const tab = await api.createRepeaterTab({ request })
+        armRepeaterTab(tab.id)
         const r = await api.listRepeater()
         setRepeaterTabs(r.tabs)
         notify(`Sent to Repeater (${tab.id})`)
-        try {
-          localStorage.setItem('pulse.repeater.jumpNewest', '1')
-        } catch {
-          /* ignore */
-        }
         return true
       } catch (e) {
         notify(`Send to Repeater failed: ${(e as Error).message}`, 'err')

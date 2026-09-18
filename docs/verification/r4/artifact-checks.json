@@ -1,0 +1,13 @@
+{
+  "embeddedAssetsMatch": true,
+  "goRacePassed": true,
+  "frontendBuildPassed": true,
+  "requestOnlySharePassed": true,
+  "gzipShareDecodePassed": true,
+  "brotliShareDecodePassed": true,
+  "intruderResultsPersisted": true,
+  "intruderDefaultSelectionPassed": true,
+  "intruderQuickDeleteAndContextMenuPassed": true,
+  "macBinarySha256": "ae6c1e0ff0758c3ae56e281e771beffceb15ede0278c9dccccf4047e08e4c327",
+  "windowsBuildSha256": "9ca566566673543a23af59922b40e740758d1e3c8fb413d1195dfea3ff22c3f9"
+}

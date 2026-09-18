@@ -1,0 +1,6 @@
+[
+  "PASS: compile, sandbox run and 3 assertions",
+  "PASS: compile, sandbox run and 2 assertions",
+  "PASS: wrong expectation returns nonzero",
+  "PASS: runtime error in HTTP 200 returns nonzero"
+]

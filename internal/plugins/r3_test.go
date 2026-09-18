@@ -120,7 +120,8 @@ func TestFilesAPI(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "f.js"), []byte(src), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	rt, err := Open(dir, filepath.Join(t.TempDir(), "state.json"))
+	statePath := filepath.Join(t.TempDir(), "state.json")
+	rt, err := Open(dir, statePath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -149,7 +150,7 @@ func TestFilesAPI(t *testing.T) {
 		t.Fatalf("traversal not blocked: %q", joined)
 	}
 	// grant survives restart
-	rt2, err := Open(dir, filepath.Join(t.TempDir(), "state.json"))
+	rt2, err := Open(dir, statePath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -168,6 +169,12 @@ func TestFilesAPI(t *testing.T) {
 // resolveInside unit checks: traversal, absolute-style cleaning, nesting.
 func TestResolveInside(t *testing.T) {
 	root := t.TempDir()
+	// macOS temp paths use /var, an alias for /private/var. Compare
+	// canonical paths because resolveInside resolves symlinks by design.
+	root, err := filepath.EvalSymlinks(root)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if err := os.MkdirAll(filepath.Join(root, "a"), 0o755); err != nil {
 		t.Fatal(err)
 	}

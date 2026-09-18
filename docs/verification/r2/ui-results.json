@@ -1,0 +1,9 @@
+[
+  "full share: exact JSON, binary bodies, duplicate and secret headers, one-year expiry, side-by-side highlight, search, runnable Python/cURL",
+  "Repeater shares selected historic request with its matching response",
+  "Send to Intruder preserves HTTPS",
+  "Sniper sends each position separately, grep decodes body, results filter/sort and left/right inspector work",
+  "Battering ram replaces every position with the same payload",
+  "Pitchfork uses the corresponding payload set for each position",
+  "Stop halts remaining requests; unbalanced markers are rejected"
+]

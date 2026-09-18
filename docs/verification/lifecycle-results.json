@@ -1,0 +1,8 @@
+{
+  "expirySeconds": 60,
+  "expiryBeforeRestart": 404,
+  "unexpiredBeforeRestart": 200,
+  "unexpiredLinkAfterRestart": 404,
+  "shareIPPersisted": true,
+  "activeSharesAfterRestart": 0
+}

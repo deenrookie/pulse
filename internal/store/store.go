@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"runtime/debug"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -31,12 +32,12 @@ type Request struct {
 }
 
 type Response struct {
-	StatusCode  int       `json:"statusCode"`
-	Reason      string    `json:"reason"`
-	HTTPVersion string    `json:"httpVersion"`
-	Headers     []Header  `json:"headers"`
-	Body        []byte    `json:"body"`
-	Truncated   bool      `json:"truncated"`
+	StatusCode  int      `json:"statusCode"`
+	Reason      string   `json:"reason"`
+	HTTPVersion string   `json:"httpVersion"`
+	Headers     []Header `json:"headers"`
+	Body        []byte   `json:"body"`
+	Truncated   bool     `json:"truncated"`
 	// BodyDropped: the memory guard discarded this body instead of storing
 	// it (media/stream shards past the drop size); DroppedSize is how many
 	// bytes the client received.
@@ -69,7 +70,7 @@ type Flow struct {
 // WSMessage is one completed WebSocket message (assembled from fragments)
 // observed while relaying an upgraded connection. Payload is capped.
 type WSMessage struct {
-	Dir       string    `json:"dir"` // "c2s" | "s2c"
+	Dir       string    `json:"dir"`    // "c2s" | "s2c"
 	Opcode    string    `json:"opcode"` // "text" | "binary" | "close" | "ping" | "pong"
 	Size      int       `json:"size"`
 	Data      []byte    `json:"data,omitempty"`
@@ -331,6 +332,7 @@ func (s *Store) NewID() string {
 
 // Add records a new flow and appends it to the JSONL log.
 func (s *Store) Add(fl *Flow) error {
+	fl = snapshot(fl)
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if _, dup := s.flows[fl.ID]; dup {
@@ -345,6 +347,7 @@ func (s *Store) Add(fl *Flow) error {
 // Update replaces the stored flow with fl (response arrived, state
 // transition, intercepted request rewritten) and re-persists it.
 func (s *Store) Update(fl *Flow) error {
+	fl = snapshot(fl)
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	old, ok := s.flows[fl.ID]
@@ -370,6 +373,21 @@ func (s *Store) persist(fl *Flow) error {
 	return nil
 }
 
+// snapshot owns the mutable metadata. Payload bytes are immutable after
+// publication and remain shared to avoid copying multi-MB bodies on every
+// state transition. Producers replace bodies rather than editing bytes.
+func snapshot(fl *Flow) *Flow {
+	cp := *fl
+	cp.Req.Headers = slices.Clone(fl.Req.Headers)
+	if fl.Resp != nil {
+		resp := *fl.Resp
+		resp.Headers = slices.Clone(fl.Resp.Headers)
+		cp.Resp = &resp
+	}
+	cp.WSMessages = slices.Clone(fl.WSMessages)
+	return &cp
+}
+
 // Get returns a snapshot copy of the flow.
 func (s *Store) Get(id string) (*Flow, bool) {
 	s.mu.RLock()
@@ -378,8 +396,7 @@ func (s *Store) Get(id string) (*Flow, bool) {
 	if fl == nil {
 		return nil, false
 	}
-	cp := *fl
-	return &cp, true
+	return snapshot(fl), true
 }
 
 // List returns flow metadata in chronological order filtered by a
@@ -404,7 +421,7 @@ func metaOf(fl *Flow) FlowMeta {
 	m := FlowMeta{
 		ID: fl.ID, Method: fl.Req.Method, URL: fl.Req.URL,
 		StatusCode: 0, ReqSize: len(fl.Req.Body), State: fl.State,
-		WSCount:    len(fl.WSMessages),
+		WSCount:   len(fl.WSMessages),
 		Timestamp: fl.Req.Timestamp, Source: fl.Req.Source,
 		DurationMs: 0, RespSize: 0,
 	}

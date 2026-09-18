@@ -1,0 +1,6 @@
+[
+  "position add/remove/clear, file import, dedup preserves whitespace, save and reload",
+  "gzip body grep match and result right-click menu",
+  "leaving Intruder stops queued sends; editing/save locked while running",
+  "search finds content beyond old 200k display cap; 900px and reduced motion usable"
+]

@@ -1,6 +1,6 @@
 # Pulse HTTP API 参考
 
-基址：`http://127.0.0.1:8000`（UI 监听地址）。所有请求/响应均为 JSON（除证书下载与 SSE）。
+基址：`http://127.0.0.1:8787`（UI 监听地址）。所有请求/响应均为 JSON（除证书下载与 SSE）。
 
 通用约定：
 - Header 数组形式：`[{"name":"Content-Type","value":"application/json"}]`（保序保重复）。
@@ -125,7 +125,36 @@
 
 ## Intruder
 
-### `GET /api/intruder` → `{"attacks":[{id,title,raw,payloads,createdAt,updatedAt}]}`（攻击计划持久化于 `<data-dir>/attacks.json`）
-### `POST /api/intruder` `{"title?","raw","payloads?"}` → 创建攻击（raw 内 `§…§` 标记位置；payloads 每行一个）
+### `GET /api/intruder` → `{"attacks":[{id,raw,payloads,mode,targetURL,results?,lastRunAt?,createdAt,updatedAt}]}`（攻击计划与最后一轮结果持久化于 `<data-dir>/attacks.json`）
+### `POST /api/intruder` `{"raw","payloads?","mode?","targetURL?"}` → 创建攻击（raw 内 `§…§` 标记位置；payloads 每行一个）
+### `PUT /api/intruder/{id}/results` `{"results":[...]}` → 保存最后一轮结果摘要和 Flow ID
 ### `PUT /api/intruder/{id}` 同上字段 → 更新；`DELETE /api/intruder/{id}` → 删除
 ### `POST /api/intruder/fire` `{"request":{…}}` → 发送单次请求（控制台把载荷替换进 §位置§ 后调用；复用引擎 RoundTrip，不落任何存储）
+## Complete traffic sharing and plugin skill
+
+Control endpoints retain the normal access gate; non-loopback calls need X-Pulse-Key. Share tokens authorize only the chosen snapshot.
+
+| Endpoint | Contract |
+| --- | --- |
+| GET /api/settings | Includes persisted shareIP |
+| PUT /api/settings | {"shareIP":"192.168.1.5"}; IPv4/IPv6 address, not a URL or wildcard |
+| POST /api/shares/preview | {flowId} or {repeaterId,historyAt?} → complete captured Flow |
+| POST /api/shares | Same source plus ttlMinutes (default 10080; 1..525600) → 201 {id,url,flowId,createdAt,expiresAt} |
+| GET /api/shares | {shares:[...]} active metadata |
+| DELETE /api/shares/{id} | Revoke on disk and in memory; idempotent 200 {ok:true} |
+| GET /share/{id} | Public viewer shell; invalid/expired/revoked 404; writes 405 |
+| GET /share/{id}/data | {share,flow}; the complete captured request, response, error and WebSocket data |
+| GET /share/{id}/data?download | Same exact JSON as an attachment |
+| GET /share/{id}/decode?side=request|response | Decode gzip/deflate/br/bzip2 body for this token only; response side may be absent |
+| GET /api/plugins/skill | {name:"pulse-plugin-dev",content:"...SKILL.md..."} |
+| GET /api/plugins/skill/download | ZIP with skill, templates, fixtures, SDK and checker |
+
+Shares have no application count, per-item or total-byte quota. Complete payloads are staged to 0600 files in a 0700 share directory and atomically published; only metadata stays resident. Disk failures return errors without publishing a link. Restart reloads unexpired shares. Expiry is enforced on reads; expired files are reclaimed on reads, list/create and startup. Empty shareIP disables creation without revoking existing links.
+
+No redaction or additional truncation is performed. Original capture truncation/Lean/body-discard flags are retained: a share cannot reconstruct data that was never captured. Public UI displays traffic as text, not executable response HTML. Complete binary bodies remain base64 in the downloadable JSON.
+
+Repeater source selection uses a saved history timestamp (historyAt) only when sharing a historical exchange. When omitted, it always shares the tab's currently saved Request without a Response, even if older history exists. New history entries include their original request. Legacy entries without that request require a new send; unsent edits are never paired with an old response.
+
+## Intruder plan additions
+
+Create/update payloads accept mode: sniper | battering-ram | pitchfork and targetURL (HTTP/HTTPS). Legacy plans infer Battering ram or Pitchfork. Payload sets are zipped for Pitchfork. The client schedules sequential sends through /api/intruder/fire; all fired requests are captured as source intruder. Plans save atomically and failed save/delete leaves the previous plan intact.

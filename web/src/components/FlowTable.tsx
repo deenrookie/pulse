@@ -42,6 +42,7 @@ interface Props {
   onSelect: (id: string) => void
   onDelete: (id: string) => void
   onSendToRepeater: (id: string) => Promise<boolean>
+  onShare?: (id: string) => void
   notify: (text: string, kind?: 'ok' | 'err') => void
   proxyAddr?: string
   /** true when a filter is active and 0 results is therefore a filter outcome */
@@ -112,6 +113,7 @@ export default function FlowTable({
   onSelect,
   onDelete,
   onSendToRepeater,
+  onShare,
   notify,
   proxyAddr,
   filtered,
@@ -252,6 +254,7 @@ export default function FlowTable({
   }
 
   const menuItems = (m: FlowMeta): MenuItem[] => [
+    ...(onShare ? [{ label: m.statusCode ? 'Share complete traffic' : 'Share request', icon: 'link' as const, onClick: () => onShare(m.id) }] : []),
     ...(pluginActions ?? []).map((a) => ({
       icon: 'bolt' as const,
       label: `Run: ${a.label}`,
@@ -269,7 +272,7 @@ export default function FlowTable({
       onClick: async () => {
         try {
           const fl = await getFlow(m.id)
-          window.dispatchEvent(new CustomEvent('pulse:send-to-intruder', { detail: requestToRaw(fl.request) }))
+          window.dispatchEvent(new CustomEvent('pulse:send-to-intruder', { detail: { raw: requestToRaw(fl.request), targetURL: fl.request.url } }))
         } catch {
           notify('Could not load the flow', 'err')
         }

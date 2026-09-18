@@ -1,0 +1,5 @@
+{
+  "hook": "request",
+  "request": { "method": "GET", "url": "https://api.example.test/v1/items", "headers": [], "body": "" },
+  "expect": { "changed": true, "request.headers.0.name": "X-Debug-Client", "request.headers.0.value": "pulse" }
+}

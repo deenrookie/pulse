@@ -26,22 +26,22 @@ import (
 
 // Engine owns the proxy listener and the request pipeline.
 type Engine struct {
-	ptMu           sync.Mutex
+	ptMu            sync.Mutex
 	pluginTransport plugins.HTTPSender
-	auth    *certs.Authority
-	store   *store.Store
-	bus     *events.Bus
-	Inter   *Intercept
-	client  *Client
+	auth            *certs.Authority
+	store           *store.Store
+	bus             *events.Bus
+	Inter           *Intercept
+	client          *Client
 	// repTimeout bounds Repeater sends (0 = client default 30s).
 	repTimeout time.Duration
-	Plugins *plugins.Runtime
-	Rewrite *rewrite.Engine
-	mu      sync.Mutex
-	ln      net.Listener
-	ctx     context.Context
-	cancel  context.CancelFunc
-	version string
+	Plugins    *plugins.Runtime
+	Rewrite    *rewrite.Engine
+	mu         sync.Mutex
+	ln         net.Listener
+	ctx        context.Context
+	cancel     context.CancelFunc
+	version    string
 }
 
 func New(auth *certs.Authority, st *store.Store, bus *events.Bus, rt *plugins.Runtime, rw *rewrite.Engine, version string) *Engine {
@@ -550,16 +550,9 @@ func tunnel(a net.Conn, abr *bufio.Reader, b net.Conn, bbr *bufio.Reader) {
 	b.Close()
 }
 
-// spool copies buffered bytes first (they never reach io.Copy), then the rest.
+// bufio.Reader.WriteTo drains buffered bytes before reading the connection.
+// Peeking and writing them separately would send that prefix twice.
 func spool(dst io.Writer, src *bufio.Reader) {
-	if n := src.Buffered(); n > 0 {
-		chunk, _ := src.Peek(n)
-		if len(chunk) > 0 {
-			if _, err := dst.Write(chunk); err != nil {
-				return
-			}
-		}
-	}
 	io.Copy(dst, src)
 }
 

@@ -14,7 +14,7 @@ func (s *Server) handleRepeater(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]any{"tabs": s.rep.List()})
 	case http.MethodPost:
 		var body struct {
-			FlowID  string          `json:"flowId"`
+			FlowID  string         `json:"flowId"`
 			Request *store.Request `json:"request"`
 		}
 		if !readJSON(w, r, &body, 32<<20) {
@@ -121,7 +121,10 @@ func (s *Server) handleRepeaterID(w http.ResponseWriter, r *http.Request) {
 		if fl.State == store.StateError {
 			sendErr = fl.Error
 		}
-		s.rep.SetLastResponse(id, respCopy, sendErr)
+		if err := s.rep.SetLastResponse(id, &fl.Req, respCopy, sendErr); err != nil {
+			writeErr(w, 500, "request sent, but saving its history failed: "+err.Error())
+			return
+		}
 		writeJSON(w, http.StatusOK, map[string]any{"flow": fl})
 	default:
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)

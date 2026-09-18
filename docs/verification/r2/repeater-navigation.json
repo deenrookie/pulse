@@ -1,0 +1,16 @@
+{
+  "scenario": "Live Traffic Send to Repeater, immediately open Repeater before async refresh settles",
+  "vite": {
+    "oldTab": "tab-30",
+    "newTab": "tab-31",
+    "selected": "tab-31",
+    "plainRevisitSelected": "tab-31"
+  },
+  "embeddedBinary": {
+    "oldTab": "tab-34",
+    "newTab": "tab-35",
+    "selected": "tab-35",
+    "plainRevisitSelected": "tab-35"
+  },
+  "result": "pass"
+}

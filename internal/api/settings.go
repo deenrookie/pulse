@@ -20,7 +20,7 @@ const defaultMemoryGuardMB = 500
 const defaultLargeBodyMB = 3
 
 type Settings struct {
-	mu sync.Mutex
+	mu   sync.Mutex
 	path string
 	// ResponseTimeoutSec bounds reading upstream response heads (>=1).
 	ResponseTimeoutSec int `json:"responseTimeoutSec"`
@@ -34,6 +34,7 @@ type Settings struct {
 	// ProxyAddr is the address the proxy listener is bound to; empty means
 	// "keep whatever --proxy passed at startup".
 	ProxyAddr string `json:"proxyAddr"`
+	ShareIP   string `json:"shareIP"`
 	// Scope holds target host rules ("example.com" exact, "*.example.com"
 	// includes subdomains) used to focus the traffic view on the test target.
 	Scope []string `json:"scope"`
@@ -102,6 +103,7 @@ func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
 			"stubStatic":         s.set.StubStatic,
 			"pluginsDir":         s.plug.Dir(),
 			"proxyAddr":          proxy,
+			"shareIP":            s.set.ShareIP,
 			"scope":              scopeOrEmpty(s.set.Scope),
 		})
 	case http.MethodPut:
@@ -122,6 +124,7 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 		StubStatic         *bool    `json:"stubStatic"`
 		PluginsDir         *string  `json:"pluginsDir"`
 		ProxyAddr          *string  `json:"proxyAddr"`
+		ShareIP            *string  `json:"shareIP"`
 		Scope              []string `json:"scope"`
 	}
 	if !readJSON(w, r, &body, 1<<16) {
@@ -131,6 +134,18 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 	set := s.set
 	set.mu.Lock()
 	defer set.mu.Unlock()
+	shareIP := set.ShareIP
+	if body.ShareIP != nil {
+		ip := strings.TrimSpace(*body.ShareIP)
+		if ip != "" && !validShareIP(ip) {
+			writeErr(w, http.StatusBadRequest, "shareIP must be an IPv4 or IPv6 address (not a URL, hostname or wildcard)")
+			return
+		}
+		if ip != "" {
+			ip = net.ParseIP(ip).String()
+		}
+		shareIP = ip
+	}
 
 	if body.Scope != nil {
 		clean, err := cleanScope(body.Scope)
@@ -205,7 +220,10 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 	if body.StubStatic != nil {
 		set.StubStatic = *body.StubStatic
 	}
+	oldShareIP := set.ShareIP
+	set.ShareIP = shareIP
 	if err := set.save(); err != nil {
+		set.ShareIP = oldShareIP
 		writeErr(w, http.StatusInternalServerError, err.Error())
 		return
 	}
@@ -225,6 +243,7 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 		"stubStatic":         set.StubStatic,
 		"pluginsDir":         s.plug.Dir(),
 		"proxyAddr":          proxy,
+		"shareIP":            set.ShareIP,
 		"scope":              scopeOrEmpty(set.Scope),
 	})
 }

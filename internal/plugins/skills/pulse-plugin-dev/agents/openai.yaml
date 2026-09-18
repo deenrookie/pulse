@@ -1,0 +1,4 @@
+interface:
+  display_name: "Pulse Plugin Development"
+  short_description: "Write and debug scoped Pulse JavaScript plugins"
+  default_prompt: "Use $pulse-plugin-dev to build and test a scoped Pulse plugin for my API workflow."

@@ -5,7 +5,7 @@
 // draggable. Query strings fold into the tree's path node but stay
 // visible per-record in the middle list.
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { getFlow, formatSize, formatTime, createRepeaterTab } from '../api'
+import { getFlow, formatSize, formatTime } from '../api'
 import { rawToRequest, requestToRaw } from '../components/RawEditor'
 import { RequestInspector, ResponseInspector } from '../components/MessageViewer'
 import Split from '../ui/Split'
@@ -323,10 +323,7 @@ export default function SiteMapView({ pulse, goProxy }: { pulse: PulseState; goP
       const parsed = rawToRequest(editedRaw, flow.request.url)
       if ('error' in parsed) return
       try {
-        await createRepeaterTab({ request: parsed })
-        try {
-          localStorage.setItem('pulse.repeater.jumpNewest', '1')
-        } catch { /* ignore */ }
+        await pulse.sendRequestToRepeater(parsed)
       } catch { /* notify-less best effort */ }
       return
     }
