@@ -2,7 +2,7 @@
 import os
 import tarfile
 
-VER = "0.3.8"
+VER = "0.3.9"
 OUT = r"C:/Users/Deen/Documents/GitHub/pulse/dist-release"
 REPO = r"C:/Users/Deen/Documents/GitHub/pulse"
 
