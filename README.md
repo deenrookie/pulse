@@ -2,9 +2,9 @@
 
 # ⚡ Pulse
 
-**A local web-security testing platform driven from your browser**
+**A lightweight, local traffic debugging workbench driven from your browser**
 
-MITM interception, tampering, replay, rewriting and plugin extensibility — the core Burp Suite / Caido workflows, in a single binary.
+Capture, inspect, replay and share the evidence you need. Extend workflows with small JavaScript plugins and an AI development skill, in a single binary that complements your security toolkit.
 
 [English](README.md) · [简体中文](README.zh-CN.md)
 
@@ -29,7 +29,7 @@ MITM interception, tampering, replay, rewriting and plugin extensibility — the
 
 <div align="center"><img src="docs/screenshots/repeater.png" alt="Pulse Repeater — raw editing and replay" width="880"/></div>
 
-> Three themes (**Linear by default** / Warm / Midnight), fully offline — your traffic never leaves the machine.
+> Three themes (**Linear by default** / Warm / Midnight), local by default. Temporary sharing exposes only the snapshot you explicitly select.
 
 ## ✨ Core features
 
@@ -152,6 +152,12 @@ cd web && npm run dev        # terminal 2 — http://127.0.0.1:5175
 
 ## 🧩 Plugin system
 
+**New in source builds:** Live Traffic → **Share** and Repeater → **Share exchange** publish the complete captured request and response using **Settings → Temporary sharing** IP. The recipient gets side-by-side highlighted Raw panes, search, right-click cURL/Python export, and the original snapshot download. No share-layer redaction, body filtering, count or size quota. Default expiry is 7 days, up to one year; links persist across restarts and can be revoked. LAN access needs a reachable UI bind such as `--ui 0.0.0.0:8787`. See [current scope and verification](docs/Verification.md).
+
+**Intruder** separates Positions / Payloads / Results, supports Sniper, Battering ram and Pitchfork, position buttons, payload-file import, result sorting/search, decoded-response Grep, and side-by-side inspection. It opens the newest attack by default and restores its last results; the compact request-line list has quick delete and right-click actions. Stop finishes the current request and skips the remaining queue.
+
+**Extensions → Plugins → Skills** provides a copyable `SKILL.md` and a downloadable `pulse-plugin-dev` kit with a scoped template, fixtures, SDK types and a Python 3 sandbox checker. Extract it into your AI tool's skills directory and reload the tool, or paste the instructions into a chat. Pulse does not contact an AI service.
+
 JavaScript files in the plugin directory (ES5.1+, goja runtime) observe and modify every proxied request and response — nothing to install:
 
 ```js
@@ -165,14 +171,14 @@ function onRequest(ctx) {
 
 The console ships an online editor: **Check** dry-compiles (errors pinpoint line:column), **Test run** executes the hook against a fixture (imported from a captured Flow, pasted raw or hand-written) with zero traffic, drafts autosave, and a broken source keeps the last good revision running while you fix it.
 
-A fuller SDK is available: message helpers (`pulse.headers/url/query/cookies/body`), encoding & SHA-256/HMAC, per-transaction `ctx.state`, cross-request memory + persistent stores, `plugin.config` forms (secrets never echo), async `pulse.http.send` (recorded as `source: plugin`, chain-bypassed so a token refresh can't re-trigger itself), `ctx.respond`/`ctx.drop`, `onComplete` analysis, mock-network test mode, right-click Actions, and Repeater *Apply plugin*. Larger plugins become **directory projects** (`pulse.plugin.json` manifest, bundled entry artifact, TypeScript `.d.ts` + `pulse plugins check/test` CLI, sandboxed UI panels over a versioned message bridge, authorized `pulse.files` directory access). See the [plugin guide](docs/Plugins.md) (Chinese).
+A fuller SDK is available: message helpers (`pulse.headers/url/query/cookies/body`), encoding & SHA-256/HMAC, per-transaction `ctx.state`, cross-request memory + persistent stores, `plugin.config` forms (secrets never echo), async `pulse.http.send` (recorded as `source: plugin`, chain-bypassed so a token refresh can't re-trigger itself), `ctx.respond`/`ctx.drop`, `onComplete` analysis, mock-network test mode, right-click Actions, and Repeater *Apply plugin*. Larger plugins become **directory projects** (`pulse.plugin.json` manifest, bundled entry artifact, TypeScript `.d.ts` + `pulse plugins check/test` CLI, sandboxed UI panels over a versioned message bridge, authorized `pulse.files` directory access). See the [plugin guide](docs/Plugins.md) ([中文](docs/Plugins.md) / [English](docs/Plugins.en.md)).
 
 ## 📚 Docs
 
 - [Product](docs/Product.md): positioning, competitors, scope, roadmap
 - [Architecture](docs/Architecture.md): modules, data flow, pipeline order, security model, test strategy
 - [API reference](docs/API.md): REST + SSE endpoints
-- [Plugin guide](docs/Plugins.md): JS plugin API, samples, security model
+- [Plugin guide](docs/Plugins.md)（[English](docs/Plugins.en.md)）: JS plugin API、样例、安全模型 / JS plugin API, samples, security model
 
 ## 🧪 Tests
 

@@ -1,8 +1,12 @@
 # Pulse 插件开发指南
 
+**中文 | [English](Plugins.en.md)**
+
 Pulse 插件是一个放在数据目录 `plugins/` 下的 **JavaScript 文件**（ES5.1+，由内嵌的 [goja](https://github.com/dop251/goja) 运行时执行，无需安装任何东西）。插件可以观察并修改经过代理的每一个请求和响应。
 
 ## 快速开始
+
+**AI 开发入口**：Extensions → Plugins → **Skills** 可直接阅读/复制插件开发技能，或下载完整 `pulse-plugin-dev` ZIP（SKILL.md、SDK 类型、作用域模板、正反夹具、Python 3 标准库沙箱断言脚本）。技能源码位于 `internal/plugins/skills/pulse-plugin-dev/`，页面与 ZIP 均来自内嵌资源；下载时 SDK 从当前运行时生成。安装到 AI 工具的技能目录并重新加载，或直接粘贴说明。完整流程见该 Skill。
 
 两种方式任选：
 
@@ -218,7 +222,7 @@ Repeater 请求面板头部的 **Apply plugin** 按钮对当前缓冲区副本�
 - **超时**：单次钩子执行（含每次调用中的顶层初始化）上限 **2 秒**，超时自动中断；死循环不会拖垮代理。
 - **错误隔离**：语法错误在加载时记录到插件状态；运行时抛错只影响当次调用，其余插件与代理流程不受影响。错误显示在 Plugins 面板。
 - **性能**：每个请求都会实例化 VM 并重新执行插件顶层代码。顶层应只做函数定义，不要放重计算。
-- **能力边界**：无网络、无文件系统、无计时器——纯数据变换。需要发请求的插件能力在路线图（v0.5 将提供 `pulse.fetch`）。
+- **能力边界**：无 Node/浏览器全局 API、无原生 fetch 或计时器；网络经 `pulse.http.send`，文件经显式授权的 `pulse.files`，配置和状态经宿主 SDK。
 
 ### v1 字段契约（明确且经过测试）
 
@@ -247,6 +251,4 @@ Repeater 请求面板头部的 **Apply plugin** 按钮对当前缓冲区副本�
 
 ## 路线图
 
-- `pulse.fetch(url, options)` —— 插件内发起 HTTP 请求
-- 脚本化 UI 面板（自定义 tab）
-- 按作用域（scope）过滤钩子触发
+主动 HTTP、隔离 UI 面板、目录项目和 AI Skill 已交付。当前 Scope 只是流量视图过滤，插件需自行限定 host/path。后续需求以 [轻量优化方案](Optimization-2026-09.md) 为准，暂不扩展市场或云端插件执行。
