@@ -4,6 +4,7 @@ import Icon from '../ui/Icon'
 import Empty from '../ui/Empty'
 import Split from '../ui/Split'
 import CodeEditor from '../ui/CodeEditor'
+import PluginSkills from '../components/PluginSkills'
 import { confirm } from '../ui/Confirm'
 import ContextMenu, { type MenuItem } from '../components/ContextMenu'
 import type { FlowMeta, PluginConfigView, PluginInfo, PluginSample, PluginTestResult, RewriteRule, RewriteZone, TestMessage } from '../types'
@@ -17,7 +18,7 @@ const ZONES: [RewriteZone, string][] = [
 ]
 
 type ExtTab = 'rewrite' | 'plugins'
-type PluginTab = 'installed' | 'editor' | 'samples'
+type PluginTab = 'installed' | 'editor' | 'samples' | 'skills'
 
 /** read one query param from the location hash (#/view?a=b) */
 function hashParam(name: string): string | null {
@@ -36,7 +37,7 @@ function loadExtTabs(): { tab: ExtTab; sub: PluginTab } {
     if (saved) {
       const [t, s] = saved.split(':')
       if (t === 'plugins') tab = 'plugins'
-      if (s === 'editor' || s === 'samples') sub = s
+      if (s === 'editor' || s === 'samples' || s === 'skills') sub = s
     }
   } catch {
     /* private mode */
@@ -45,7 +46,7 @@ function loadExtTabs(): { tab: ExtTab; sub: PluginTab } {
   if (hashParam('tab') === 'plugins') tab = 'plugins'
   else if (hashParam('tab') === 'rewrite') tab = 'rewrite'
   const s = hashParam('sub')
-  if (s === 'editor' || s === 'samples' || s === 'installed') sub = s as PluginTab
+  if (s === 'editor' || s === 'samples' || s === 'installed' || s === 'skills') sub = s as PluginTab
   return { tab, sub }
 }
 
@@ -54,7 +55,7 @@ function parseExtTabs(): { tab: ExtTab; sub: PluginTab } {
   let sub: PluginTab = 'installed'
   if (hashParam('tab') === 'plugins') tab = 'plugins'
   const s = hashParam('sub')
-  if (s === 'editor' || s === 'samples') sub = s
+  if (s === 'editor' || s === 'samples' || s === 'skills') sub = s
   return { tab, sub }
 }
 
@@ -618,6 +619,7 @@ function PluginsPanel({
           <button className={`subtab ${tab === 'samples' ? 'active' : ''}`} onClick={() => setTab('samples')}>
             Samples
           </button>
+          <button className={tab === 'skills' ? 'subtab active' : 'subtab'} onClick={() => setTab('skills')}>Skills</button>
         </div>
         <button className="btn primary" disabled={busy} onClick={reload}>
           {busy ? <span className="spinner" /> : <Icon name="refresh" size={13} />}
@@ -635,6 +637,7 @@ function PluginsPanel({
         <EditorTab dir={dir} plugins={plugins} notify={notify} onRefresh={refresh} file={file} setFile={setFile} src={src} setSrc={setSrc} savedSrc={savedSrc} setSavedSrc={setSavedSrc} />
       )}
       {tab === 'samples' && <SamplesTab onLoad={loadSample} notify={notify} />}
+      {tab === 'skills' && <PluginSkills onEditor={() => setTab('editor')} />}
       {menu && <ContextMenu x={menu.x} y={menu.y} items={pluginMenu(menu.plugin)} onClose={() => setMenu(null)} />}
     </div>
   )
@@ -702,7 +705,11 @@ function InstalledTab({
         <Icon name="terminal" size={14} />
         <span>
           Hooks run on every proxied request and response. Manage sources in the <b>Editor</b> tab, copy ready-made
-          examples from <b>Samples</b> — see <code>docs/Plugins.md</code>.
+          examples from <b>Samples</b> — see the{' '}
+          <a href="https://github.com/deenrookie/pulse/blob/main/docs/Plugins.md" target="_blank" rel="noreferrer">
+            plugin guide
+          </a>
+          .
         </span>
       </div>
       <div className="panel-body">
