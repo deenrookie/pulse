@@ -522,7 +522,24 @@ export default function ProxyView({ pulse }: { pulse: PulseState }) {
                 dir="h"
                 storageKey="pulse.split.inspector"
                 initial={0.5}
-                a={<RequestInspector req={fl.request} flowId={fl.id} raw={editedRaw ?? requestToRaw(fl.request)} onRawChange={(text) => fl && setRawEdit({ id: fl.id, text })} panel={uiPanelProps} />}
+                a={
+                  <RequestInspector
+                    req={fl.request}
+                    flowId={fl.id}
+                    raw={editedRaw ?? requestToRaw(fl.request)}
+                    onRawChange={(text) => fl && setRawEdit({ id: fl.id, text })}
+                    panel={uiPanelProps}
+                    extraMenu={(
+                      [{
+                        icon: 'shield' as const,
+                        label: 'Generate CSRF PoC',
+                        onClick: () => {
+                          window.dispatchEvent(new CustomEvent('pulse:generate-csrf-poc', { detail: { raw: editedRaw ?? requestToRaw(fl.request), url: fl.request.url } }))
+                        },
+                      }])
+                    }
+                  />
+                }
                 b={<ResponseInspector resp={fl.response} error={fl.error} flowId={fl.id} ws={fl.ws} panel={uiPanelProps} />}
               />
             ) : (

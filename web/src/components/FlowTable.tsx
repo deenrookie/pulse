@@ -267,6 +267,18 @@ export default function FlowTable({
       onClick: () => void onSendToRepeater(m.id),
     },
     {
+      icon: 'shield',
+      label: 'Generate CSRF PoC',
+      onClick: async () => {
+        try {
+          const fl = await getFlow(m.id)
+          window.dispatchEvent(new CustomEvent('pulse:generate-csrf-poc', { detail: { raw: requestToRaw(fl.request), url: fl.request.url } }))
+        } catch {
+          notify('Could not load the flow', 'err')
+        }
+      },
+    },
+    {
       icon: 'bolt',
       label: 'Send to Intruder',
       onClick: async () => {

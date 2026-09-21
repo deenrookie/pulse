@@ -10,6 +10,7 @@ import Icon, { type IconName } from './ui/Icon'
 import Decoder from './ui/Decoder'
 import Comparer from './ui/Comparer'
 import GlobalSearch from './ui/GlobalSearch'
+import CsrfPocDialog from './components/CsrfPocDialog'
 import { applyFontSize, loadFontSize } from './ui/fontSize'
 import { usePulse } from './state'
 import { apiBase, getRemoteConfig } from './api'
@@ -135,6 +136,10 @@ export default function App() {
   const [comparerOpen, setComparerOpen] = useState(false)
   const [decoderSeed, setDecoderSeed] = useState<{ text: string; n: number } | null>(null)
   const [intruderSeed, setIntruderSeed] = useState<{ raw: string; targetURL?: string; n: number } | null>(null)
+  // "Generate CSRF PoC" from any request surface: opens the dialog on the raw
+  // request text (n forces a remount when a second request is sent right away;
+  // url preserves the request's scheme — the raw buffer only has a Host header)
+  const [csrfPoc, setCsrfPoc] = useState<{ raw: string; url?: string; n: number } | null>(null)
 
   // SSE down while REST answers — the signature of the browser proxy
   // forwarding the panel's own API (the capture pipeline buffers the
@@ -199,6 +204,20 @@ export default function App() {
     }
     window.addEventListener('pulse:send-to-decoder', onSend)
     return () => window.removeEventListener('pulse:send-to-decoder', onSend)
+  }, [])
+
+  // "Generate CSRF PoC" from any request surface (traffic rows, request panes,
+  // Repeater): the raw request text seeds the dialog
+  useEffect(() => {
+    const onGen = (e: Event) => {
+      const detail = (e as CustomEvent<string | { raw: string; url?: string }>).detail
+      const raw = typeof detail === 'string' ? detail : detail?.raw
+      if (!raw) return
+      const url = typeof detail === 'string' ? undefined : detail.url
+      setCsrfPoc((prev) => ({ raw, url, n: (prev?.n ?? 0) + 1 }))
+    }
+    window.addEventListener('pulse:generate-csrf-poc', onGen)
+    return () => window.removeEventListener('pulse:generate-csrf-poc', onGen)
   }, [])
 
   // restore the persisted UI font scale before first paint settles
@@ -486,6 +505,7 @@ export default function App() {
 
       {decoderOpen && <Decoder onClose={() => setDecoderOpen(false)} seed={decoderSeed} />}
       {comparerOpen && <Comparer onClose={() => setComparerOpen(false)} />}
+      {csrfPoc && <CsrfPocDialog key={csrfPoc.n} raw={csrfPoc.raw} fallbackUrl={csrfPoc.url} onClose={() => setCsrfPoc(null)} />}
       <GlobalSearch pulse={pulse} />
 
       {pulse.toast && (

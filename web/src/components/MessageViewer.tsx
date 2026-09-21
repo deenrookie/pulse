@@ -119,7 +119,7 @@ export function RequestInspector({
             onNotify={(text: string, kind?: 'ok' | 'err') => (panel.onNotify ? panel.onNotify(text, kind) : undefined)}
           />
         ) : tab === 'raw' && editableRaw ? (
-          <RawEditor value={raw} onChange={onRawChange} />
+          <RawEditor value={raw} onChange={onRawChange} extraMenu={extraMenu} />
         ) : (
           <TabBody tab={tab} headers={req.headers} params={params} text={text} b64={req.body} kind="request" req={req} curlFlowId={flowId} curlRequest={editableRaw ? req : undefined} onParamEdit={editableRaw ? onParamEdit : undefined} extraMenu={extraMenu} />
         )}
@@ -813,6 +813,19 @@ export function RawView({
       : []),
     ...((flowIdForCurl || curlRequest)
       ? [
+          // request side only — the entry dispatches the complete raw message
+          ...(urlForCopy || curlRequest
+            ? [
+                {
+                  icon: 'shield' as const,
+                  label: 'Generate CSRF PoC',
+                  onClick: () => {
+                    const url = urlForCopy ?? curlRequest?.url
+                    window.dispatchEvent(new CustomEvent('pulse:generate-csrf-poc', { detail: { raw: fullRaw, url } }))
+                  },
+                } as MenuItem,
+              ]
+            : []),
           {
             icon: 'terminal' as const,
             label: 'Copy as cURL',

@@ -528,6 +528,13 @@ export default function RepeaterView({ pulse, goProxy }: { pulse: PulseState; go
   const [shareSource, setShareSource] = useState<ShareSource | null>(null)
   const tabMenu = (t: RepeaterTab): MenuItem[] => [
     { label: 'Send to Intruder', icon: 'bolt', onClick: () => { window.dispatchEvent(new CustomEvent('pulse:send-to-intruder', { detail: { raw: t.id === currentId && raw ? raw.text : requestToRaw(t.request), targetURL: t.request.url } })) } },
+    {
+      icon: 'shield',
+      label: 'Generate CSRF PoC',
+      onClick: () => {
+        window.dispatchEvent(new CustomEvent('pulse:generate-csrf-poc', { detail: { raw: t.id === currentId && raw ? raw.text : requestToRaw(t.request), url: t.request.url } }))
+      },
+    },
     { label: t.history?.length ? 'Share last exchange' : 'Share request', icon: 'link', disabled: busy, onClick: () => setShareSource({ repeaterId: t.id, historyAt: t.history?.[t.history.length - 1]?.at }) },
     {
       icon: 'play',
@@ -896,6 +903,15 @@ export default function RepeaterView({ pulse, goProxy }: { pulse: PulseState; go
                         raw={raw.text}
                         onRawChange={(text) => setRaw({ text, __id: currentId })}
                         onParamEdit={editParam}
+                        extraMenu={(
+                          [{
+                            icon: 'shield' as const,
+                            label: 'Generate CSRF PoC',
+                            onClick: () => {
+                              window.dispatchEvent(new CustomEvent('pulse:generate-csrf-poc', { detail: { raw: raw.text, url: tab?.request.url } }))
+                            },
+                          }])
+                        }
                         headerExtra={(
                           <>
                             <ApplyPluginButton raw={raw.text} onApplied={(next) => setRaw({ text: next, __id: currentId })} />
