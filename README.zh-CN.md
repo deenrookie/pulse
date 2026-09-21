@@ -52,15 +52,15 @@
 
 ```bash
 # macOS（Apple Silicon）
-curl -L https://github.com/deenrookie/pulse/releases/download/v0.3.9/pulse_0.3.9_darwin_arm64.tar.gz | tar xz && chmod +x pulse && ./pulse
+curl -L https://github.com/deenrookie/pulse/releases/download/v0.3.10/pulse_0.3.10_darwin_arm64.tar.gz | tar xz && chmod +x pulse && ./pulse
 
 # Linux（x64）
-curl -L https://github.com/deenrookie/pulse/releases/download/v0.3.9/pulse_0.3.9_linux_amd64.tar.gz | tar xz && chmod +x pulse && ./pulse
+curl -L https://github.com/deenrookie/pulse/releases/download/v0.3.10/pulse_0.3.10_linux_amd64.tar.gz | tar xz && chmod +x pulse && ./pulse
 ```
 
 ```powershell
 # Windows（x64）— PowerShell
-curl.exe -L -o pulse.zip https://github.com/deenrookie/pulse/releases/download/v0.3.9/pulse_0.3.9_windows_amd64.zip
+curl.exe -L -o pulse.zip https://github.com/deenrookie/pulse/releases/download/v0.3.10/pulse_0.3.10_windows_amd64.zip
 Expand-Archive pulse.zip -Force; .\pulse.exe
 ```
 
@@ -140,6 +140,8 @@ cd web && npm run dev    # http://127.0.0.1:5175
 </details>
 
 ## 🧩 插件系统
+
+**生成 CSRF PoC（v0.3.10）**：任意请求右键——Live Traffic 行与请求面板、Repeater 标签与编辑器——生成让受害者浏览器发出该请求的 HTML（Burp 式）。Auto 自动选技术：自动提交表单（GET / urlencoded POST，隐藏 input + `document.forms[0].submit()`）或跨域 XHR（`withCredentials`，精确复现方法 / Content-Type / 体）；JSON 强制走表单时使用 `enctype="text/plain"` 拆分技巧。请求可编辑后 Regenerate、可切换提交按钮、Copy / Save / 浏览器实测；技术无法精确复现时给出警告。Cookie 永不写入 PoC，由受害者浏览器自动携带。验证证据见 [docs/verification/csrf-poc.md](docs/verification/csrf-poc.md)。
 
 **流量分享（v0.3.9）**：Live Traffic → **Share**、Repeater → **Share exchange** 分享完整捕获请求和响应，地址使用 **Settings → Temporary sharing** 的 IP。接收页面左右高亮 Raw、搜索、右键 cURL/Python、完整 JSON 下载；分享层不脱敏、不裁剪正文、不限制条数或容量。默认 7 天、最长 1 年，持久化后重启仍有效，可主动撤销。局域网需以可达 UI 地址启动，例如 `--ui 0.0.0.0:8787`。验证证据见 [docs/verification/](docs/verification/)。
 

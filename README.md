@@ -52,15 +52,15 @@ Pipeline order: `plugins → rewrite rules → intercept → upstream`; stored f
 
 ```bash
 # macOS (Apple Silicon)
-curl -L https://github.com/deenrookie/pulse/releases/download/v0.3.9/pulse_0.3.9_darwin_arm64.tar.gz | tar xz && chmod +x pulse && ./pulse
+curl -L https://github.com/deenrookie/pulse/releases/download/v0.3.10/pulse_0.3.10_darwin_arm64.tar.gz | tar xz && chmod +x pulse && ./pulse
 
 # Linux (x64)
-curl -L https://github.com/deenrookie/pulse/releases/download/v0.3.9/pulse_0.3.9_linux_amd64.tar.gz | tar xz && chmod +x pulse && ./pulse
+curl -L https://github.com/deenrookie/pulse/releases/download/v0.3.10/pulse_0.3.10_linux_amd64.tar.gz | tar xz && chmod +x pulse && ./pulse
 ```
 
 ```powershell
 # Windows (x64) — PowerShell
-curl.exe -L -o pulse.zip https://github.com/deenrookie/pulse/releases/download/v0.3.9/pulse_0.3.9_windows_amd64.zip
+curl.exe -L -o pulse.zip https://github.com/deenrookie/pulse/releases/download/v0.3.10/pulse_0.3.10_windows_amd64.zip
 Expand-Archive pulse.zip -Force; .\pulse.exe
 ```
 
@@ -151,6 +151,8 @@ cd web && npm run dev        # terminal 2 — http://127.0.0.1:5175
 </details>
 
 ## 🧩 Plugin system
+
+**Generate CSRF PoC (v0.3.10):** right-click any request — Live Traffic rows & request pane, Repeater tabs & editor — to generate HTML that makes a victim's browser issue it, Burp-style. Auto picks the technique: an auto-submitting form (GET / urlencoded POST, hidden inputs, `document.forms[0].submit()`) or cross-origin XHR (`withCredentials`, exact method / Content-Type / body); JSON forced through a form uses the `enctype="text/plain"` split trick. Edit the request and regenerate, toggle the submit button, copy / save / test in browser; warnings appear whenever the technique cannot reproduce the request exactly. Cookies never enter the PoC — the victim's browser adds them. Verification evidence: [docs/verification/csrf-poc.md](docs/verification/csrf-poc.md).
 
 **Sharing (v0.3.9):** Live Traffic → **Share** and Repeater → **Share exchange** publish the complete captured request and response using **Settings → Temporary sharing** IP. The recipient gets side-by-side highlighted Raw panes, search, right-click cURL/Python export, and the original snapshot download. No share-layer redaction, body filtering, count or size quota. Default expiry is 7 days, up to one year; links persist across restarts and can be revoked. LAN access needs a reachable UI bind such as `--ui 0.0.0.0:8787`. Verification evidence: [docs/verification/](docs/verification/).
 

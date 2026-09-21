@@ -25,6 +25,7 @@ Pulse 是本地优先的轻量网络调试工作台：**快速抓到问题、复
 | Site Map、Comparer、HAR 导出 | v0.3.0 | 端点树聚合、状态变体、raw 比对工具 |
 | Lean 省内存模式（binary/static/JS 响应体打桩） | v0.3.6 | 开启前二次确认；请求行、状态与头保留 |
 | JS 插件平台 R0–R3 全量 | v0.3.7 / v0.3.8 | 隔离 VM、pulse SDK、`pulse.http.send` 主动请求、`ctx.respond/drop`、Mock 测试、Actions、目录项目、沙箱 UI 面板、`pulse.files` 授权访问、SDK `.d.ts` + CLI |
+| 生成 CSRF PoC（表单 / XHR 双技术、请求可编辑重生成、浏览器实测） | v0.3.10 | 对齐 Burp Engagement tools；Live Traffic 与 Repeater 四处右键入口 |
 | 临时流量分享（完整快照、持久化、可撤销） | v0.3.9 | 默认 7 天最长 1 年；无条数/容量配额；不脱敏不裁剪 |
 | Intruder（Sniper / Battering ram / Pitchfork、结果持久化） | v0.3.9 | Positions / Payloads / Results 分页，解码后 Grep |
 | 深搜（traffic + repeater 全文检索） | v0.3.3 | `Ctrl+Shift+F`，命中可右键送 Repeater |

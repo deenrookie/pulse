@@ -11,13 +11,13 @@
 ## 运行状态
 
 ### `GET /api/health`
-存活探测。→ `{"ok":true,"version":"0.3.9"}`
+存活探测。→ `{"ok":true,"version":"0.3.10"}`
 
 ### `GET /api/status`
 运行概况（版本、代理地址、数据目录、CA 指纹、流量计数、拦截开关与队列、内存统计、插件目录）。
 ```json
 {
-  "version": "0.3.9",
+  "version": "0.3.10",
   "proxyAddr": "127.0.0.1:8080",
   "uiAddr": "127.0.0.1:8787",
   "dataDir": "C:\\Users\\x\\.pulse",

@@ -1,6 +1,6 @@
 # Pulse 技术架构文档
 
-> 版本：v0.3.9 · 后端 Go（标准库 + goja JS 运行时 + golang.org/x/net/http2） · 前端 React 18 + TypeScript + Vite
+> 版本：v0.3.10 · 后端 Go（标准库 + goja JS 运行时 + golang.org/x/net/http2） · 前端 React 18 + TypeScript + Vite
 >
 > 生产默认端口：代理 `127.0.0.1:8080`、UI/API `127.0.0.1:8787`；开发模式后端 8000、Vite 5175（见 `dev.sh`）。路线图与已实现能力对照见 [Product.md](Product.md)；插件 API 细节见 [Plugins.md](Plugins.md)。
 
