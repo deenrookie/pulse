@@ -35,6 +35,10 @@ interface PluginRequestContext {
   state: KV
   respond(opts: { status?: number; headers?: Header[]; body?: string }): void
   drop(opts?: { reason?: string } | string): void
+  /** Color the current flow's row in Live Traffic. Named colors only:
+   *  red, orange, yellow, green, cyan, blue, pink, magenta, purple, gray.
+   *  Pass "" to clear. Throws on unsupported names. */
+  highlight(color: string): void
 }
 
 interface PluginResponseContext extends PluginRequestContext {
@@ -47,6 +51,8 @@ interface PluginFlowContext {
   flowId: string
   config: Record<string, unknown>
   state: KV
+  /** Manual actions: color the selected flow's row (same palette as ctx.highlight). */
+  highlight(color: string): void
 }
 
 interface KV {

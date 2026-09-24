@@ -127,6 +127,10 @@ async function onRequest(ctx) {
 - `ctx.drop({ reason })`: the plugin blocks the transaction (the client gets a 502; the Flow is marked blocked by plugin).
 - Repeating a terminal action in the same transaction throws.
 
+### `ctx.highlight(color)` — flow row highlight
+
+Call it in any hook (actions included) to color the **current flow's** row in Live Traffic: `ctx.highlight("red")`; pass `""` to clear. Supported colors: `red / orange / yellow / green / cyan / blue / pink / magenta / purple / gray` (case-insensitive); anything else throws. Plugin highlights take precedence over traffic highlight rules in the table.
+
 ### `onComplete(ctx)` — post-completion analysis
 
 Runs read-only after the transaction finishes (it may use plugin stores and make HTTP calls) without blocking the response.

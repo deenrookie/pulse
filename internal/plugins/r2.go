@@ -20,6 +20,9 @@ type runControl struct {
 	dropReason string
 	// onComplete payload: run read-only analysis after the flow completes
 	completeVal any
+	// highlight set via ctx.highlight(color): color the flow row in Live
+	// Traffic ("" = no request; a later call overwrites, "" clears)
+	highlight string
 }
 
 // Respawned returns the local response ctx.respond produced (nil if none).
@@ -46,11 +49,13 @@ func (r *Runtime) ApplyRequestR2(req *store.Request, sender HTTPSender) (bool, *
 	return r.ApplyRequestSender(req, sender)
 }
 
-// TerminalAction is the exported view of ctx.respond / ctx.drop.
+// TerminalAction is the exported view of ctx.respond / ctx.drop plus the
+// ctx.highlight row color.
 type TerminalAction struct {
 	Resp       *store.Response
 	Drop       bool
 	DropReason string
+	Highlight  string
 }
 
 // Respawn maps runControl into the exported TerminalAction.
@@ -58,7 +63,7 @@ func (c *runControl) Respawn() *TerminalAction {
 	if c == nil {
 		return nil
 	}
-	return &TerminalAction{Resp: c.respond, Drop: c.drop, DropReason: c.dropReason}
+	return &TerminalAction{Resp: c.respond, Drop: c.drop, DropReason: c.dropReason, Highlight: c.highlight}
 }
 
 // RunResult extends the classic (changed, logs, err) with R2 control.
@@ -215,6 +220,21 @@ func (r *Runtime) runHookAsync(p *Plugin, hook string, req *store.Request, resp 
 		pulseLogf(&logs, "ctx.drop: transaction blocked (%s)", res.Ctrl.dropReason)
 		return goja.Undefined()
 	})
+	// ctx.highlight(color): color this flow's row in Live Traffic
+	_ = ctx.Set("highlight", func(call goja.FunctionCall) goja.Value {
+		if len(call.Arguments) < 1 {
+			panic(vm.NewGoError(fmt.Errorf("ctx.highlight wants a color name")))
+		}
+		color, ok := CanonicalHighlightColor(call.Argument(0).String())
+		if !ok {
+			panic(vm.NewGoError(fmt.Errorf("ctx.highlight: unsupported color %q (use red, orange, yellow, green, cyan, blue, pink, magenta, purple, gray or \"\")", call.Argument(0).String())))
+		}
+		res.Ctrl.highlight = color
+		if color != "" {
+			pulseLogf(&logs, "ctx.highlight: %s", color)
+		}
+		return goja.Undefined()
+	})
 
 	fn, ok := goja.AssertFunction(vm.Get(hook))
 	if !ok || fn == nil {
@@ -349,6 +369,9 @@ func (r *Runtime) TestRunWithSender(src, hook string, req *store.Request, resp *
 		out.Mocked = true
 		out.Resp = res.Ctrl.respond
 	}
+	if res.Ctrl != nil {
+		out.Highlight = res.Ctrl.highlight
+	}
 	if res.Err != nil {
 		out.Error = res.Err.Error()
 	}
@@ -362,7 +385,8 @@ var ProductionSender func(interface{}) HTTPSender
 
 // RunComplete runs every enabled plugin's onComplete for a finished flow.
 // The sender may be nil when no production transport is wired (tests).
-func (r *Runtime) RunComplete(fl *store.Flow, sender HTTPSender) {
+// onHighlight (optional) receives any ctx.highlight color the hooks set.
+func (r *Runtime) RunComplete(fl *store.Flow, sender HTTPSender, onHighlight func(color string)) {
 	r.mu.RLock()
 	var list []*Plugin
 	for _, p := range r.plugins {
@@ -378,6 +402,9 @@ func (r *Runtime) RunComplete(fl *store.Flow, sender HTTPSender) {
 			continue
 		}
 		r.recordSuccess(p, res.Logs, res.Changed)
+		if onHighlight != nil && res.Ctrl != nil && res.Ctrl.highlight != "" {
+			onHighlight(res.Ctrl.highlight)
+		}
 	}
 }
 

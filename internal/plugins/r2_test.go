@@ -139,7 +139,7 @@ func TestOnComplete(t *testing.T) {
 }`
 	rt := newRuntime(t, map[string]string{"c.js": src})
 	fl := &store.Flow{ID: "f9", Req: store.Request{Method: "GET", URL: "http://h/"}, Resp: &store.Response{StatusCode: 201}}
-	rt.RunComplete(fl, nil)
+	rt.RunComplete(fl, nil, nil)
 	mem := rt.MemoryStateSnapshot("c.js")
 	if mem["finished"] != int64(1) {
 		t.Fatalf("finished = %v", mem["finished"])
@@ -197,5 +197,29 @@ func TestAsyncLoopStillInterrupted(t *testing.T) {
 	case <-done:
 	case <-time.After(3 * time.Second):
 		t.Fatal("loop not interrupted")
+	}
+}
+
+// ctx.highlight colors the flow row; unsupported colors throw into the hook
+// error path instead of leaking arbitrary values into the UI.
+func TestCtxHighlight(t *testing.T) {
+	ok := `function onResponse(ctx) { ctx.highlight("RED "); }`
+	rt := newRuntime(t, map[string]string{"h.js": ok})
+	req := &store.Request{Method: "GET", URL: "http://h/", Headers: []store.Header{}, ID: "f1"}
+	resp := &store.Response{StatusCode: 200, Headers: []store.Header{}}
+	_, hl := rt.ApplyResponse(req, resp)
+	if hl != "red" {
+		t.Fatalf("highlight = %q, want red", hl)
+	}
+
+	bad := `function onRequest(ctx) { ctx.highlight("purple</td>"); }`
+	rt2 := newRuntime(t, map[string]string{"b.js": bad})
+	req2 := &store.Request{Method: "GET", URL: "http://h/", Headers: []store.Header{}, ID: "f2"}
+	_, act := rt2.ApplyRequestR2(req2, nil)
+	if act != nil {
+		t.Fatalf("invalid color must not produce an action, got %+v", act)
+	}
+	if rt2.List()[0].Errors == 0 {
+		t.Fatal("invalid color must surface as a hook error")
 	}
 }

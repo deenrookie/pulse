@@ -63,6 +63,9 @@ type Flow struct {
 	Resp  *Response `json:"response,omitempty"`
 	State FlowState `json:"state"`
 	Error string    `json:"error,omitempty"`
+	// Highlight is a named row color set via the plugin SDK (ctx.highlight);
+	// empty means none.
+	Highlight string `json:"highlight,omitempty"`
 	// WebSocket messages captured after a 101 upgrade (empty for plain HTTP).
 	WSMessages []WSMessage `json:"ws,omitempty"`
 }
@@ -94,6 +97,7 @@ type FlowMeta struct {
 	Timestamp   time.Time `json:"timestamp"`
 	Source      string    `json:"source"`
 	WSCount     int       `json:"wsCount"`
+	Highlight   string    `json:"highlight,omitempty"`
 }
 
 // Store is safe for concurrent use. Flows are immutable once published
@@ -423,7 +427,7 @@ func metaOf(fl *Flow) FlowMeta {
 		StatusCode: 0, ReqSize: len(fl.Req.Body), State: fl.State,
 		WSCount:   len(fl.WSMessages),
 		Timestamp: fl.Req.Timestamp, Source: fl.Req.Source,
-		DurationMs: 0, RespSize: 0,
+		DurationMs: 0, RespSize: 0, Highlight: fl.Highlight,
 	}
 	if u := splitURL(fl.Req.URL); u != nil {
 		m.Host, m.Path = u.host, u.path

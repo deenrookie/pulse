@@ -457,7 +457,9 @@ type TestOutcome struct {
 	Request *store.Request  `json:"request"`
 	Resp    *store.Response `json:"response,omitempty"`
 	/** ctx.respond was used: Resp carries the local response */
-	Mocked  bool            `json:"mocked,omitempty"`
+	Mocked bool `json:"mocked,omitempty"`
+	/** ctx.highlight color set by the hook (sandbox echo only) */
+	Highlight string `json:"highlight,omitempty"`
 }
 
 // TestRun compiles src and runs the named hook against copies of req/resp in
@@ -483,11 +485,12 @@ func TestRun(src, hook string, req *store.Request, resp *store.Response, timeout
 		out.Error = "plugin does not define " + hook + "(ctx)"
 		return out
 	}
-	changed, logs, err := (&Runtime{timeout: timeout, memories: map[string]*pluginStore{}, locals: map[string]*persistentStore{}, configs: openConfigs(filepath.Join(os.TempDir(), "pulse-test-config-" + fmt.Sprint(os.Getpid()) + ".json")), tx: newTxStates()}).runHook(p, hook, req, resp, timeout)
+	changed, logs, highlight, err := (&Runtime{timeout: timeout, memories: map[string]*pluginStore{}, locals: map[string]*persistentStore{}, configs: openConfigs(filepath.Join(os.TempDir(), "pulse-test-config-" + fmt.Sprint(os.Getpid()) + ".json")), tx: newTxStates()}).runHook(p, hook, req, resp, timeout)
 	if logs != nil {
 		out.Logs = logs
 	}
 	out.Changed = changed
+	out.Highlight = highlight
 	if resp != nil {
 		out.Resp = resp
 	}
@@ -543,14 +546,15 @@ func (r *Runtime) ApplyRequest(req *store.Request) bool {
 }
 
 // ApplyResponse runs every enabled plugin's onResponse hook (R2: async
-// scheduler with pulse.http support).
-func (r *Runtime) ApplyResponse(req *store.Request, resp *store.Response) bool {
+// scheduler with pulse.http support). It reports whether anything changed and
+// the last ctx.highlight color set for the flow ("" = none).
+func (r *Runtime) ApplyResponse(req *store.Request, resp *store.Response) (bool, string) {
 	return r.ApplyResponseSender(req, resp, nil)
 }
 
 // ApplyResponseSender is ApplyResponse with an explicit HTTP sender (tests
 // inject a mock; nil means no network in this runtime yet).
-func (r *Runtime) ApplyResponseSender(req *store.Request, resp *store.Response, sender HTTPSender) bool {
+func (r *Runtime) ApplyResponseSender(req *store.Request, resp *store.Response, sender HTTPSender) (bool, string) {
 	r.mu.RLock()
 	timeout := r.timeout
 	plugins := make([]*Plugin, 0, len(r.plugins))
@@ -562,6 +566,7 @@ func (r *Runtime) ApplyResponseSender(req *store.Request, resp *store.Response, 
 	r.mu.RUnlock()
 
 	changed := false
+	highlight := ""
 	for _, p := range plugins {
 		res := r.runHookAsync(p, responseHook, req, resp, timeout, req.ID, sender)
 		if res.Err != nil {
@@ -572,8 +577,11 @@ func (r *Runtime) ApplyResponseSender(req *store.Request, resp *store.Response, 
 		if res.Changed {
 			changed = true
 		}
+		if res.Ctrl != nil && res.Ctrl.highlight != "" {
+			highlight = res.Ctrl.highlight
+		}
 	}
-	return changed
+	return changed, highlight
 }
 
 // ApplyRequestSender is ApplyRequest with an explicit HTTP sender.
@@ -589,6 +597,7 @@ func (r *Runtime) ApplyRequestSender(req *store.Request, sender HTTPSender) (boo
 	r.mu.RUnlock()
 
 	changed := false
+	highlight := ""
 	for _, p := range plugins {
 		res := r.runHookAsync(p, requestHook, req, nil, timeout, req.ID, sender)
 		if res.Err != nil {
@@ -599,11 +608,21 @@ func (r *Runtime) ApplyRequestSender(req *store.Request, sender HTTPSender) (boo
 		if res.Changed {
 			changed = true
 		}
+		if res.Ctrl != nil && res.Ctrl.highlight != "" {
+			highlight = res.Ctrl.highlight
+		}
 		// a terminal action already taken stands even if the hook later
 		// errored (e.g. a second respond/drop attempt)
 		if res.Ctrl != nil && (res.Ctrl.respond != nil || res.Ctrl.drop) {
-			return changed, res.Ctrl.Respawn()
+			act := res.Ctrl.Respawn()
+			if highlight != "" {
+				act.Highlight = highlight
+			}
+			return changed, act
 		}
+	}
+	if highlight != "" {
+		return changed, &TerminalAction{Highlight: highlight}
 	}
 	return changed, nil
 }
@@ -618,15 +637,15 @@ func hasHook(p *Plugin, name string) bool {
 }
 
 // runHook executes one plugin in a fresh VM within the given budget. It
-// returns whether the message was modified, captured pulse.log lines, and an
-// error.
-func (r *Runtime) runHook(p *Plugin, hook string, req *store.Request, resp *store.Response, timeout time.Duration) (bool, []string, error) {
+// returns whether the message was modified, captured pulse.log lines, any
+// ctx.highlight color, and an error.
+func (r *Runtime) runHook(p *Plugin, hook string, req *store.Request, resp *store.Response, timeout time.Duration) (bool, []string, string, error) {
 	return r.runHookTx(p, hook, req, resp, timeout, "")
 }
 
 // runHookTx is runHook with an explicit transaction key (flow ID for live
 // traffic; "" for sandbox/test runs — each test run gets its own state).
-func (r *Runtime) runHookTx(p *Plugin, hook string, req *store.Request, resp *store.Response, timeout time.Duration, txKey string) (bool, []string, error) {
+func (r *Runtime) runHookTx(p *Plugin, hook string, req *store.Request, resp *store.Response, timeout time.Duration, txKey string) (bool, []string, string, error) {
 	if timeout <= 0 {
 		timeout = hookTimeout
 	}
@@ -636,7 +655,7 @@ func (r *Runtime) runHookTx(p *Plugin, hook string, req *store.Request, resp *st
 	timer := time.AfterFunc(timeout, func() { vm.Interrupt("plugin timeout") })
 	defer timer.Stop()
 	if _, err := vm.RunProgram(p.prog); err != nil {
-		return false, nil, fmt.Errorf("load: %w", err)
+		return false, nil, "", fmt.Errorf("load: %w", err)
 	}
 	var logs []string
 	pulseObj := vm.NewObject()
@@ -703,14 +722,26 @@ func (r *Runtime) runHookTx(p *Plugin, hook string, req *store.Request, resp *st
 	_ = ctx.Set("flowId", txKey)
 	_ = ctx.Set("state", txObj)
 	_ = ctx.Set("config", vm.ToValue(r.configs.snapshot(p.File, p.Config)))
+	highlight := ""
+	_ = ctx.Set("highlight", func(call goja.FunctionCall) goja.Value {
+		if len(call.Arguments) < 1 {
+			panic(vm.NewGoError(fmt.Errorf("ctx.highlight wants a color name")))
+		}
+		color, ok := CanonicalHighlightColor(call.Argument(0).String())
+		if !ok {
+			panic(vm.NewGoError(fmt.Errorf("ctx.highlight: unsupported color %q (use red, orange, yellow, green, cyan, blue, pink, magenta, purple, gray or \"\")", call.Argument(0).String())))
+		}
+		highlight = color
+		return goja.Undefined()
+	})
 
 	fn, ok := goja.AssertFunction(vm.Get(hook))
 	if !ok || fn == nil {
-		return false, logs, nil
+		return false, logs, highlight, nil
 	}
 
 	if _, err := fn(goja.Undefined(), ctx); err != nil {
-		return false, logs, fmt.Errorf("%s: %w", hook, err)
+		return false, logs, highlight, fmt.Errorf("%s: %w", hook, err)
 	}
 
 	changed := applyBackRequest(ctx.Get("request"), req)
@@ -722,7 +753,7 @@ func (r *Runtime) runHookTx(p *Plugin, hook string, req *store.Request, resp *st
 			r.tx.drop(txKey) // response done — release the transaction
 		}
 	}
-	return changed, logs, nil
+	return changed, logs, highlight, nil
 }
 
 func exportRequest(vm *goja.Runtime, req *store.Request) goja.Value {

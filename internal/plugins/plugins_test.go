@@ -84,7 +84,7 @@ func TestResponseHookModifiesBody(t *testing.T) {
 	rt := newRuntime(t, map[string]string{"resp.js": rewriteRespSrc})
 	req := &store.Request{URL: "http://h/"}
 	resp := &store.Response{StatusCode: 200, Body: []byte("the original content")}
-	if !rt.ApplyResponse(req, resp) {
+	if changed, _ := rt.ApplyResponse(req, resp); !changed {
 		t.Fatal("expected modification")
 	}
 	if string(resp.Body) != "the pluginified content" {

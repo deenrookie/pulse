@@ -127,6 +127,10 @@ async function onRequest(ctx) {
 - `ctx.drop({ reason })`：插件阻断事务（客户端收到 502，Flow 标记 blocked by plugin）。
 - 同一事务重复终结动作会抛错。
 
+### `ctx.highlight(color)` — 流量行高亮
+
+任意钩子（含 actions）里调用即可把**当前 Flow** 在 Live Traffic 中标成指定颜色：`ctx.highlight("red")`，传 `""` 清除。支持的颜色：`red / orange / yellow / green / cyan / blue / pink / magenta / purple / gray`（大小写不敏感）；其他值会抛错。插件高亮优先于流量高亮规则显示。
+
 ### `onComplete(ctx)` — 完成后分析
 
 事务结束后只读运行（可读写插件 store、发起 HTTP），不阻塞响应返回。

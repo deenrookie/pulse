@@ -134,7 +134,7 @@ func TestV1FieldSemantics(t *testing.T) {
 	rt := newRuntime(t, map[string]string{"v1.js": src})
 	req := &store.Request{Method: "GET", URL: "http://h/", HTTPVersion: "HTTP/1.1", Headers: []store.Header{}}
 	resp := &store.Response{StatusCode: 200, Reason: "OK", HTTPVersion: "HTTP/1.1", Headers: []store.Header{}}
-	if !rt.ApplyResponse(req, resp) {
+	if changed, _ := rt.ApplyResponse(req, resp); !changed {
 		t.Fatal("expected modification")
 	}
 	if headerValue(req.Headers, "X-After") != "yes" {

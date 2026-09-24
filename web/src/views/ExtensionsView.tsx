@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import * as api from '../api'
 import Icon from '../ui/Icon'
 import Empty from '../ui/Empty'
@@ -643,6 +643,83 @@ function PluginsPanel({
   )
 }
 
+// Plugin log console with a bottom resize bar (the common convention, like a
+// textarea's resize handle): an always-visible bar under the log with grip
+// dots and a line/height readout — drag down to grow, up to shrink, ↑/↓
+// (Shift for bigger steps) to fine-tune, double-click to reset. The height
+// persists per plugin file.
+function PluginLog({ storageKey, text }: { storageKey: string; text: string }) {
+  const MIN = 60
+  const MAX = 800
+  const DEF = 150
+  const clamp = (v: number) => Math.max(MIN, Math.min(MAX, v))
+  const [height, setHeight] = useState(() => {
+    const v = Number(localStorage.getItem(storageKey))
+    return Number.isFinite(v) && v >= MIN && v <= MAX ? clamp(v) : DEF
+  })
+  const [dragging, setDragging] = useState(false)
+  const drag = useRef<{ y: number; h: number } | null>(null)
+  const apply = (v: number) => {
+    const next = clamp(v)
+    setHeight(next)
+    localStorage.setItem(storageKey, String(next))
+  }
+  return (
+    <div className="plugin-log-box">
+      <pre className="plugin-log" style={{ height, maxHeight: 'none' }}>
+        {text}
+      </pre>
+      <div
+        className={`plugin-log-foot${dragging ? ' dragging' : ''}`}
+        role="separator"
+        aria-orientation="horizontal"
+        aria-label="Resize log"
+        aria-valuenow={height}
+        aria-valuemin={MIN}
+        aria-valuemax={MAX}
+        tabIndex={0}
+        title="Drag down to grow, up to shrink · double-click to reset · ↑/↓ fine-tune (Shift = larger steps)"
+        onPointerDown={(e) => {
+          drag.current = { y: e.clientY, h: height }
+          setDragging(true)
+          e.currentTarget.setPointerCapture(e.pointerId)
+        }}
+        onPointerMove={(e) => {
+          if (!drag.current) return
+          apply(drag.current.h + (e.clientY - drag.current.y))
+        }}
+        onPointerUp={() => {
+          if (!drag.current) return
+          drag.current = null
+          setDragging(false)
+        }}
+        onPointerCancel={() => {
+          drag.current = null
+          setDragging(false)
+        }}
+        onKeyDown={(e) => {
+          if (e.key === 'ArrowUp') {
+            e.preventDefault()
+            apply(height + (e.shiftKey ? 64 : 16))
+          } else if (e.key === 'ArrowDown') {
+            e.preventDefault()
+            apply(height - (e.shiftKey ? 64 : 16))
+          }
+        }}
+        onDoubleClick={() => {
+          localStorage.removeItem(storageKey)
+          setHeight(DEF)
+        }}
+      >
+        <span className="gripdots" aria-hidden="true" />
+        <span className="meta">
+          {text.split('\n').length} lines · {height}px
+        </span>
+      </div>
+    </div>
+  )
+}
+
 function InstalledTab({
   plugins,
   dir,
@@ -762,7 +839,7 @@ function InstalledTab({
                   last error ({p.lastErrorAt ? new Date(p.lastErrorAt).toLocaleTimeString() : 'earlier'}): {p.lastError}
                 </div>
               )}
-              {p.log && p.log.length > 0 && <pre className="plugin-log">{p.log.join('\n')}</pre>}
+              {p.log && p.log.length > 0 && <PluginLog storageKey={`pulse:log-h:${p.file}`} text={p.log.join('\n')} />}
             </div>
           ))
         )}

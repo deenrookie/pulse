@@ -277,7 +277,15 @@ func (e *Engine) runOnComplete(fl *store.Flow) {
 	if e.Plugins == nil {
 		return
 	}
-	go e.Plugins.RunComplete(fl, e.PluginTransport())
+	go e.Plugins.RunComplete(fl, e.PluginTransport(), func(color string) { e.applyPluginHighlight(fl, color) })
+}
+
+// applyPluginHighlight stores a ctx.highlight color from onComplete (which
+// runs after the flow was already published) and re-publishes the row.
+func (e *Engine) applyPluginHighlight(fl *store.Flow, color string) {
+	fl.Highlight = color
+	_ = e.store.Update(fl)
+	e.publishFlow("flow_update", fl)
 }
 
 // SetPluginTransportSender overrides the plugin HTTP transport (the api
@@ -316,7 +324,10 @@ func (e *Engine) executeRequest(req *store.Request, respond respondFunc) (*Resul
 
 	if e.Plugins != nil {
 		changed, act := e.Plugins.ApplyRequestR2(req, e.PluginTransport())
-		if changed {
+		if act != nil && act.Highlight != "" {
+			fl.Highlight = act.Highlight
+		}
+		if changed || (act != nil && act.Highlight != "") {
 			fl.Req = *req
 			_ = e.store.Update(fl)
 			e.publishFlow("flow_update", fl)
@@ -394,8 +405,14 @@ func (e *Engine) executeRequest(req *store.Request, respond respondFunc) (*Resul
 		e.publishFlow("flow_update", fl)
 		return res, fl, false // caller tunnels the raw connection
 	}
-	if e.Plugins != nil && e.Plugins.ApplyResponse(req, res.Resp) {
-		fl.Resp = res.Resp
+	if e.Plugins != nil {
+		changed, hl := e.Plugins.ApplyResponse(req, res.Resp)
+		if changed {
+			fl.Resp = res.Resp
+		}
+		if hl != "" {
+			fl.Highlight = hl
+		}
 	}
 	if e.Rewrite != nil && e.Rewrite.ApplyResponse(res.Resp) {
 		fl.Resp = res.Resp

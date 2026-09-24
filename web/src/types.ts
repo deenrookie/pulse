@@ -49,6 +49,8 @@ export interface Flow {
   response?: HttpResponse
   state: FlowState
   error?: string
+  /** row color set via the plugin SDK (ctx.highlight) */
+  highlight?: string
   ws?: WSMessage[]
 }
 
@@ -69,6 +71,8 @@ export interface FlowMeta {
   wsCount: number
   star?: boolean
   note?: string
+  /** row color set via the plugin SDK (ctx.highlight) */
+  highlight?: string
 }
 
 export interface PendingItem {

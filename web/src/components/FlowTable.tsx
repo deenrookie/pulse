@@ -411,7 +411,19 @@ export default function FlowTable({
     </th>
   )
 
-  const hlOf = (m: FlowMeta) => highlightOf?.(m) ?? null
+  // named colors accepted by the plugin SDK's ctx.highlight; an explicit
+  // plugin marking wins over the user's pattern rules
+  const sdkHlColor = (name?: string): string | null => {
+    if (!name) return null
+    const named: Record<string, string> = {
+      red: '#f87171', orange: '#fb923c', yellow: '#facc15', green: '#4ade80',
+      cyan: '#22d3ee', blue: '#60a5fa', pink: '#f472b6', magenta: '#e879f9',
+      purple: '#a78bfa', gray: '#9ca3af',
+    }
+    return named[name.toLowerCase()] ?? null
+  }
+
+  const hlOf = (m: FlowMeta) => sdkHlColor(m.highlight) ?? highlightOf?.(m) ?? null
 
   const rowStyle = (m: FlowMeta): CSSProperties | undefined => {
     const hl = hlOf(m)

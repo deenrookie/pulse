@@ -1,11 +1,13 @@
 package api
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"strings"
 	"time"
 
+	"pulse/internal/events"
 	"pulse/internal/plugins"
 	"pulse/internal/store"
 )
@@ -231,6 +233,7 @@ func (s *Server) handlePluginsTest(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{
 		"logs": out.Logs, "error": out.Error, "changed": out.Changed,
 		"request": requestToTestMessage(*out.Request), "response": respOut(out),
+		"highlight": out.Highlight,
 	})
 }
 
@@ -326,6 +329,14 @@ func (s *Server) handlePluginAction(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	out := s.plug.RunAction(file, actionID, fl, plugins.HTTPSenderFunc(s.pluginFlowTransport))
+	// ctx.highlight from an action recolors the selected flow row live
+	if out.Highlight != "" {
+		fl.Highlight = out.Highlight
+		_ = s.st.Update(fl)
+		if data, err := json.Marshal(fl); err == nil {
+			s.bus.Publish(events.Event{Name: "flow_update", Data: data})
+		}
+	}
 	writeJSON(w, http.StatusOK, out)
 }
 
@@ -379,6 +390,7 @@ func (s *Server) handlePluginsTestMock(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{
 		"logs": out.Logs, "error": out.Error, "changed": out.Changed, "mocked": out.Mocked,
 		"request": requestToTestMessage(*out.Request), "response": respOut(out),
+		"highlight": out.Highlight,
 	})
 }
 

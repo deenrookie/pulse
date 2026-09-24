@@ -83,6 +83,8 @@ type ActionOutcome struct {
 	Error  string   `json:"error,omitempty"`
 	Result string   `json:"result,omitempty"` // JSON/text the action returned
 	UsedHTTP bool   `json:"usedHttp"`
+	/** ctx.highlight color set by the action (host applies it to the flow) */
+	Highlight string `json:"highlight,omitempty"`
 }
 
 // RunAction executes actions.<id>(ctx) against a copy of the flow. ctx
@@ -135,6 +137,18 @@ func (r *Runtime) RunAction(file, actionID string, fl *store.Flow, sender HTTPSe
 		_ = ctx.Set("response", exportResponse(vm, fl.Resp))
 	}
 	_ = ctx.Set("config", vm.ToValue(r.configs.snapshot(p.File, p.Config)))
+	highlight := ""
+	_ = ctx.Set("highlight", func(call goja.FunctionCall) goja.Value {
+		if len(call.Arguments) < 1 {
+			panic(vm.NewGoError(fmt.Errorf("ctx.highlight wants a color name")))
+		}
+		color, ok := CanonicalHighlightColor(call.Argument(0).String())
+		if !ok {
+			panic(vm.NewGoError(fmt.Errorf("ctx.highlight: unsupported color %q (use red, orange, yellow, green, cyan, blue, pink, magenta, purple, gray or \"\")", call.Argument(0).String())))
+		}
+		highlight = color
+		return goja.Undefined()
+	})
 
 	fns, ok := vm.Get("actions").(*goja.Object)
 	if !ok {
@@ -153,6 +167,7 @@ func (r *Runtime) RunAction(file, actionID string, fl *store.Flow, sender HTTPSe
 		_, err = vm.RunString("")
 	}
 	out.Logs = logs
+	out.Highlight = highlight
 	if err != nil {
 		out.Error = err.Error()
 		return out
