@@ -251,6 +251,7 @@ Repeater 请求面板头部的 **Apply plugin** 按钮对当前缓冲区副本�
 | `demo-read-rewrite.js` | **全功能演示**：获取/改写请求路径、query 参数、headers、POST body 与响应 headers/body |
 | `add-header.js` | 为所有请求注入自定义头，并演示 `pulse.log` |
 | `redact-tokens.js` | 响应中的 Bearer token / API key 打码（正则） |
+| `cors-check.js` | **CORS 扫描**：被动分析 CORS 头 + 攻击者 Origin 主动验证，打印攻击者网站可跨域读取的数据 |
 | `template.js` | 最小插件骨架 |
 
 ## 路线图

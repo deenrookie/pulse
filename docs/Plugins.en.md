@@ -251,6 +251,7 @@ In the repo at `examples/plugins/` (the same content ships built into **Extensio
 | `demo-read-rewrite.js` | **Full-featured demo**: reads and rewrites the request path, query params, headers, POST body and response headers/body |
 | `add-header.js` | Injects a custom header into every request; demonstrates `pulse.log` |
 | `redact-tokens.js` | Redacts Bearer tokens / API keys in responses (regex) |
+| `cors-check.js` | **CORS scanner**: passive header analysis + active verification with an attacker Origin; prints the data an attacker site could read |
 | `template.js` | Minimal plugin skeleton |
 
 ## Roadmap
