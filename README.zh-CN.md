@@ -52,15 +52,15 @@
 
 ```bash
 # macOS（Apple Silicon）
-curl -L https://github.com/deenrookie/pulse/releases/download/v0.3.10/pulse_0.3.10_darwin_arm64.tar.gz | tar xz && chmod +x pulse && ./pulse
+curl -L https://github.com/deenrookie/pulse/releases/download/v0.3.11/pulse_0.3.11_darwin_arm64.tar.gz | tar xz && chmod +x pulse && ./pulse
 
 # Linux（x64）
-curl -L https://github.com/deenrookie/pulse/releases/download/v0.3.10/pulse_0.3.10_linux_amd64.tar.gz | tar xz && chmod +x pulse && ./pulse
+curl -L https://github.com/deenrookie/pulse/releases/download/v0.3.11/pulse_0.3.11_linux_amd64.tar.gz | tar xz && chmod +x pulse && ./pulse
 ```
 
 ```powershell
 # Windows（x64）— PowerShell
-curl.exe -L -o pulse.zip https://github.com/deenrookie/pulse/releases/download/v0.3.10/pulse_0.3.10_windows_amd64.zip
+curl.exe -L -o pulse.zip https://github.com/deenrookie/pulse/releases/download/v0.3.11/pulse_0.3.11_windows_amd64.zip
 Expand-Archive pulse.zip -Force; .\pulse.exe
 ```
 
@@ -140,6 +140,8 @@ cd web && npm run dev    # http://127.0.0.1:5175
 </details>
 
 ## 🧩 插件系统
+
+**插件流量高亮 + CORS 漏洞检测插件（v0.3.11）**：SDK 新增 `ctx.highlight(color)`——任意钩子（含右键 actions）把当前 Flow 在 Live Traffic 标成指定颜色（`red/orange/yellow/green/cyan/blue/pink/magenta/purple/gray`，非法值抛错），随 flows.jsonl 持久化并实时推送，优先于流量高亮规则显示；沙箱 Test run 结果回显 highlight 便于调试。配套示例插件 `examples/plugins/cors-check.js`：被动分析 CORS 头（Origin 反射 / 通配符 / credentials 组合），再以攻击者 Origin **无凭证**重放主动验证任意来源反射，确认后打印攻击者可跨域读取的数据（真实会话快照 + 敏感字段识别 + 无凭证探测响应），漏洞流量自动标红；另提供右键分析选中流量与累计报告动作。插件面板日志控制台支持底部拖拽调高（按插件持久化、双击重置、`↑/↓` 微调）。
 
 **生成 CSRF PoC（v0.3.10）**：任意请求右键——Live Traffic 行与请求面板、Repeater 标签与编辑器——生成让受害者浏览器发出该请求的 HTML（Burp 式）。Auto 自动选技术：自动提交表单（GET / urlencoded POST，隐藏 input + `document.forms[0].submit()`）或跨域 XHR（`withCredentials`，精确复现方法 / Content-Type / 体）；JSON 强制走表单时使用 `enctype="text/plain"` 拆分技巧。请求可编辑后 Regenerate、可切换提交按钮、Copy / Save / 浏览器实测；技术无法精确复现时给出警告。Cookie 永不写入 PoC，由受害者浏览器自动携带。验证证据见 [docs/verification/csrf-poc.md](docs/verification/csrf-poc.md)。
 

@@ -11,13 +11,13 @@
 ## 运行状态
 
 ### `GET /api/health`
-存活探测。→ `{"ok":true,"version":"0.3.10"}`
+存活探测。→ `{"ok":true,"version":"0.3.11"}`
 
 ### `GET /api/status`
 运行概况（版本、代理地址、数据目录、CA 指纹、流量计数、拦截开关与队列、内存统计、插件目录）。
 ```json
 {
-  "version": "0.3.10",
+  "version": "0.3.11",
   "proxyAddr": "127.0.0.1:8080",
   "uiAddr": "127.0.0.1:8787",
   "dataDir": "C:\\Users\\x\\.pulse",
@@ -43,12 +43,12 @@
 ## 流量（Flows）
 
 ### `GET /api/flows?limit=200&offset=0&q=keyword`
-分页 + 关键字过滤（匹配 method/host/path/status）。`limit` 默认 200、上限 1000。响应体不含 `body`（列表轻量），条目带标注字段 `star`/`note`。
+分页 + 关键字过滤（匹配 method/host/path/status）。`limit` 默认 200、上限 1000。响应体不含 `body`（列表轻量），条目带标注字段 `star`/`note` 与插件高亮 `highlight`（`ctx.highlight` 设置的命名颜色，可空）。
 ```json
 {"total": 128, "items": [ { "id":"req-42", "method":"GET", "url":"https://a.com/x",
   "host":"a.com","path":"/x","statusCode":200,"contentType":"text/html",
   "reqSize":123,"respSize":4567,"durationMs":88,"state":"complete",
-  "timestamp":"2026-08-29T12:00:00Z","source":"proxy","star":false,"note":"" } ]}
+  "timestamp":"2026-08-29T12:00:00Z","source":"proxy","star":false,"note":"","highlight":"" } ]}
 ```
 
 ### `GET /api/flows/{id}`

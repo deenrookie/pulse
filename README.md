@@ -52,15 +52,15 @@ Pipeline order: `plugins → rewrite rules → intercept → upstream`; stored f
 
 ```bash
 # macOS (Apple Silicon)
-curl -L https://github.com/deenrookie/pulse/releases/download/v0.3.10/pulse_0.3.10_darwin_arm64.tar.gz | tar xz && chmod +x pulse && ./pulse
+curl -L https://github.com/deenrookie/pulse/releases/download/v0.3.11/pulse_0.3.11_darwin_arm64.tar.gz | tar xz && chmod +x pulse && ./pulse
 
 # Linux (x64)
-curl -L https://github.com/deenrookie/pulse/releases/download/v0.3.10/pulse_0.3.10_linux_amd64.tar.gz | tar xz && chmod +x pulse && ./pulse
+curl -L https://github.com/deenrookie/pulse/releases/download/v0.3.11/pulse_0.3.11_linux_amd64.tar.gz | tar xz && chmod +x pulse && ./pulse
 ```
 
 ```powershell
 # Windows (x64) — PowerShell
-curl.exe -L -o pulse.zip https://github.com/deenrookie/pulse/releases/download/v0.3.10/pulse_0.3.10_windows_amd64.zip
+curl.exe -L -o pulse.zip https://github.com/deenrookie/pulse/releases/download/v0.3.11/pulse_0.3.11_windows_amd64.zip
 Expand-Archive pulse.zip -Force; .\pulse.exe
 ```
 
@@ -151,6 +151,8 @@ cd web && npm run dev        # terminal 2 — http://127.0.0.1:5175
 </details>
 
 ## 🧩 Plugin system
+
+**Plugin flow highlight + CORS checker (v0.3.11):** the plugin SDK gains `ctx.highlight(color)` — any hook (context-menu actions included) colors the current flow's row in Live Traffic (`red/orange/yellow/green/cyan/blue/pink/magenta/purple/gray`; anything else throws), persisted to flows.jsonl and pushed live, taking precedence over user highlight rules; the sandbox Test run echoes the highlight for easy debugging. Ships with the `examples/plugins/cors-check.js` example plugin: passive CORS header analysis (origin reflection / wildcard / credentials combos), then active verification replaying with an attacker Origin and **no credentials**; on confirmation it prints the data an attacker site could read (live session snapshot with sensitive-data hits + the unauthenticated probe response) and highlights vulnerable flows red. Context-menu actions analyze the selected flow and print an accumulated report. The plugins panel log console is now resizable via a bottom drag bar (per-plugin persistence, double-click reset, `↑/↓` fine-tune).
 
 **Generate CSRF PoC (v0.3.10):** right-click any request — Live Traffic rows & request pane, Repeater tabs & editor — to generate HTML that makes a victim's browser issue it, Burp-style. Auto picks the technique: an auto-submitting form (GET / urlencoded POST, hidden inputs, `document.forms[0].submit()`) or cross-origin XHR (`withCredentials`, exact method / Content-Type / body); JSON forced through a form uses the `enctype="text/plain"` split trick. Edit the request and regenerate, toggle the submit button, copy / save / test in browser; warnings appear whenever the technique cannot reproduce the request exactly. Cookies never enter the PoC — the victim's browser adds them. Verification evidence: [docs/verification/csrf-poc.md](docs/verification/csrf-poc.md).
 
